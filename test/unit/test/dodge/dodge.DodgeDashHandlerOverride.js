@@ -3,7 +3,12 @@ import DefenseRegistry from '../../../../src/dodge/DefenseRegistry.js';
 import Debug from '../../../../src/core/Debug.js';
 import Settings from '../../../../src/core/Settings.js';
 import URLUtils from '../../../../src/streaming/utils/URLUtils.js';
+import SegmentsController from '../../../../src/dash/controllers/SegmentsController.js';
+import TimelineConverter from '../../../../src/dash/utils/TimelineConverter.js';
+import DashConstants from '../../../../src/dash/constants/DashConstants.js';
+import Constants from '../../../../src/streaming/constants/Constants.js';
 import ObjectsHelper from '../../helpers/ObjectsHelper.js';
+import VoHelper from '../../helpers/VOHelper.js';
 
 import sinon from 'sinon';
 import { expect } from 'chai';
@@ -2172,6 +2177,184 @@ describe('DodgeDashHandlerOverride', function () {
             const result = segBaseOverride.getNextSegmentRequest({}, segBaseRep);
             expect(mockParent.getNextSegmentRequest.calledOnce).to.be.true; // jshint ignore:line
             expect(result).to.deep.equal({ parentNext: true });
+        });
+    });
+
+    // SegmentTimeline
+
+    // SegmentsController routes SegmentTimeline to a getter that takes no index
+    // at all: it reads the fourth argument (`lastSegment`) and returns the
+    // segment after it. These tests therefore drive a real SegmentsController
+    // and a real TimelineSegmentsGetter rather than the stubbed controller the
+    // rest of this file uses, because a stub cannot reproduce that dispatch.
+
+    describe('SegmentTimeline content', function () {
+
+        // Six segments, deliberately non-uniform: indices 0-2 and 4-5 run
+        // 360360/90000 = 4.004s, index 3 runs 180180/90000 = 2.002s. Anything
+        // that converts an index to a time by multiplication fails here.
+        const TIMELINE_S = [
+            { 't': 0, 'd': 360360, 'r': 2 },
+            { 'd': 180180 },
+            { 'd': 360360, 'r': 1 }
+        ];
+        const LONG_DURATION = 360360 / 90000;
+        const SHORT_DURATION = 180180 / 90000;
+
+        // Segment start times in timescale units, for $Time$ expansion.
+        const START_TIMES = [0, 360360, 720720, 1081080, 1261260, 1621620];
+
+        let timelineRep, timelineOverride;
+
+        function makeTimelineRepresentation() {
+            const rep = new VoHelper().getDummyRepresentation(Constants.VIDEO);
+            rep.id = 'rep0';
+            rep.index = 0;
+            rep.path = '';
+            rep.timescale = 90000;
+            rep.segmentInfoType = DashConstants.SEGMENT_TIMELINE;
+            rep.segments = null;
+            rep.presentationTimeOffset = 0;
+            rep.mediaInfo = { type: 'video', streamInfo: { id: 'stream-1' } };
+            rep.SegmentTemplate = {
+                'timescale': 90000,
+                'initialization': 'init-$RepresentationID$.m4s',
+                'SegmentTimeline': { 'S': TIMELINE_S },
+                'media': 'seg-$RepresentationID$-$Time$.m4s'
+            };
+            // The getter reads the timeline back off the manifest tree.
+            rep.adaptation.period.mpd.manifest.Period[0].AdaptationSet[0].Representation[0] = rep;
+            rep.adaptation.period.mpd.maxSegmentDuration = 5;
+            rep.adaptation.period.start = 0;
+            rep.adaptation.period.duration = 100;
+            return rep;
+        }
+
+        function makeTimelineManifest(data) {
+            return {
+                start: { mpd: '<MPD/>', base_uri: 'https://example.com/' },
+                streams: [{
+                    label: 'rep0',
+                    init: [{}],
+                    data: data
+                }]
+            };
+        }
+
+        beforeEach(function () {
+            timelineRep = makeTimelineRepresentation();
+
+            const timelineConverter = TimelineConverter(context).getInstance();
+            timelineConverter.initialize();
+
+            const realSegmentsController = SegmentsController(context).create({
+                dashConstants: DashConstants,
+                timelineConverter: timelineConverter,
+                type: Constants.VIDEO,
+                segmentBaseController: {},
+            });
+            realSegmentsController.initialize(false);
+
+            timelineOverride = DodgeDashHandlerOverride.call(
+                { context, parent: mockParent, factory: {} },
+                {
+                    adapter,
+                    debug: Debug(context).getInstance(),
+                    urlUtils: URLUtils(context).getInstance(),
+                    segmentsController: realSegmentsController,
+                    baseURLController: {
+                        resolve: () => ({
+                            url: 'https://example.com/',
+                            serviceLocation: 'example.com',
+                            queryParams: {}
+                        })
+                    },
+                    timelineConverter: timelineConverter,
+                    playbackController: {
+                        getTimeSinceStreamEnd: sinon.stub().returns(0),
+                        getStreamEndTime: sinon.stub().returns(100),
+                    },
+                }
+            );
+        });
+
+        it('a cycle that jumps forward resolves to that segment index', function () {
+            defenseController.addExtendedManifest(makeTimelineManifest([
+                { index: 0, buffer: true },
+                { index: 3, buffer: true },
+            ]));
+            timelineOverride.updateDefendedStreamInfo(timelineRep);
+
+            const r0 = timelineOverride.getNextSegmentRequest({}, timelineRep);
+            const r3 = timelineOverride.getNextSegmentRequest({}, timelineRep);
+
+            expect(r0.index).to.equal(0);
+            expect(r3.index).to.equal(3);
+            // $Time$ expansion proves these are genuinely different segments.
+            expect(r0.url).to.include('-' + START_TIMES[0] + '.m4s');
+            expect(r3.url).to.include('-' + START_TIMES[3] + '.m4s');
+        });
+
+        it('a cycle that jumps backward resolves to the earlier segment index', function () {
+            defenseController.addExtendedManifest(makeTimelineManifest([
+                { index: 3, buffer: true },
+                { index: 5, buffer: true },
+                { index: 3, buffer: true },
+            ]));
+            timelineOverride.updateDefendedStreamInfo(timelineRep);
+
+            const first = timelineOverride.getNextSegmentRequest({}, timelineRep);
+            const forward = timelineOverride.getNextSegmentRequest({}, timelineRep);
+            const back = timelineOverride.getNextSegmentRequest({}, timelineRep);
+
+            expect(first.index).to.equal(3);
+            expect(forward.index).to.equal(5);
+            expect(back.index).to.equal(3);
+            expect(back.url).to.include('-' + START_TIMES[3] + '.m4s');
+        });
+
+        it('a padding cycle repeating an earlier index resolves to that segment', function () {
+            defenseController.addExtendedManifest(makeTimelineManifest([
+                { index: 4, buffer: true },
+                { index: 2, padding: true },
+                { index: 5, buffer: true },
+            ]));
+            timelineOverride.updateDefendedStreamInfo(timelineRep);
+
+            const r4 = timelineOverride.getNextSegmentRequest({}, timelineRep);
+            const pad = timelineOverride.getNextSegmentRequest({}, timelineRep);
+            const r5 = timelineOverride.getNextSegmentRequest({}, timelineRep);
+
+            expect(r4.index).to.equal(4);
+            expect(pad.index).to.equal(2);
+            expect(pad.padding).to.be.true; // jshint ignore:line
+            expect(r5.index).to.equal(5);
+        });
+
+        it('representation.segmentDuration tracks the resolved segment, including on repeat lookups', function () {
+            defenseController.addExtendedManifest(makeTimelineManifest([
+                { index: 3, buffer: true },
+                { index: 0, buffer: true },
+            ]));
+            timelineOverride.updateDefendedStreamInfo(timelineRep);
+
+            timelineOverride.getNextSegmentRequest({}, timelineRep); // index 3, the short segment
+            expect(timelineRep.segmentDuration).to.be.closeTo(SHORT_DURATION, 1e-9);
+
+            timelineOverride.getNextSegmentRequest({}, timelineRep); // index 0, already resolved
+            expect(timelineRep.segmentDuration).to.be.closeTo(LONG_DURATION, 1e-9);
+        });
+
+        it('an index past the end of the timeline stalls without advancing', function () {
+            defenseController.addExtendedManifest(makeTimelineManifest([
+                { index: 99, buffer: true },
+            ]));
+            timelineOverride.updateDefendedStreamInfo(timelineRep);
+
+            expect(timelineOverride.getNextSegmentRequest({}, timelineRep)).to.be.null; // jshint ignore:line
+            expect(timelineOverride.getLastSegment()).to.be.null; // jshint ignore:line
+            // The same cycle is retried rather than skipped.
+            expect(timelineOverride.getNextSegmentRequest({}, timelineRep)).to.be.null; // jshint ignore:line
         });
     });
 

@@ -1,7 +1,6 @@
 import DefenseRegistry, {
     isValidExtendedManifest,
-    getCycleIndexBySegmentIndex,
-    getCycleIndexByPlaybackTime
+    getCycleIndexBySegmentIndex
 } from '../../../../src/dodge/DefenseRegistry.js';
 import Debug from '../../../../src/core/Debug.js';
 
@@ -926,25 +925,6 @@ describe('DefenseRegistry', function () {
                 ]
             };
             expect(getCycleIndexBySegmentIndex(s, 0)).to.equal(1);
-        });
-    });
-
-    // getCycleIndexByPlaybackTime
-
-    describe('getCycleIndexByPlaybackTime', function () {
-        let stream;
-
-        beforeEach(function () {
-            stream = makeValidManifest().streams[0];
-        });
-
-        it('time 0 with segmentDuration 4, segment index 0, first cycle at position 0', function () {
-            expect(getCycleIndexByPlaybackTime(stream, 0, 4)).to.equal(0);
-        });
-
-        it('time 5 with segmentDuration 4, segment index 1, first cycle at position 2', function () {
-            // floor(5/4) = 1, first non-padding cycle with index 1 is at data[2]
-            expect(getCycleIndexByPlaybackTime(stream, 5, 4)).to.equal(2);
         });
     });
 

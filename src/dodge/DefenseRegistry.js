@@ -695,20 +695,6 @@ export function getCycleIndexBySegmentIndex(stream, segmentIndex) {
 }
 
 /**
- * Return the index of the first non-padding data cycle for the segment that
- * contains the given playback time in the given stream entry, or -1 if no such
- * cycle is found.
- * @param {Object} stream - The stream entry from an extended manifest.
- * @param {number} playbackTime - Target playback position in seconds.
- * @param {number} segmentDuration - Duration of each segment in seconds.
- * @returns {number}
- */
-export function getCycleIndexByPlaybackTime(stream, playbackTime, segmentDuration) {
-    const segmentIndex = Math.floor(playbackTime / segmentDuration);
-    return getCycleIndexBySegmentIndex(stream, segmentIndex);
-}
-
-/**
  * Singleton that stores and provides access to extended manifests for the
  * lifetime of a media session.
  */

@@ -30,6 +30,7 @@
  */
 
 import DefenseRegistry, { getCycleIndexBySegmentIndex } from '../DefenseRegistry.js';
+import DashConstants from '../../dash/constants/DashConstants.js';
 import Settings from '../../core/Settings.js';
 import {
     replaceIDForTemplate,
@@ -74,6 +75,7 @@ function DodgeDashHandlerOverride(config) {
         lastInitIndex,
         lastCycleIndex,
         lastSegment,
+        timelineSegments,
         mediaHasFinished,
         lastResolvedLabel,
         reportedLabels,
@@ -89,6 +91,7 @@ function DodgeDashHandlerOverride(config) {
         lastInitIndex = -1;
         lastCycleIndex = -1;
         lastSegment = null;
+        timelineSegments = new WeakMap();
         mediaHasFinished = false;
         lastResolvedLabel = null;
         reportedLabels = new Set();
@@ -369,6 +372,57 @@ function DodgeDashHandlerOverride(config) {
         return altRep;
     }
 
+    /**
+     * Resolve a segment by its index.
+     *
+     * SegmentsController routes SegmentTimeline to a getter that takes no index
+     * at all: TimelineSegmentsGetter.getSegmentByIndex() reads the fourth
+     * argument (`lastSegment`) and returns the segment after it, falling back to
+     * the segment at time 0 when there is none. An index-based call therefore
+     * yields segment 0 for every cycle. Cycles address arbitrary indices and
+     * padding cycles repeat them, so a forward cursor is not a substitute.
+     *
+     * Step that cursor instead, which keeps the walk free of any assumption
+     * about <S> parsing, and memoize what it returns. `<S>` entries carry
+     * per-entry @d, so there is no arithmetic that converts an index to a;
+     * time only the getter's own iteration knows the mapping.
+     */
+    function _getSegmentByIndex(representation, index) {
+        if (!representation || representation.segmentInfoType !== DashConstants.SEGMENT_TIMELINE) {
+            return segmentsController.getSegmentByIndex(representation, index, -1);
+        }
+
+        // Keyed on the representation object rather than its ID: a multi-period
+        // MPD can reuse an ID across periods with different timelines. Extended
+        // manifests reject dynamic MPDs, so a resolved timeline never changes
+        // underneath the cache.
+        let segments = timelineSegments.get(representation);
+        if (!segments) {
+            segments = [];
+            timelineSegments.set(representation, segments);
+        }
+
+        while (!segments[index]) {
+            // Arguments two and three are ignored for SegmentTimeline; the
+            // getter reads only the cursor.
+            const next = segmentsController.getSegmentByIndex(
+                representation, NaN, -1, segments[segments.length - 1] || null);
+            if (!next) {
+                return null; // past the end of the timeline
+            }
+            segments[next.index] = next;
+        }
+
+        // The getter writes representation.segmentDuration on every match, so
+        // a cache hit would otherwise leave it reading whichever segment
+        // was resolved last. DodgeBufferControllerOverride does mock buffer
+        // arithmetic with that value and the trailing-seek guard compares
+        // against it, and timeline segment durations are not uniform.
+        representation.segmentDuration = segments[index].duration;
+
+        return segments[index];
+    }
+
     function _getRequestForSegment(mediaInfo, segment, range = null, padding = false, homeRepresentation = null) {
         if (segment === null || segment === undefined) {
             return null;
@@ -498,7 +552,7 @@ function DodgeDashHandlerOverride(config) {
             if (!effectiveRep) {
                 return null;
             }
-            const altSegment = segmentsController.getSegmentByIndex(effectiveRep, segment.index, -1);
+            const altSegment = _getSegmentByIndex(effectiveRep, segment.index);
             if (!altSegment) {
                 logger.error('Cycle quality override: alternate representation "' + effectiveRep.id + '" has no segment for index ' + segment.index);
                 return null;
@@ -587,7 +641,7 @@ function DodgeDashHandlerOverride(config) {
         // Reuse lastSegment or look up segment by index.
         const segment = canReuseLast
             ? lastSegment
-            : segmentsController.getSegmentByIndex(effectiveRep, cycle.index, -1);
+            : _getSegmentByIndex(effectiveRep, cycle.index);
         if (!segment) {
             if (cycle.quality !== undefined && cycle.quality !== null) {
                 logger.error('Cycle quality override: alternate representation "' + effectiveRep.id + '" has no segment for index ' + cycle.index);

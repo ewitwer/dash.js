@@ -274,6 +274,24 @@ The internal `_getRequestForSegment` function builds a `FragmentRequest` for med
 | `dodge.DodgeDashHandlerOverride.js` | _getRequestForSegment construction | no homeRepresentation: homeRepresentationId not set |
 | `dodge.DodgeDashHandlerOverride.js` | _getRequestForSegment construction | data request with range override: sets range and partial = true |
 
+### R3.10 - SegmentTimeline content is addressed by index
+
+`SegmentsController.getSegmentByIndex()` routes SegmentTimeline to a getter that takes no index: `TimelineSegmentsGetter.getSegmentByIndex()` reads the fourth argument (`lastSegment`) and returns the segment after it, falling back to the segment at time 0 when there is none. An index-based call therefore resolves to segment 0 for every cycle. Cycles address arbitrary indices and padding cycles repeat them, so a forward cursor is not a substitute, and `<S>` entries carry per-entry `@d`, so no arithmetic converts an index to a time.
+
+`_getSegmentByIndex()` passes through to `segmentsController.getSegmentByIndex()` unchanged for every other addressing mode. For SegmentTimeline, it steps the getter's own cursor until the requested index is reached, returning `null` when the walk runs past the end of the timeline, and memoizes what the getter returns in a `WeakMap` keyed on the representation object (not its ID, which a multi-period MPD can reuse across periods with different timelines). Extended manifests reject dynamic MPDs, so a resolved timeline never changes underneath the cache.
+
+The getter writes `representation.segmentDuration` on every match, so a cache hit restores it from the resolved segment. `DodgeBufferControllerOverride` does mock buffer arithmetic with that value and the trailing seek guard compares against it, and timeline segment durations are not uniform.
+
+These tests drive a real `SegmentsController` and a real `TimelineSegmentsGetter` over a non-uniform `<S>` list, since a stubbed segments controller cannot reproduce the argument dispatch.
+
+| File | Description | Test |
+|---|---|---|
+| `dodge.DodgeDashHandlerOverride.js` | SegmentTimeline content | a cycle that jumps forward resolves to that segment index |
+| `dodge.DodgeDashHandlerOverride.js` | SegmentTimeline content | a cycle that jumps backward resolves to the earlier segment index |
+| `dodge.DodgeDashHandlerOverride.js` | SegmentTimeline content | a padding cycle repeating an earlier index resolves to that segment |
+| `dodge.DodgeDashHandlerOverride.js` | SegmentTimeline content | representation.segmentDuration tracks the resolved segment, including on repeat lookups |
+| `dodge.DodgeDashHandlerOverride.js` | SegmentTimeline content | an index past the end of the timeline stalls without advancing |
+
 ---
 
 ## 4. Trailing Phase
@@ -679,7 +697,7 @@ Init cycles may carry a `quality` field with the same semantics as on data cycle
 
 ### R9.5 - Cycle index lookup
 
-`getCycleIndexBySegmentIndex()` returns the index of the first non-padding cycle matching a given segment index, or `-1` if not found. `getCycleIndexByPlaybackTime()` converts time to a segment index and delegates.
+`getCycleIndexBySegmentIndex()` returns the index of the first non-padding cycle matching a given segment index, or `-1` if not found. Callers resolve a playback time to a segment index through `segmentsController.getSegmentByTime()` first, since segment durations are not uniform under SegmentTimeline.
 
 | File | Description | Test |
 |---|---|---|
@@ -687,8 +705,6 @@ Init cycles may carry a `quality` field with the same semantics as on data cycle
 | `dodge.DefenseRegistry.js` | getCycleIndexBySegmentIndex | returns the first cycle index for segment 1 (skipping earlier cycles for segment 0) |
 | `dodge.DefenseRegistry.js` | getCycleIndexBySegmentIndex | returns -1 when segment index is not in the stream |
 | `dodge.DefenseRegistry.js` | getCycleIndexBySegmentIndex | skips padding cycles when searching by index |
-| `dodge.DefenseRegistry.js` | getCycleIndexByPlaybackTime | time 0 with segmentDuration 4, segment index 0, first cycle at position 0 |
-| `dodge.DefenseRegistry.js` | getCycleIndexByPlaybackTime | time 5 with segmentDuration 4, segment index 1, first cycle at position 2 |
 
 ### R9.6 - Registry stores and retrieves extended manifests by label
 
@@ -1109,6 +1125,7 @@ When `_onFragmentLoadingCompleted` receives an errored Dodge request (`e.error` 
 | R3.7 Muxed audio/video streams | 2 |
 | R3.8 _generateInitRequest construction | 5 |
 | R3.9 _getRequestForSegment construction | 6 |
+| R3.10 SegmentTimeline content is addressed by index | 5 |
 | R4.1 No spurious seeks during trailing | 4 |
 | R4.2 Segment downloading not complete early | 2 |
 | R4.3 Schedule timer continues (buffering icon) | 5 |
@@ -1136,7 +1153,7 @@ When `_onFragmentLoadingCompleted` receives an errored Dodge request (`e.error` 
 | R9.2 Init cycle validation | 16 |
 | R9.3 Init cycle quality validation and explicit buffer requirement | 9 |
 | R9.4 Data cycle validation, maxNoPad, and cycle.full precomputation | 11 |
-| R9.5 Cycle index lookup | 6 |
+| R9.5 Cycle index lookup | 4 |
 | R9.6 Registry stores and retrieves manifests | 7 |
 | R9.7 Period field validation | 6 |
 | R9.8 Period-scoped stream lookup | 4 |
@@ -1168,4 +1185,4 @@ When `_onFragmentLoadingCompleted` receives an errored Dodge request (`e.error` 
 | R12.2 _createDataChunk population | 4 |
 | R12.3 getStreamStats counts | 3 |
 | R12.4 Error fragment stalling | 3 |
-| **Total** | **470** |
+| **Total** | **473** |
