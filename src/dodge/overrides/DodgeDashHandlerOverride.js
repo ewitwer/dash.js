@@ -378,23 +378,32 @@ function DodgeDashHandlerOverride(config) {
         const representation = segment.representation;
         const bandwidth = representation.bandwidth;
         let url = segment.media;
+
+        // Since dash.js 5.2.0 the segment getters expand the media template
+        // themselves (SegmentsUtils._addTimeBasedInformation) and keep the raw
+        // one in segment.mediaUrl, so the padding calculation has to count
+        // tokens there. SegmentList is the exception: ListSegmentsGetter
+        // overwrites segment.media with SegmentURL@media after expansion and
+        // never sets mediaUrl, so there segment.media is the unexpanded value.
+        const template = segment.mediaUrl || segment.media;
         let replacements;
 
         if (url) {
-            // SegmentTemplate / SegmentList: URL contains template tokens
-            // that must be expanded, and whose variable-length substitutions
-            // must be accounted for in the padding calculation.
+            // SegmentTemplate / SegmentList: the template's variable-length
+            // token substitutions must be accounted for in the padding
+            // calculation.
             replacements = {
-                'Number': countUnpaddedTokenOccurrences(url, 'Number'),
-                'Time': countUnpaddedTokenOccurrences(url, 'Time'),
-                'Bandwidth': countUnpaddedTokenOccurrences(url, 'Bandwidth'),
-                'ID': (url.indexOf('$RepresentationID$') === -1) ? 0 : 1,
+                'Number': countUnpaddedTokenOccurrences(template, 'Number'),
+                'Time': countUnpaddedTokenOccurrences(template, 'Time'),
+                'Bandwidth': countUnpaddedTokenOccurrences(template, 'Bandwidth'),
+                // replaceIDForTemplate() replaces every occurrence, so every
+                // occurrence has to be padded for.
+                'ID': template.split('$RepresentationID$').length - 1,
             };
-            if (segment.replacements) {
-                replacements['Number'] += segment.replacements['Number'];
-                replacements['Time'] += segment.replacements['Time'];
-            }
 
+            // Expansion is a no-op wherever the getter has already done it, but
+            // it mirrors the processUriTemplate() call vanilla DashHandler
+            // still makes, which is what expands a SegmentList @media.
             url = replaceTokenForTemplate(url, 'Number', segment.replacementNumber);
             url = replaceTokenForTemplate(url, 'Time', segment.replacementTime);
             url = replaceTokenForTemplate(url, 'Bandwidth', bandwidth);

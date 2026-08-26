@@ -263,7 +263,7 @@ The internal `_generateInitRequest` function builds a `FragmentRequest` for init
 
 ### R3.9 - `_getRequestForSegment` constructs data requests correctly
 
-The internal `_getRequestForSegment` function builds a `FragmentRequest` for media segments. Returns `null` for null segments. For SegmentTemplate, applies token replacement and counts replacements. For SegmentBase (`segment.media = null`), skips template expansion with all replacement counts at 0. When `homeRepresentation` is provided, sets `homeRepresentationId` on the request.
+The internal `_getRequestForSegment` function builds a `FragmentRequest` for media segments. Returns `null` for null segments. For SegmentTemplate, applies token replacement to the URL and counts the token occurrences that URL padding has to equalize. For SegmentBase (`segment.media = null`), skips template expansion with all replacement counts at 0. When `homeRepresentation` is provided, sets `homeRepresentationId` on the request.
 
 | File | Description | Test |
 |---|---|---|
@@ -505,12 +505,18 @@ After scheduling, `_onPaddingLoaded` calls `onPaddingLoaded()` on the stream pro
 
 ### R8.1 - URL padding normalizes template URL lengths across representations
 
-`_setRequestUrlWithPadding()` adds a `queryParams.padding` value sized to equalize URL lengths across all numeric token values (e.g., single-digit vs multi-digit segment numbers) and across `$RepresentationID$` values up to `dodge.maxIdLength` (default 32). Absolute URLs are not padded (no template expansion, so `queryParams.padding` is not set). Invalid values of `dodge.maxIdLength` (non-positive or non-numeric) fall back to the largest stream label length across all currently loaded extended manifests (0 if none are loaded) and are logged once per override instance.
+`_setRequestUrlWithPadding()` adds a `queryParams.padding` value sized to equalize URL lengths across all numeric token values (e.g., single-digit vs multi-digit segment numbers) and across `$RepresentationID$` values up to `dodge.maxIdLength` (default 32). Every occurrence of a token is counted, since `replaceIDForTemplate()` and `replaceTokenForTemplate()` replace all of them.
+
+The counts are taken from the **raw** template, `segment.mediaUrl`. Since dash.js 5.2.0, the segment getters expand the template themselves and leave the result in `segment.media`, so counting there finds no tokens at all and the padding silently collapses to the cache-busting prefix. `segment.media` remains the counting source only for SegmentList, where `ListSegmentsGetter` overwrites it with the unexpanded `SegmentURL@media` and never sets `mediaUrl`.
+
+Absolute URLs are not padded (no template expansion, so `queryParams.padding` is not set). Invalid values of `dodge.maxIdLength` (non-positive or non-numeric) fall back to the largest stream label length across all currently loaded extended manifests (0 if none are loaded) and are logged once per override instance.
 
 | File | Description | Test |
 |---|---|---|
 | `dodge.DodgeDashHandlerOverride.js` | URL padding | relative template URL, queryParams.padding is set on the request |
 | `dodge.DodgeDashHandlerOverride.js` | URL padding | $Number$ padding is longer for a 1-digit index than for a 2-digit index |
+| `dodge.DodgeDashHandlerOverride.js` | URL padding | media expanded by the segment getter: padding is still sized from the template |
+| `dodge.DodgeDashHandlerOverride.js` | URL padding | $RepresentationID$ occurring twice is padded twice |
 | `dodge.DodgeDashHandlerOverride.js` | URL padding | absolute URL (no template expansion), queryParams has no padding key |
 | `dodge.DodgeDashHandlerOverride.js` | URL padding | request.queryParams is not the BaseURL.queryParams object (cloned, not aliased) |
 | `dodge.DodgeDashHandlerOverride.js` | URL padding | baseURL.queryParams is not mutated by request generation |
@@ -1122,7 +1128,7 @@ When `_onFragmentLoadingCompleted` receives an errored Dodge request (`e.error` 
 | R7.3 Suppressed events skip scheduling | 2 |
 | R7.4 Padding event routing | 2 |
 | R7.5 Random walk delay on all scheduling paths | 9 |
-| R8.1 URL padding normalizes template lengths | 7 |
+| R8.1 URL padding normalizes template lengths | 9 |
 | R8.2 Request padding normalizes wire size | 13 |
 | R8.3 FetchLoader applies padding | 4 |
 | R8.4 XHRLoader applies padding | 4 |
@@ -1162,4 +1168,4 @@ When `_onFragmentLoadingCompleted` receives an errored Dodge request (`e.error` 
 | R12.2 _createDataChunk population | 4 |
 | R12.3 getStreamStats counts | 3 |
 | R12.4 Error fragment stalling | 3 |
-| **Total** | **468** |
+| **Total** | **470** |

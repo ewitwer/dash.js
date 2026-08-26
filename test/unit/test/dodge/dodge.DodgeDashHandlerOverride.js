@@ -43,9 +43,18 @@ function makeRepresentation() {
 }
 
 function makeSegment(rep, index) {
+    return makeTemplateSegment(rep, index, 'https://example.com/seg.m4s');
+}
+
+// dash.js expands the media template inside the segment getters and keeps the
+// raw template in `mediaUrl` (SegmentsUtils._addTimeBasedInformation). Stubs
+// must carry both fields the same way or they exercise a shape the runtime
+// no longer produces.
+function makeTemplateSegment(rep, index, template) {
     return {
         index,
-        media: 'https://example.com/seg.m4s',
+        media: expandTemplate(template, rep, index),
+        mediaUrl: template,
         presentationStartTime: index * 4,
         duration: 4,
         representation: rep,
@@ -55,9 +64,15 @@ function makeSegment(rep, index) {
         availabilityStartTime: 0,
         availabilityEndTime: Infinity,
         wallStartTime: 0,
-        mediaStartTime: 0,
-        replacements: null
+        mediaStartTime: 0
     };
+}
+
+function expandTemplate(template, rep, index) {
+    return template
+        .split('$Number$').join(index)
+        .split('$RepresentationID$').join(rep.id)
+        .split('$Bandwidth$').join(rep.bandwidth);
 }
 
 // ************************************************************************
@@ -832,21 +847,8 @@ describe('DodgeDashHandlerOverride', function () {
 
             // Segments use a relative $Number$ template URL
             const templateSegmentsController = {
-                getSegmentByIndex: sinon.stub().callsFake((r, idx) => ({
-                    index: idx,
-                    media: 'seg_$Number$.m4s',
-                    presentationStartTime: idx * 4,
-                    duration: 4,
-                    representation: r,
-                    replacementNumber: idx,
-                    replacementTime: 0,
-                    mediaRange: null,
-                    availabilityStartTime: 0,
-                    availabilityEndTime: Infinity,
-                    wallStartTime: 0,
-                    mediaStartTime: 0,
-                    replacements: null,
-                })),
+                getSegmentByIndex: sinon.stub().callsFake(
+                    (r, idx) => makeTemplateSegment(r, idx, 'seg_$Number$.m4s')),
                 getSegmentByTime: sinon.stub().returns(null),
             };
 
@@ -894,6 +896,88 @@ describe('DodgeDashHandlerOverride', function () {
             expect(r0.queryParams.padding.length).to.be.greaterThan(r10.queryParams.padding.length);
         });
 
+        // Regression: dash.js expands the media template inside the segment
+        // getters and keeps the raw one in `mediaUrl`, so counting tokens on
+        // `segment.media` finds none and the padding collapses to the
+        // cache-busting prefix alone.
+
+        it('media expanded by the segment getter: padding is still sized from the template', function () {
+            // Math.random() feeds the cache-busting prefix, so pin it to make
+            // the zero count exact. (0.5).toString(36) is '0.i', and the
+            // prefix is characters 2 through 10 of that, i.e. 'i'.
+            const random = sinon.stub(Math, 'random').returns(0.5);
+            try {
+                const r0 = paddingOverride.getNextSegmentRequest({}, paddingRep); // index 0
+                const r10 = paddingOverride.getNextSegmentRequest({}, paddingRep); // index 10
+
+                // One $Number$ occurrence, padded out to the 16 digits of
+                // Number.MAX_SAFE_INTEGER.
+                expect(r0.queryParams.padding).to.equal('i' + '0'.repeat(15));
+                expect(r10.queryParams.padding).to.equal('i' + '0'.repeat(14));
+            } finally {
+                random.restore();
+            }
+        });
+
+        it('$RepresentationID$ occurring twice is padded twice', function () {
+            const ctx = {};
+            Debug(ctx).getInstance();
+            const registry = DefenseRegistry(ctx).getInstance();
+            registry.reset();
+            Settings(ctx).getInstance().update({ dodge: { maxIdLength: 32 } });
+
+            const localRep = makeRepresentation(); // id 'rep0', 4 characters
+            const localParent = {
+                getInitRequest: sinon.stub().returns(null),
+                getNextSegmentRequest: sinon.stub().returns(null),
+                resetInitialSettings: sinon.stub(),
+                initialize: sinon.stub(),
+                getStreamInfo: sinon.stub().returns({ manifestInfo: { isDynamic: false } }),
+                getType: sinon.stub().returns('video'),
+            };
+            const localSegmentsController = {
+                getSegmentByIndex: sinon.stub().callsFake(
+                    (r, idx) => makeTemplateSegment(r, idx, '$RepresentationID$/$RepresentationID$_$Number$.m4s')),
+                getSegmentByTime: sinon.stub().returns(null),
+            };
+            const localOverride = DodgeDashHandlerOverride.call(
+                { context: ctx, parent: localParent, factory: {} },
+                {
+                    adapter: { getVoRepresentations: sinon.stub().returns([]) },
+                    debug: Debug(ctx).getInstance(),
+                    urlUtils: URLUtils(ctx).getInstance(),
+                    segmentsController: localSegmentsController,
+                    baseURLController: {
+                        resolve: () => ({ url: 'https://example.com/', serviceLocation: 'example.com', queryParams: {} })
+                    },
+                    timelineConverter: objectsHelper.getDummyTimelineConverter(),
+                    playbackController: {
+                        getTimeSinceStreamEnd: sinon.stub().returns(0),
+                        getStreamEndTime: sinon.stub().returns(100),
+                    },
+                }
+            );
+            registry.addExtendedManifest({
+                start: { mpd: '<MPD/>', base_uri: 'https://example.com/' },
+                streams: [{
+                    label: 'rep0',
+                    init: [{}],
+                    data: [{ index: 0, buffer: true }]
+                }]
+            });
+            localOverride.updateDefendedStreamInfo(localRep);
+
+            const random = sinon.stub(Math, 'random').returns(0.5);
+            try {
+                const request = localOverride.getNextSegmentRequest({}, localRep);
+                // 'i' prefix, two $RepresentationID$ occurrences padded out to
+                // maxIdLength 32, and one $Number$ occurrence at index 0.
+                expect(request.queryParams.padding).to.equal('i' + '0'.repeat(2 * (32 - 4) + 15));
+            } finally {
+                random.restore();
+            }
+        });
+
         it('absolute URL (no template expansion), queryParams has no padding key', function () {
             // `override` uses makeSegment which has an absolute URL
             defenseController.addExtendedManifest(makeManifest());
@@ -930,21 +1014,8 @@ describe('DodgeDashHandlerOverride', function () {
                 getType: sinon.stub().returns('video'),
             };
             const localSegmentsController = {
-                getSegmentByIndex: sinon.stub().callsFake((r, idx) => ({
-                    index: idx,
-                    media: 'seg_$Number$.m4s',
-                    presentationStartTime: idx * 4,
-                    duration: 4,
-                    representation: r,
-                    replacementNumber: idx,
-                    replacementTime: 0,
-                    mediaRange: null,
-                    availabilityStartTime: 0,
-                    availabilityEndTime: Infinity,
-                    wallStartTime: 0,
-                    mediaStartTime: 0,
-                    replacements: null,
-                })),
+                getSegmentByIndex: sinon.stub().callsFake(
+                    (r, idx) => makeTemplateSegment(r, idx, 'seg_$Number$.m4s')),
                 getSegmentByTime: sinon.stub().returns(null),
             };
             const localOverride = DodgeDashHandlerOverride.call(
@@ -997,21 +1068,8 @@ describe('DodgeDashHandlerOverride', function () {
                 getType: sinon.stub().returns('video'),
             };
             const localSegmentsController = {
-                getSegmentByIndex: sinon.stub().callsFake((r, idx) => ({
-                    index: idx,
-                    media: 'seg_$Number$.m4s',
-                    presentationStartTime: idx * 4,
-                    duration: 4,
-                    representation: r,
-                    replacementNumber: idx,
-                    replacementTime: 0,
-                    mediaRange: null,
-                    availabilityStartTime: 0,
-                    availabilityEndTime: Infinity,
-                    wallStartTime: 0,
-                    mediaStartTime: 0,
-                    replacements: null,
-                })),
+                getSegmentByIndex: sinon.stub().callsFake(
+                    (r, idx) => makeTemplateSegment(r, idx, 'seg_$Number$.m4s')),
                 getSegmentByTime: sinon.stub().returns(null),
             };
             const localOverride = DodgeDashHandlerOverride.call(
@@ -1065,21 +1123,8 @@ describe('DodgeDashHandlerOverride', function () {
                 getType: sinon.stub().returns('video'),
             };
             const localSegmentsController = {
-                getSegmentByIndex: sinon.stub().callsFake((r, idx) => ({
-                    index: idx,
-                    media: 'seg_$Number$.m4s',
-                    presentationStartTime: idx * 4,
-                    duration: 4,
-                    representation: r,
-                    replacementNumber: idx,
-                    replacementTime: 0,
-                    mediaRange: null,
-                    availabilityStartTime: 0,
-                    availabilityEndTime: Infinity,
-                    wallStartTime: 0,
-                    mediaStartTime: 0,
-                    replacements: null,
-                })),
+                getSegmentByIndex: sinon.stub().callsFake(
+                    (r, idx) => makeTemplateSegment(r, idx, 'seg_$Number$.m4s')),
                 getSegmentByTime: sinon.stub().returns(null),
             };
             const localOverride = DodgeDashHandlerOverride.call(
@@ -1148,21 +1193,8 @@ describe('DodgeDashHandlerOverride', function () {
 
             // Template contains $RepresentationID$ so the ID branch fires.
             const localSegmentsController = {
-                getSegmentByIndex: sinon.stub().callsFake((r, idx) => ({
-                    index: idx,
-                    media: 'seg_$RepresentationID$.m4s',
-                    presentationStartTime: idx * 4,
-                    duration: 4,
-                    representation: r,
-                    replacementNumber: idx,
-                    replacementTime: 0,
-                    mediaRange: null,
-                    availabilityStartTime: 0,
-                    availabilityEndTime: Infinity,
-                    wallStartTime: 0,
-                    mediaStartTime: 0,
-                    replacements: null,
-                })),
+                getSegmentByIndex: sinon.stub().callsFake(
+                    (r, idx) => makeTemplateSegment(r, idx, 'seg_$RepresentationID$.m4s')),
                 getSegmentByTime: sinon.stub().returns(null),
             };
 
@@ -1969,8 +2001,7 @@ describe('DodgeDashHandlerOverride', function () {
                 availabilityStartTime: 0,
                 availabilityEndTime: Infinity,
                 wallStartTime: 0,
-                mediaStartTime: 0,
-                replacements: null
+                mediaStartTime: 0
             };
         }
 
@@ -2298,7 +2329,6 @@ describe('DodgeDashHandlerOverride', function () {
                     availabilityEndTime: Infinity,
                     wallStartTime: 0,
                     mediaStartTime: 0,
-                    replacements: null,
                 })),
                 getSegmentByTime: sinon.stub().returns(null),
             };
