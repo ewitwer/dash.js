@@ -42,6 +42,8 @@ import DodgeGapControllerOverride from './overrides/DodgeGapControllerOverride.j
 import DodgeScheduleControllerOverride from './overrides/DodgeScheduleControllerOverride.js';
 import DodgeXHRLoaderOverride from './overrides/DodgeXHRLoaderOverride.js';
 import Constants from '../streaming/constants/Constants.js';
+import DodgeConstants from './constants/DodgeConstants.js';
+import { createStrictModeReader } from './utils/StrictMode.js';
 import FactoryMaker from '../core/FactoryMaker.js';
 import EventBus from '../core/EventBus.js';
 import { HTTPRequest } from '../streaming/vo/metrics/HTTPRequest.js';
@@ -84,6 +86,7 @@ function DodgeHandler(config) {
     const debug = Debug(context).getInstance();
     let logger,
         defenseRegistry,
+        getStrictMode,
         warnedNegativeScheduleRandom,
         warnedNegativeScheduleBase,
         instance;
@@ -95,6 +98,7 @@ function DodgeHandler(config) {
     function setup() {
         logger = debug.getLogger(instance);
         defenseRegistry = DefenseRegistry(context).getInstance();
+        getStrictMode = createStrictModeReader(settings, logger);
         warnedNegativeScheduleRandom = false;
         warnedNegativeScheduleBase = false;
         streamState = new Map();
@@ -159,8 +163,9 @@ function DodgeHandler(config) {
     function tryProcessExtendedManifest(bytes, url) {
         // 'max' inherits 'manifest' behavior: abort (rather than degrade to
         // vanilla DASH) when the source is not a valid extended manifest.
-        const strictModeSetting = (settings.get().dodge || {}).strictMode;
-        const strict = strictModeSetting === 'manifest' || strictModeSetting === 'max';
+        const strictMode = getStrictMode();
+        const strict = strictMode === DodgeConstants.STRICT_MODE.MANIFEST ||
+            strictMode === DodgeConstants.STRICT_MODE.MAX;
 
         let extended;
         try {
@@ -187,67 +192,66 @@ function DodgeHandler(config) {
         // the manifest may be rejected; in other strict modes, a warning is
         // logged so the defense designer can make an informed decision.
         const mpd = extended['start']['mpd'];
-        const strictMode = (settings.get().dodge || {}).strictMode;
 
-        if (strictMode === false) {
+        if (strictMode === DodgeConstants.STRICT_MODE.NONE) {
             logger.warn('Dodge strictMode is disabled, undefended representations will fall back to vanilla dash.js without any defense!');
         }
 
         // Thumbnail tracks, non-fragmented text, XLink: reject in max mode
         if (_mpdContainsThumbnails(mpd)) {
-            if (strictMode === 'max') {
+            if (strictMode === DodgeConstants.STRICT_MODE.MAX) {
                 logger.error('Extended manifest contains thumbnail tracks that bypass Dodge defense, rejected by strict mode max');
                 _triggerStrictModeError(url);
                 return false;
-            } else if (strictMode !== false) {
+            } else if (strictMode !== DodgeConstants.STRICT_MODE.NONE) {
                 logger.warn('Extended manifest contains thumbnail tracks that bypass Dodge defense, verify that thumbnail image sizes do not create a distinguishing traffic pattern!');
             }
         }
 
         if (_mpdContainsNonFragmentedText(mpd)) {
-            if (strictMode === 'max') {
+            if (strictMode === DodgeConstants.STRICT_MODE.MAX) {
                 logger.error('Extended manifest contains non-fragmented text tracks that bypass Dodge defense, rejected by strict mode max');
                 _triggerStrictModeError(url);
                 return false;
-            } else if (strictMode !== false) {
+            } else if (strictMode !== DodgeConstants.STRICT_MODE.NONE) {
                 logger.warn('Extended manifest contains non-fragmented text tracks that bypass Dodge defense, verify that text file sizes do not create a distinguishing traffic pattern!');
             }
         }
 
         if (_mpdContainsXLink(mpd)) {
-            if (strictMode === 'max') {
+            if (strictMode === DodgeConstants.STRICT_MODE.MAX) {
                 logger.error('Extended manifest contains XLink references that bypass Dodge defense, rejected by strict mode max');
                 _triggerStrictModeError(url);
                 return false;
-            } else if (strictMode !== false) {
+            } else if (strictMode !== DodgeConstants.STRICT_MODE.NONE) {
                 logger.warn('Extended manifest contains XLink references that bypass Dodge defense, verify that external XML sizes do not create a distinguishing traffic pattern!');
             }
         }
 
         if ((settings.get().dodge || {}).paddingLengthBase <= 0) {
-            if (strictMode === 'max') {
+            if (strictMode === DodgeConstants.STRICT_MODE.MAX) {
                 logger.error('dodge.paddingLengthBase is not set, request wire sizes are not normalized, rejected by strict mode max');
                 _triggerStrictModeError(url);
                 return false;
-            } else if (strictMode !== false) {
+            } else if (strictMode !== DodgeConstants.STRICT_MODE.NONE) {
                 logger.warn('dodge.paddingLengthBase is not set, request wire sizes are not normalized, request lengths vary with the content being requested!');
             }
         }
 
         // DRM, CMCD, DVB reporting, content steering: likely a non-issue, warn
-        if (strictMode !== false && _mpdContainsDrm(mpd)) {
+        if (strictMode !== DodgeConstants.STRICT_MODE.NONE && _mpdContainsDrm(mpd)) {
             logger.warn('Extended manifest contains DRM-protected content, which has not been tested with defenses, verify that license request patterns do not undermine the defense!');
         }
 
-        if (strictMode !== false && _mpdContainsContentSteering(mpd)) {
+        if (strictMode !== DodgeConstants.STRICT_MODE.NONE && _mpdContainsContentSteering(mpd)) {
             logger.warn('Extended manifest contains ContentSteering - steering requests go to a platform-wide endpoint and are unlikely to aid passive fingerprinting, but verify');
         }
 
-        if (strictMode !== false && _mpdContainsDvbReporting(mpd)) {
+        if (strictMode !== DodgeConstants.STRICT_MODE.NONE && _mpdContainsDvbReporting(mpd)) {
             logger.warn('Extended manifest contains DVB Reporting - reporting requests go to a platform-wide endpoint and are unlikely to aid passive fingerprinting, but verify');
         }
 
-        if (strictMode !== false && settings.get().streaming.cmcd.enabled) {
+        if (strictMode !== DodgeConstants.STRICT_MODE.NONE && settings.get().streaming.cmcd.enabled) {
             logger.warn('CMCD is enabled during Dodge playback - CMCD data is encrypted and is unlikely to aid passive fingerprinting; nor/nrr fields are suppressed');
         }
 
@@ -259,7 +263,7 @@ function DodgeHandler(config) {
         // either ensure identical init segment structures across their
         // anonymity set, or disable streaming.cacheInitSegments for
         // symmetric (always-refetch) behavior.
-        if (strictMode !== false && settings.get().streaming.cacheInitSegments) {
+        if (strictMode !== DodgeConstants.STRICT_MODE.NONE && settings.get().streaming.cacheInitSegments) {
             logger.warn('streaming.cacheInitSegments is enabled - ABR-driven init refetches on quality switches are not controlled by the extended manifest');
         }
 
@@ -267,7 +271,7 @@ function DodgeHandler(config) {
         // may want to change manually for strict threat models. These are
         // not changed automatically because they are standard dash.js
         // settings that can be set via updateSettings.
-        if (strictMode === 'max') {
+        if (strictMode === DodgeConstants.STRICT_MODE.MAX) {
             if (settings.get().streaming.retryAttempts[HTTPRequest.MEDIA_SEGMENT_TYPE] > 0 ||
                 settings.get().streaming.retryAttempts[HTTPRequest.INIT_SEGMENT_TYPE] > 0) {
                 logger.warn('strictMode max: segment retry attempts > 0, consider setting to 0 for plausible deniability against active attacks');
@@ -382,8 +386,7 @@ function DodgeHandler(config) {
             return;
         }
 
-        const strictMode = (settings.get().dodge || {}).strictMode;
-        if (strictMode !== false) {
+        if (getStrictMode() !== DodgeConstants.STRICT_MODE.NONE) {
             logger.warn('DRM key request detected during defended playback, DRM has not been tested with defenses');
         }
     }
@@ -398,8 +401,7 @@ function DodgeHandler(config) {
             return;
         }
 
-        const strictMode = (settings.get().dodge || {}).strictMode;
-        if (strictMode !== false) {
+        if (getStrictMode() !== DodgeConstants.STRICT_MODE.NONE) {
             logger.warn('DRM key session created during defended playback, license requests may leak content-identifying information');
         }
     }

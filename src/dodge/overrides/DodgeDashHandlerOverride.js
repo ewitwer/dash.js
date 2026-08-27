@@ -31,6 +31,8 @@
 
 import DefenseRegistry, { getCycleIndexBySegmentIndex } from '../DefenseRegistry.js';
 import DashConstants from '../../dash/constants/DashConstants.js';
+import DodgeConstants from '../constants/DodgeConstants.js';
+import { createStrictModeReader } from '../utils/StrictMode.js';
 import Settings from '../../core/Settings.js';
 import { processUriTemplate } from '../../dash/utils/SegmentsUtils.js';
 import FragmentRequest from '../../streaming/vo/FragmentRequest.js';
@@ -64,7 +66,8 @@ function DodgeDashHandlerOverride(config) {
     const playbackController = config.playbackController;
     const debug = config.debug;
 
-    let logger;
+    let logger,
+        getStrictMode;
 
     let defendedStreamInfo,
         lastInitIndex,
@@ -77,6 +80,7 @@ function DodgeDashHandlerOverride(config) {
 
     function setup() {
         logger = debug.getLogger({ __dashjs_factory_name: 'DodgeDashHandlerOverride' });
+        getStrictMode = createStrictModeReader(settings, logger);
         _resetState();
     }
 
@@ -91,11 +95,11 @@ function DodgeDashHandlerOverride(config) {
         reportedLabels = new Set();
     }
 
-    // Return true if strict mode is 'representation', 'manifest', or 'max'
-    // (all enforce per-representation defense requirements).
+    // Every mode other than NONE enforces per-representation defense
+    // requirements. The reader guarantees one of the four accepted values, so
+    // there is nothing else this can be.
     function _isRepresentationStrict() {
-        const mode = (settings.get().dodge || {}).strictMode;
-        return mode === 'representation' || mode === 'manifest' || mode === 'max';
+        return getStrictMode() !== DodgeConstants.STRICT_MODE.NONE;
     }
 
     function resetInitialSettings() {

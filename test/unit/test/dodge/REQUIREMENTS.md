@@ -1099,6 +1099,67 @@ DodgeHandler listens for the internal `NEED_KEY` event. In all strict modes (inc
 | `dodge.DodgeHandler.js` | DRM NEED_KEY interception | does not fire ERROR on NEED_KEY during defended playback |
 | `dodge.DodgeHandler.js` | DRM NEED_KEY interception | no extended manifest loaded: ignores NEED_KEY |
 
+### R11.6 - `dodge.strictMode` is validated and fails closed
+
+`dodge.strictMode` is the module's master enforcement switch, and `Settings` performs no
+value validation of any kind. Every consumer compares it against exact tokens, so an
+unrecognized value - `'Manifest'`, `'strict'`, `'representation '`, `true` - previously
+compared unequal to every strict token and silently disabled enforcement, with no
+diagnostic at all: the "strictMode is disabled" warning fires only on the exact value
+`false`.
+
+`createStrictModeReader(settings, logger)` in `src/dodge/utils/StrictMode.js` resolves the
+setting to one of the four values named in `src/dodge/constants/DodgeConstants.js`
+(`STRICT_MODE.NONE`, which is the boolean `false`, `REPRESENTATION`, `MANIFEST`, `MAX`).
+Accepted values pass through unchanged; anything else, including a missing `dodge` block,
+becomes `MAX`. The value is rendered with `JSON.stringify` in the warning, because the typo
+most worth catching is a stray space, which bare interpolation renders identically to the
+correct value.
+
+The warn-once flag lives in the reader's closure, not at module scope, so each consumer
+warns independently and tests do not depend on which file ran first.
+
+| File | Description | Test |
+|---|---|---|
+| `dodge.StrictMode.js` | accepted values pass through unchanged | false is returned as the boolean, not coerced |
+| `dodge.StrictMode.js` | accepted values pass through unchanged | representation is returned unchanged |
+| `dodge.StrictMode.js` | accepted values pass through unchanged | manifest is returned unchanged |
+| `dodge.StrictMode.js` | accepted values pass through unchanged | max is returned unchanged |
+| `dodge.StrictMode.js` | unrecognized values fail closed to max | wrong case becomes max |
+| `dodge.StrictMode.js` | unrecognized values fail closed to max | unknown token becomes max |
+| `dodge.StrictMode.js` | unrecognized values fail closed to max | trailing whitespace becomes max |
+| `dodge.StrictMode.js` | unrecognized values fail closed to max | boolean true becomes max |
+| `dodge.StrictMode.js` | unrecognized values fail closed to max | empty string becomes max |
+| `dodge.StrictMode.js` | unrecognized values fail closed to max | zero becomes max |
+| `dodge.StrictMode.js` | unrecognized values fail closed to max | null becomes max |
+| `dodge.StrictMode.js` | unrecognized values fail closed to max | undefined becomes max |
+| `dodge.StrictMode.js` | unrecognized values fail closed to max | a missing dodge settings block becomes max |
+| `dodge.StrictMode.js` | diagnostic | names the setting, quotes the value, and states the fallback |
+| `dodge.StrictMode.js` | diagnostic | warns once per reader, however many times it is read |
+| `dodge.StrictMode.js` | diagnostic | each reader warns independently |
+
+### R11.7 - An invalid `strictMode` enforces as `'max'` at both levels
+
+Failing closed has to hold at the manifest level and the representation level, since they
+are separate consumers. At the manifest level an unrecognized value aborts on a source that
+is not a valid extended manifest, and also rejects side channels, which is what
+distinguishes `'max'` from `'manifest'`. At the representation level it blocks undefended
+representations rather than delegating to the vanilla `DashHandler`.
+
+| File | Description | Test |
+|---|---|---|
+| `dodge.DodgeHandler.js` | strictMode value validation | a wrong-case value is rejected and treated as max |
+| `dodge.DodgeHandler.js` | strictMode value validation | a boolean true is rejected and treated as max |
+| `dodge.DodgeHandler.js` | strictMode value validation | a value with trailing whitespace is rejected and treated as max |
+| `dodge.DodgeHandler.js` | strictMode value validation | an invalid value gets max side-channel rejection, not just manifest abort |
+| `dodge.DodgeHandler.js` | strictMode value validation | an invalid value warns, naming the setting and the fallback |
+| `dodge.DodgeHandler.js` | strictMode value validation | an invalid value warns only once across repeated calls |
+| `dodge.DodgeHandler.js` | strictMode value validation | each accepted value is honored and warns nothing about validity |
+| `dodge.DodgeHandler.js` | strictMode value validation | a valid non-strict value still degrades a plain MPD rather than aborting |
+| `dodge.DodgeDashHandlerOverride.js` | strictMode = invalid value (fails closed) | with extended manifest loaded but unknown label, getInitRequest returns null |
+| `dodge.DodgeDashHandlerOverride.js` | strictMode = invalid value (fails closed) | with extended manifest loaded but unknown label, getNextSegmentRequest returns null |
+| `dodge.DodgeDashHandlerOverride.js` | strictMode = invalid value (fails closed) | with a known label, defended requests are still generated normally |
+
 ---
 
 ## 12. Internal Helpers
@@ -1236,8 +1297,10 @@ When `_onFragmentLoadingCompleted` receives an errored Dodge request (`e.error` 
 | R11.3 strictMode = max enforcement | 5 |
 | R11.4 DRM key session detection (warn only) | 3 |
 | R11.5 NEED_KEY event handling (warn only) | 2 |
+| R11.6 strictMode validation and fail-closed normalization | 16 |
+| R11.7 Invalid strictMode enforces as max at both levels | 11 |
 | R12.1 _concatPartialSegments assembly | 8 |
 | R12.2 _createDataChunk population | 4 |
 | R12.3 getStreamStats counts | 3 |
 | R12.4 Error fragment stalling | 3 |
-| **Total** | **482** |
+| **Total** | **509** |

@@ -568,15 +568,20 @@ import SwitchRequest from '../streaming/rules/SwitchRequest.js';
  * which leaks its real size, so err high.
  * @property {number} [paddingLengthRandom=32]
  * Maximum additional random bytes added to paddingLengthBase per request.
- * @property {false|'representation'|'manifest'} [strictMode='representation']
+ * @property {false|'representation'|'manifest'|'max'} [strictMode='representation']
  * Controls fallback behavior when defense info is not available. Note that it is risky to
  * set strictMode to false; this allows representations that don't appear in the extended
  * manifest to play undefended. For almost all use cases, a properly constructed extended
  * manifest should not exclude any representations from the original MPD. Use with care.
- * 
- * 'representation': block undefended representations when an extended manifest is active
- * 'manifest': block undefended representations and refuse to play vanilla MPDs (default)
+ *
+ * 'representation': block undefended representations when an extended manifest is active (default)
+ * 'manifest': block undefended representations and refuse to play vanilla MPDs
+ * 'max': as 'manifest', and additionally reject manifests containing features Dodge
+ * cannot shape, such as thumbnail tracks, non-fragmented text and XLink
  * false: fall back to normal dash.js behavior on a per-representation basis
+ *
+ * Any other value is rejected and treated as 'max', with a warning, so that a typo
+ * fails closed rather than silently disabling enforcement.
  */
 
 /**

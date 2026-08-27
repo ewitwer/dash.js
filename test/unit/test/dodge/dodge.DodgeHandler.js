@@ -220,6 +220,127 @@ describe('DodgeHandler', function () {
         });
     });
 
+    describe('strictMode value validation', function () {
+        let eventBus, settings, logMessages, testListener;
+
+        beforeEach(function () {
+            context = {};
+            eventBus = EventBus(context).getInstance();
+            settings = Settings(context).getInstance();
+            settings.update({ debug: { dispatchEvent: true, logLevel: Debug.LOG_LEVEL_WARNING } });
+            Debug(context).getInstance({ settings: settings });
+            testListener = {};
+            logMessages = [];
+            eventBus.on(Events.LOG, (e) => { logMessages.push(e); }, testListener);
+        });
+
+        afterEach(function () {
+            eventBus.off(Events.LOG, null, testListener);
+            settings.update({ dodge: { strictMode: 'representation' } });
+        });
+
+        function createDodgeHandler(strictMode) {
+            settings.update({ dodge: { strictMode: strictMode } });
+            return DodgeHandler(context).create({
+                eventBus,
+                events: Events,
+                settings,
+                streamController: null,
+                mediaPlayer: { extend: () => {}, updateSettings: () => {} }
+            });
+        }
+
+        function makeThumbnailManifest() {
+            return {
+                start: {
+                    mpd: '<MPD><Period><AdaptationSet mimeType="image/jpeg"><EssentialProperty schemeIdUri="http://dashif.org/guidelines/thumbnail_tile" value="10x1"/><Representation id="thumb" bandwidth="2000" width="3200" height="180"/></AdaptationSet></Period></MPD>',
+                    base_uri: 'https://example.com/'
+                },
+                streams: [{
+                    label: 'thumb',
+                    init: [{}],
+                    data: [{ index: 0, buffer: true }]
+                }]
+            };
+        }
+
+        // Matches on the setting name, which is the stable part of the
+        // contract. 'Dodge strictMode is disabled' does not match, so the
+        // not-warned assertions stay honest for strictMode = false.
+        function invalidWarnings() {
+            return logMessages.filter(m => m.level === Debug.LOG_LEVEL_WARNING &&
+                m.message.includes('dodge.strictMode'));
+        }
+
+        // An unrecognized value must not be treated as non-strict. A plain MPD
+        // is the sharpest probe: under a strict mode it aborts, and under a
+        // non-strict one it degrades silently to vanilla dash.js.
+        it('a wrong-case value is rejected and treated as max', function () {
+            const handler = createDodgeHandler('Manifest');
+            const result = handler.tryProcessExtendedManifest('<MPD/>', 'test.mpd');
+            expect(result).to.be.false; // jshint ignore:line
+            handler.reset();
+        });
+
+        it('a boolean true is rejected and treated as max', function () {
+            const handler = createDodgeHandler(true);
+            const result = handler.tryProcessExtendedManifest('<MPD/>', 'test.mpd');
+            expect(result).to.be.false; // jshint ignore:line
+            handler.reset();
+        });
+
+        it('a value with trailing whitespace is rejected and treated as max', function () {
+            const handler = createDodgeHandler('representation ');
+            const result = handler.tryProcessExtendedManifest('<MPD/>', 'test.mpd');
+            expect(result).to.be.false; // jshint ignore:line
+            handler.reset();
+        });
+
+        // Distinguishes max from manifest: only max rejects side channels.
+        it('an invalid value gets max side-channel rejection, not just manifest abort', function () {
+            const handler = createDodgeHandler('strict');
+            const result = handler.tryProcessExtendedManifest(JSON.stringify(makeThumbnailManifest()), 'test.exmfst.json');
+            expect(result).to.be.false; // jshint ignore:line
+            handler.reset();
+        });
+
+        it('an invalid value warns, naming the setting and the fallback', function () {
+            const handler = createDodgeHandler('strict');
+            handler.tryProcessExtendedManifest(JSON.stringify(makeValidManifest()), 'test.exmfst.json');
+            const warnings = invalidWarnings();
+            expect(warnings.length).to.be.at.least(1);
+            // Quoted, so a value differing only by whitespace is legible.
+            expect(warnings[0].message).to.include('"strict"');
+            expect(warnings[0].message).to.include('max');
+            handler.reset();
+        });
+
+        it('an invalid value warns only once across repeated calls', function () {
+            const handler = createDodgeHandler('strict');
+            handler.tryProcessExtendedManifest(JSON.stringify(makeValidManifest()), 'a.exmfst.json');
+            handler.tryProcessExtendedManifest(JSON.stringify(makeValidManifest()), 'b.exmfst.json');
+            handler.tryProcessExtendedManifest(JSON.stringify(makeValidManifest()), 'c.exmfst.json');
+            expect(invalidWarnings().length).to.equal(1);
+            handler.reset();
+        });
+
+        it('each accepted value is honored and warns nothing about validity', function () {
+            [false, 'representation', 'manifest', 'max'].forEach(function (mode) {
+                const handler = createDodgeHandler(mode);
+                handler.tryProcessExtendedManifest(JSON.stringify(makeValidManifest()), 'test.exmfst.json');
+                handler.reset();
+            });
+            expect(invalidWarnings().length).to.equal(0);
+        });
+
+        it('a valid non-strict value still degrades a plain MPD rather than aborting', function () {
+            const handler = createDodgeHandler(false);
+            const result = handler.tryProcessExtendedManifest('<MPD/>', 'test.mpd');
+            expect(result).to.be.null; // jshint ignore:line
+            handler.reset();
+        });
+    });
+
     describe('tryProcessExtendedManifest without strictMode = manifest', function () {
         it('non-JSON input: returns null (no error)', function () {
             const eventBus = EventBus(context).getInstance();

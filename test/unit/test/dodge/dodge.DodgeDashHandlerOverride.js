@@ -1152,6 +1152,48 @@ describe('DodgeDashHandlerOverride', function () {
 
     // Strict mode
 
+    describe('strictMode = invalid value (fails closed)', function () {
+        let settings;
+
+        // An unrecognized value must not fall through to the vanilla handler.
+        // Before validation these calls delegated to the parent, emitting
+        // undefended requests with no diagnostic at all.
+        beforeEach(function () {
+            settings = Settings(context).getInstance();
+            settings.update({ dodge: { strictMode: 'Representation' } });
+        });
+
+        afterEach(function () {
+            settings.update({ dodge: { strictMode: false } });
+        });
+
+        it('with extended manifest loaded but unknown label, getInitRequest returns null', function () {
+            defenseController.addExtendedManifest(makeManifest());
+            const unknownRep = Object.assign({}, rep, { id: 'unknown_label' });
+            override.updateDefendedStreamInfo(unknownRep);
+            const result = override.getInitRequest({}, unknownRep);
+            expect(mockParent.getInitRequest.called).to.be.false; // jshint ignore:line
+            expect(result).to.be.null; // jshint ignore:line
+        });
+
+        it('with extended manifest loaded but unknown label, getNextSegmentRequest returns null', function () {
+            defenseController.addExtendedManifest(makeManifest());
+            const unknownRep = Object.assign({}, rep, { id: 'unknown_label', segmentInfoType: 'SegmentTemplate' });
+            override.updateDefendedStreamInfo(unknownRep);
+            const result = override.getNextSegmentRequest({}, unknownRep);
+            expect(mockParent.getNextSegmentRequest.called).to.be.false; // jshint ignore:line
+            expect(result).to.be.null; // jshint ignore:line
+        });
+
+        it('with a known label, defended requests are still generated normally', function () {
+            defenseController.addExtendedManifest(makeManifest());
+            override.updateDefendedStreamInfo(rep);
+            const result = override.getNextSegmentRequest({}, rep);
+            expect(result).to.exist; // jshint ignore:line
+            expect(mockParent.getNextSegmentRequest.called).to.be.false; // jshint ignore:line
+        });
+    });
+
     describe('strictMode = representation', function () {
         let settings;
 
