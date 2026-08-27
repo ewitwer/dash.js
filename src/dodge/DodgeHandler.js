@@ -587,6 +587,19 @@ function DodgeHandler(config) {
         return !!buffer;
     }
 
+    // Orders a flush set for release. Init events carry index NaN and always
+    // lead, since the SourceBuffer needs the init segment before any media that
+    // depends on it. Array.prototype.sort is stable, so entries that tie keep
+    // completion order.
+    function _releaseOrder(a, b) {
+        const aInit = isNaN(a.index);
+        const bInit = isNaN(b.index);
+        if (aInit !== bInit) {
+            return aInit ? -1 : 1;
+        }
+        return aInit ? 0 : a.index - b.index;
+    }
+
     function _onFragmentLoadingCompleted(e) {
         // Event propagation may have been stopped.
         if (!e.sender) {
@@ -713,7 +726,8 @@ function DodgeHandler(config) {
                         mediaType: request.mediaType,
                         representationId: request.representation.id,
                         event: events.INIT_FRAGMENT_LOADED,
-                        index: NaN
+                        index: NaN,
+                        request: request
                     });
                 } else {
                     pendingMedia.push({
@@ -723,7 +737,8 @@ function DodgeHandler(config) {
                         representationId: request.representation.id,
                         homeRepresentationId: request.homeRepresentationId || null,
                         event: events.MEDIA_FRAGMENT_LOADED,
-                        index: request.index
+                        index: request.index,
+                        request: request
                     });
                 }
                 primaryEvent = {
@@ -758,25 +773,46 @@ function DodgeHandler(config) {
             enableQualityCheck = _isBufferActive(request.buffer) && hasDataSecondary;
         }
 
-        // Fire secondary events in chronological order. Suppress them; we
-        // want to schedule only once the primary event has been fired.
-        for (let i = secondaryEvents.length - 1; i >= 0; i--) {
+        // Release order is segment order, not download order. A defense may
+        // download segment 3 before segment 2, but the SourceBuffer must still
+        // see indices ascending, so the whole flush set is sorted before it is
+        // fired. secondaryEvents was built by walking the pending queues
+        // backwards, so reverse it to keep completion order for ties.
+        //
+        // One event is left unsuppressed, and it is fired last, because
+        // it is what re-arms the ScheduleController through the vanilla
+        // _onBytesAppended path. After sorting that is the highest index in the
+        // set, which is not necessarily the cycle that carried the buffer flag.
+        secondaryEvents.reverse();
+
+        const primaryIsAppend = primaryEvent.event === events.INIT_FRAGMENT_LOADED
+            || primaryEvent.event === events.MEDIA_FRAGMENT_LOADED;
+
+        if (primaryIsAppend) {
+            secondaryEvents.push({
+                chunk: primaryEvent.chunk,
+                event: primaryEvent.event,
+                index: primaryEvent.index,
+                request: request
+            });
+            _setQualityCheck(enableQualityCheck, request.mediaType);
+        }
+        secondaryEvents.sort(_releaseOrder);
+
+        for (let i = 0; i < secondaryEvents.length; i++) {
             const event = secondaryEvents[i];
+            const isLast = primaryIsAppend && i === secondaryEvents.length - 1;
             eventBus.trigger(event.event,
-                { chunk: event.chunk, suppress: true },
+                {
+                    chunk: event.chunk,
+                    request: isLast ? event.request : undefined,
+                    suppress: !isLast
+                },
                 { streamId: strInfo.id, mediaType: request.mediaType }
             );
         }
 
-        // Fire the primary event. Do not suppress it; it causes scheduling.
-        if (primaryEvent.event === events.INIT_FRAGMENT_LOADED || primaryEvent.event === events.MEDIA_FRAGMENT_LOADED) {
-            _setQualityCheck(enableQualityCheck, request.mediaType);
-
-            eventBus.trigger(primaryEvent.event,
-                { chunk: primaryEvent.chunk, request: request, suppress: false },
-                { streamId: strInfo.id, mediaType: request.mediaType }
-            );
-
+        if (primaryIsAppend) {
             // Alternate-representation init segments are cached by the
             // DodgeBufferControllerOverride and never reach the SourceBuffer,
             // so BufferController's normal _onAppended path never fires

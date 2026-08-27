@@ -181,6 +181,19 @@ The index/`lastSegment` invariants are advanced only *after* a request is succes
 | `dodge.DodgeDashHandlerOverride.js` | Defended behavior with extended manifest | getInitRequest() stalls without advancing the init cycle when URL resolution fails |
 | `dodge.DodgeDashHandlerOverride.js` | Defended behavior with extended manifest | getSegmentRequestForTime() stalls without advancing the cycle when URL resolution fails |
 
+### R2.12 - Segments are released to the buffer in segment order, not download order
+
+A defense may schedule cycles so that a segment downloads before one with a lower index. Download order is a defense lever; release order is not. At a flush, the pending events and the flushing cycle's own segment form one release set, which is sorted by segment index before any event is fired: init events carry index `NaN` and always lead, and media events follow in ascending index order. Sorting is stable, so entries that tie keep completion order.
+
+One event in the set is fired unsuppressed, and it is fired last, because it re-arms the ScheduleController through the vanilla `_onBytesAppended` path (R1.2). After sorting that is the highest index in the set, which is not necessarily the cycle that carried the buffer flag; it carries its own request, and every earlier event is suppressed with no request, as before. When the flushing cycle is a `MEDIA_FRAGMENT_PARTIAL` / `INIT_FRAGMENT_PARTIAL` / `PADDING_LOADED` event it appends nothing, so it stays last on its own and only the secondaries are sorted.
+
+| File | Description | Test |
+|---|---|---|
+| `dodge.DodgeHandler.js` | Partial segment combination, _onFragmentLoadingCompleted | out-of-order download: releases in segment order, not completion order |
+| `dodge.DodgeHandler.js` | Partial segment combination, _onFragmentLoadingCompleted | out-of-order download: several pending segments are sorted by index |
+| `dodge.DodgeHandler.js` | Partial segment combination, _onFragmentLoadingCompleted | release order: only the last event fired is unsuppressed and carries a request |
+| `dodge.DodgeHandler.js` | Partial segment combination, _onFragmentLoadingCompleted | release order: pending init segments still lead the media segments |
+
 ---
 
 ## 3. Media Type Coverage

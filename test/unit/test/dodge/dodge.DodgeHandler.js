@@ -360,7 +360,7 @@ describe('DodgeHandler', function () {
 
     describe('Partial segment combination, _onFragmentLoadingCompleted', function () {
         let handler, testListener;
-        let mediaLoadedSpy, partialSegmentSpy, paddingLoadedSpy;
+        let mediaLoadedSpy, partialSegmentSpy, paddingLoadedSpy, initLoadedSpy;
 
         function makeRequest(overrides) {
             return Object.assign({
@@ -426,8 +426,10 @@ describe('DodgeHandler', function () {
             mediaLoadedSpy = sinon.spy();
             partialSegmentSpy = sinon.spy();
             paddingLoadedSpy = sinon.spy();
+            initLoadedSpy = sinon.spy();
 
             eventBus.on(Events.MEDIA_FRAGMENT_LOADED, mediaLoadedSpy, testListener);
+            eventBus.on(Events.INIT_FRAGMENT_LOADED, initLoadedSpy, testListener);
             eventBus.on(Events.MEDIA_FRAGMENT_PARTIAL, partialSegmentSpy, testListener);
             eventBus.on(Events.PADDING_LOADED, paddingLoadedSpy, testListener);
         });
@@ -436,6 +438,7 @@ describe('DodgeHandler', function () {
             eventBus.off(Events.MEDIA_FRAGMENT_LOADED, mediaLoadedSpy, testListener);
             eventBus.off(Events.MEDIA_FRAGMENT_PARTIAL, partialSegmentSpy, testListener);
             eventBus.off(Events.PADDING_LOADED, paddingLoadedSpy, testListener);
+            eventBus.off(Events.INIT_FRAGMENT_LOADED, initLoadedSpy, testListener);
             handler.reset();
         });
 
@@ -523,6 +526,70 @@ describe('DodgeHandler', function () {
             triggerFragmentLoaded(makeRequest({ full: true, buffer: true }));
             // MEDIA_FRAGMENT_LOADED should fire twice: once for A (suppressed), once for B (primary)
             expect(mediaLoadedSpy.callCount).to.equal(2);
+        });
+
+        // Release order (segment order, not download order)
+
+        it('out-of-order download: releases in segment order, not completion order', function () {
+            // Segment 3 completes first and is queued without a buffer flag.
+            triggerFragmentLoaded(makeRequest({ full: true, buffer: false, index: 3 }));
+            mediaLoadedSpy.resetHistory();
+
+            // Segment 2 completes and carries the flush. It has the lower index,
+            // so it must reach the SourceBuffer first even though it downloaded last.
+            triggerFragmentLoaded(makeRequest({ full: true, buffer: true, index: 2 }));
+
+            expect(mediaLoadedSpy.callCount).to.equal(2);
+            const released = mediaLoadedSpy.getCalls().map(c => c.args[0].chunk.index);
+            expect(released).to.eql([2, 3]);
+        });
+
+        it('out-of-order download: several pending segments are sorted by index', function () {
+            triggerFragmentLoaded(makeRequest({ full: true, buffer: false, index: 5 }));
+            triggerFragmentLoaded(makeRequest({ full: true, buffer: false, index: 4 }));
+            mediaLoadedSpy.resetHistory();
+
+            triggerFragmentLoaded(makeRequest({ full: true, buffer: true, index: 3 }));
+
+            expect(mediaLoadedSpy.callCount).to.equal(3);
+            const released = mediaLoadedSpy.getCalls().map(c => c.args[0].chunk.index);
+            expect(released).to.eql([3, 4, 5]);
+        });
+
+        it('release order: only the last event fired is unsuppressed and carries a request', function () {
+            triggerFragmentLoaded(makeRequest({ full: true, buffer: false, index: 3 }));
+            mediaLoadedSpy.resetHistory();
+
+            triggerFragmentLoaded(makeRequest({ full: true, buffer: true, index: 2 }));
+
+            const payloads = mediaLoadedSpy.getCalls().map(c => c.args[0]);
+            expect(payloads[0].suppress).to.be.true; // jshint ignore:line
+            expect(payloads[0].request).to.equal(undefined);
+            expect(payloads[1].suppress).to.be.false; // jshint ignore:line
+            expect(payloads[1].request).to.not.equal(undefined);
+            // The unsuppressed event is the highest index, which is not the
+            // cycle that carried the buffer flag.
+            expect(payloads[1].request.index).to.equal(3);
+        });
+
+        it('release order: pending init segments still lead the media segments', function () {
+            triggerFragmentLoaded(makeRequest({
+                full: true, buffer: false, index: 1
+            }));
+            triggerFragmentLoaded(makeRequest({
+                full: true, buffer: false, index: NaN,
+                isInitializationRequest: () => true
+            }));
+            initLoadedSpy.resetHistory();
+            mediaLoadedSpy.resetHistory();
+
+            triggerFragmentLoaded(makeRequest({ full: true, buffer: true, index: 0 }));
+
+            expect(initLoadedSpy.calledOnce).to.be.true; // jshint ignore:line
+            expect(mediaLoadedSpy.callCount).to.equal(2);
+            expect(initLoadedSpy.calledBefore(mediaLoadedSpy.getCall(0))).to.be.true; // jshint ignore:line
+            const released = mediaLoadedSpy.getCalls().map(c => c.args[0].chunk.index);
+            expect(released).to.eql([0, 1]);
         });
 
         // Selective buffer (array buffer)
