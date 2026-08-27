@@ -312,6 +312,26 @@ vanilla makes the same call twice.
 | `dodge.DodgeDashHandlerOverride.js` | Media URL token expansion | a format tag zero-pads the substituted value |
 | `dodge.DodgeDashHandlerOverride.js` | Media URL token expansion | a token with no corresponding value is left intact |
 
+### R3.12 - Index lookups never request partial segments
+
+`SegmentsController.getSegmentByIndex()` forwards its `subNumberOfPartialSegmentToRequest`
+argument only on the SegmentTemplate branch. Vanilla `DashHandler` passes `NaN` there to mean
+"not a partial segment request", and `TemplateSegmentsGetter` turns that into subNumber 0.
+
+Dodge addresses segments by index for every cycle and never requests DASH partial segments, so
+it passes `NaN` for the same reason. Passing `-1` instead is not equivalent: the getter keeps any
+value below `SegmentTemplate@k` as given, so `-1` selects partial segment −1, which places the
+segment one partial duration before the period start and substitutes a literal `-1` into
+`$SubNumber$`. This needs only `@k` on a representation, not a dynamic MPD, so the extended
+manifest's rejection of dynamic MPDs does not prevent it.
+
+| File | Description | Test |
+|---|---|---|
+| `dodge.DodgeDashHandlerOverride.js` | SegmentTemplate with @k | @k present: $SubNumber$ resolves to the first partial segment |
+| `dodge.DodgeDashHandlerOverride.js` | SegmentTemplate with @k | @k present: the request starts at the segment start, not before it |
+| `dodge.DodgeDashHandlerOverride.js` | SegmentTemplate with @k | @k = 1: still resolves to partial segment 0 |
+| `dodge.DodgeDashHandlerOverride.js` | SegmentTemplate with @k | @k absent: the full-segment path is used and start time is unchanged |
+
 ---
 
 ## 4. Trailing Phase
@@ -1159,6 +1179,7 @@ When `_onFragmentLoadingCompleted` receives an errored Dodge request (`e.error` 
 | R3.9 _getRequestForSegment construction | 6 |
 | R3.10 SegmentTimeline content is addressed by index | 5 |
 | R3.11 Media URL tokens use the upstream template processor | 6 |
+| R3.12 Index lookups never request partial segments | 4 |
 | R4.1 No spurious seeks during trailing | 4 |
 | R4.2 Segment downloading not complete early | 2 |
 | R4.3 Schedule timer continues (buffering icon) | 5 |
@@ -1219,4 +1240,4 @@ When `_onFragmentLoadingCompleted` receives an errored Dodge request (`e.error` 
 | R12.2 _createDataChunk population | 4 |
 | R12.3 getStreamStats counts | 3 |
 | R12.4 Error fragment stalling | 3 |
-| **Total** | **478** |
+| **Total** | **482** |

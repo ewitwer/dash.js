@@ -307,7 +307,11 @@ function DodgeDashHandlerOverride(config) {
      */
     function _getSegmentByIndex(representation, index) {
         if (!representation || representation.segmentInfoType !== DashConstants.SEGMENT_TIMELINE) {
-            return segmentsController.getSegmentByIndex(representation, index, -1);
+            // NaN, not -1, is how vanilla DashHandler says "not a partial segment
+            // request". TemplateSegmentsGetter keeps any subNumber below
+            // SegmentTemplate@k as given, so -1 selects partial segment -1: a
+            // negative presentation time and a literal -1 in $SubNumber$.
+            return segmentsController.getSegmentByIndex(representation, index, NaN);
         }
 
         // Keyed on the representation object rather than its ID: a multi-period
@@ -324,7 +328,7 @@ function DodgeDashHandlerOverride(config) {
             // Arguments two and three are ignored for SegmentTimeline; the
             // getter reads only the cursor.
             const next = segmentsController.getSegmentByIndex(
-                representation, NaN, -1, segments[segments.length - 1] || null);
+                representation, NaN, NaN, segments[segments.length - 1] || null);
             if (!next) {
                 return null; // past the end of the timeline
             }

@@ -2546,4 +2546,88 @@ describe('DodgeDashHandlerOverride', function () {
                 .to.contain('/seg_$Time$.m4s');
         });
     });
+    describe('SegmentTemplate with @k (partial segments)', function () {
+
+        // SegmentsController forwards the subNumber argument only on the
+        // SegmentTemplate branch, and TemplateSegmentsGetter keeps any value
+        // below @k as-is. Vanilla DashHandler passes NaN to mean "not a partial
+        // segment request", which the getter turns into subNumber 0.
+        function makeKRepresentation(k) {
+            const r = new VoHelper().getDummyRepresentation(Constants.VIDEO);
+            r.id = 'rep0';
+            r.index = 0;
+            r.path = '';
+            r.timescale = 90000;
+            r.segmentInfoType = DashConstants.SEGMENT_TEMPLATE;
+            r.segments = null;
+            r.segmentDuration = 4;
+            r.presentationTimeOffset = 0;
+            r.startNumber = 1;
+            r.mediaInfo = { type: 'video', streamInfo: { id: 'stream-1' } };
+            r.SegmentTemplate = {
+                'timescale': 90000,
+                'initialization': 'init-$RepresentationID$.m4s',
+                'media': 'seg-$Number$-$SubNumber$.m4s',
+                'k': k
+            };
+            r.adaptation.period.mpd.manifest.Period[0].AdaptationSet[0].Representation[0] = r;
+            r.adaptation.period.start = 0;
+            r.adaptation.period.duration = 100;
+            return r;
+        }
+
+        function requestWithK(k) {
+            const kRep = makeKRepresentation(k);
+            const tc = TimelineConverter(context).getInstance();
+            tc.initialize();
+            const realCtrl = SegmentsController(context).create({
+                dashConstants: DashConstants,
+                timelineConverter: tc,
+                type: Constants.VIDEO,
+                segmentBaseController: {},
+            });
+            realCtrl.initialize(false);
+            const kOverride = DodgeDashHandlerOverride.call(
+                { context, parent: mockParent, factory: {} },
+                {
+                    adapter,
+                    debug: Debug(context).getInstance(),
+                    urlUtils: URLUtils(context).getInstance(),
+                    segmentsController: realCtrl,
+                    baseURLController: {
+                        resolve: () => ({ url: 'https://example.com/', serviceLocation: 'example.com', queryParams: {} })
+                    },
+                    timelineConverter: tc,
+                    playbackController: {
+                        getTimeSinceStreamEnd: sinon.stub().returns(0),
+                        getStreamEndTime: sinon.stub().returns(100),
+                    },
+                }
+            );
+            defenseController.addExtendedManifest({
+                start: { mpd: '<MPD/>', base_uri: 'https://example.com/' },
+                streams: [{ label: 'rep0', init: [{}], data: [{ index: 0, buffer: true }] }]
+            });
+            kOverride.updateDefendedStreamInfo(kRep);
+            return kOverride.getNextSegmentRequest({}, kRep);
+        }
+
+        it('@k present: $SubNumber$ resolves to the first partial segment', function () {
+            expect(requestWithK(4).url).to.contain('/seg-1-0.m4s');
+        });
+
+        it('@k present: the request starts at the segment start, not before it', function () {
+            expect(requestWithK(4).startTime).to.equal(0);
+        });
+
+        it('@k = 1: still resolves to partial segment 0', function () {
+            const request = requestWithK(1);
+            expect(request.url).to.contain('/seg-1-0.m4s');
+            expect(request.startTime).to.equal(0);
+        });
+
+        it('@k absent: the full-segment path is used and start time is unchanged', function () {
+            expect(requestWithK(undefined).startTime).to.equal(0);
+        });
+    });
 });
