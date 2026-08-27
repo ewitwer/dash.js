@@ -496,6 +496,18 @@ When a media chunk carries a `homeRepresentationId` (set by `DodgeDashHandlerOve
 | `dodge.DodgeDashHandlerOverride.js` | Per-cycle quality override | getSegmentRequestForTime sets homeRepresentationId when quality override is active |
 | `dodge.DodgeDashHandlerOverride.js` | Per-cycle quality override | getSegmentRequestForTime does not set homeRepresentationId when no quality override |
 
+### R6.4 - Media fragment releases are serialized
+
+The event bus does not await its handlers, so a flush that releases several segments (R2.12) starts every `_onMediaFragmentLoaded` back to back. Because the quality override sandwich (R6.1) is asynchronous, unserialized handlers interleave: both `changeType` calls run before either append, media lands under the alternate codec rather than its own, and an ordinary segment released alongside an override is appended *inside* that override's sandwich and ahead of it in the buffer, defeating R2.12.
+
+`DodgeBufferControllerOverride` therefore chains releases on a module-level promise, so each release - override sandwich or plain delegation to the parent - completes before the next begins, and the append order is the order the events were fired in. A release that throws is caught and logged so it cannot poison the chain for subsequent segments. The chain is reset in `setup()` and `resetInitialSettings`.
+
+| File | Description | Test |
+|---|---|---|
+| `dodge.DodgeBufferControllerOverride.js` | _onMediaFragmentLoaded | two overrides released together: each sandwich completes before the next begins |
+| `dodge.DodgeBufferControllerOverride.js` | _onMediaFragmentLoaded | override plus ordinary segment: the ordinary segment does not land inside the sandwich |
+| `dodge.DodgeBufferControllerOverride.js` | _onMediaFragmentLoaded | a failed sandwich does not stop the next release from being appended |
+
 ### R6.3 - Dodge-owned alternate init cache, invalidated on quality switch
 
 `DodgeBufferControllerOverride` maintains a local `Map<representationId, chunk>` for alternate-representation init segments (identified by `chunk.homeRepresentationId` being set). These are stored unconditionally - not subject to `streaming.cacheInitSegments` - and are cleared when the override receives `QUALITY_CHANGE_REQUESTED` scoped to its `mediaType`, and on `resetInitialSettings`. The sandwich looks up the alternate init from this local cache (with parent `InitCache` as a fallback) and the home init from the parent `InitCache`.
@@ -1242,6 +1254,7 @@ When `_onFragmentLoadingCompleted` receives an errored Dodge request (`e.error` 
 | R2.9 Selective buffer | 10 |
 | R2.10 Per-cycle quality override on data cycles | 12 |
 | R2.11 Request generation stalls without advancing on URL failure | 3 |
+| R2.12 Segments released in segment order, not download order | 4 |
 | R3.1 Video streams | (implicit) |
 | R3.2 Audio streams | 7 |
 | R3.3 Fragmented text streams | 7 |
@@ -1268,6 +1281,7 @@ When `_onFragmentLoadingCompleted` receives an errored Dodge request (`e.error` 
 | R6.1 Init segment sandwich for quality overrides | 8 |
 | R6.2 homeRepresentationId tagging | 5 |
 | R6.3 Dodge-owned alternate init cache, invalidated on quality switch | 8 |
+| R6.4 Media fragment releases are serialized | 3 |
 | R7.1 Random walk delay bounded | 4 |
 | R7.2 Scheduling is scoped to correct stream processor | 3 |
 | R7.3 Suppressed events skip scheduling | 2 |
@@ -1316,4 +1330,4 @@ When `_onFragmentLoadingCompleted` receives an errored Dodge request (`e.error` 
 | R12.2 _createDataChunk population | 4 |
 | R12.3 getStreamStats counts | 3 |
 | R12.4 Error fragment stalling | 3 |
-| **Total** | **509** |
+| **Total** | **518** |

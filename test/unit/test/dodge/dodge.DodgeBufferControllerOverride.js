@@ -422,6 +422,96 @@ describe('DodgeBufferControllerOverride', function () {
             expect(mockParent.changeType.callCount).to.equal(4);
             expect(mockParent.appendToBuffer.callCount).to.equal(6);
         });
+
+        // Concurrent release. The event bus does not await handlers, so a flush
+        // that releases more than one segment starts every handler back to back.
+
+        function recordAppendOrder(order) {
+            mockParent.appendToBuffer = function (chunk) {
+                order.push('append:' + (chunk.label || chunk.name));
+                // A real append settles on a later task, not immediately.
+                return new Promise((resolve) => setTimeout(resolve, 0));
+            };
+            mockParent.changeType = function (representation) {
+                order.push('changeType:' + representation.id);
+                return Promise.resolve();
+            };
+            mockParent._onMediaFragmentLoaded.callsFake(function (e) {
+                order.push('parentAppend:' + e.chunk.name);
+            });
+        }
+
+        function cacheInits() {
+            const altRep = { id: 'video_500k' };
+            const homeRep = { id: 'video_1000k' };
+            mockParent.getInitChunkFromCache.withArgs('video_500k')
+                .returns({ representation: altRep, bytes: new Uint8Array(10), label: 'altInit' });
+            mockParent.getInitChunkFromCache.withArgs('video_1000k')
+                .returns({ representation: homeRep, bytes: new Uint8Array(20), label: 'homeInit' });
+            return { altRep, homeRep };
+        }
+
+        it('two overrides released together: each sandwich completes before the next begins', async function () {
+            const { altRep } = cacheInits();
+            const order = [];
+            recordAppendOrder(order);
+
+            const chunkA = { representation: altRep, homeRepresentationId: 'video_1000k', name: 'segA' };
+            const chunkB = { representation: altRep, homeRepresentationId: 'video_1000k', name: 'segB' };
+
+            const pA = override._onMediaFragmentLoaded({ chunk: chunkA, request: {} });
+            const pB = override._onMediaFragmentLoaded({ chunk: chunkB, request: {} });
+            await Promise.all([pA, pB]);
+
+            expect(order.join(' > ')).to.equal([
+                'changeType:video_500k', 'append:altInit', 'append:segA',
+                'changeType:video_1000k', 'append:homeInit',
+                'changeType:video_500k', 'append:altInit', 'append:segB',
+                'changeType:video_1000k', 'append:homeInit'
+            ].join(' > '));
+        });
+
+        it('override plus ordinary segment: the ordinary segment does not land inside the sandwich', async function () {
+            const { altRep, homeRep } = cacheInits();
+            const order = [];
+            recordAppendOrder(order);
+
+            const overrideChunk = { representation: altRep, homeRepresentationId: 'video_1000k', name: 'segA' };
+            const plainChunk = { representation: homeRep, homeRepresentationId: null, name: 'segB' };
+
+            const pA = override._onMediaFragmentLoaded({ chunk: overrideChunk, request: {} });
+            const pB = override._onMediaFragmentLoaded({ chunk: plainChunk, request: {} });
+            await Promise.all([pA, pB]);
+
+            // segA was released first, so its whole sandwich precedes segB.
+            expect(order.join(' > ')).to.equal([
+                'changeType:video_500k', 'append:altInit', 'append:segA',
+                'changeType:video_1000k', 'append:homeInit',
+                'parentAppend:segB'
+            ].join(' > '));
+        });
+
+        it('a failed sandwich does not stop the next release from being appended', async function () {
+            const { altRep, homeRep } = cacheInits();
+            const order = [];
+            recordAppendOrder(order);
+            const failing = mockParent.appendToBuffer;
+            mockParent.appendToBuffer = function (chunk) {
+                if (chunk.name === 'segA') {
+                    return Promise.reject(new Error('append failed'));
+                }
+                return failing(chunk);
+            };
+
+            const chunkA = { representation: altRep, homeRepresentationId: 'video_1000k', name: 'segA' };
+            const plainChunk = { representation: homeRep, homeRepresentationId: null, name: 'segB' };
+
+            const pA = override._onMediaFragmentLoaded({ chunk: chunkA, request: {} });
+            const pB = override._onMediaFragmentLoaded({ chunk: plainChunk, request: {} });
+            await Promise.all([pA, pB]);
+
+            expect(order).to.include('parentAppend:segB');
+        });
     });
 
     // _onInitFragmentLoaded + Dodge-owned alternate init cache

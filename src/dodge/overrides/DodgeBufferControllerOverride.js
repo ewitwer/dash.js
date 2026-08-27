@@ -82,13 +82,15 @@ function DodgeBufferControllerOverride(config) {
     let logger,
         currentMockBuffer,
         lastTimeSinceStreamEnd,
-        altInitCache;
+        altInitCache,
+        appendChain;
 
     function setup() {
         logger = debug.getLogger({ __dashjs_factory_name: 'DodgeBufferControllerOverride' });
         currentMockBuffer = 0;
         lastTimeSinceStreamEnd = 0;
         altInitCache = new Map();
+        appendChain = Promise.resolve();
         eventBus.on(MediaPlayerEvents.QUALITY_CHANGE_REQUESTED, _onQualityChangeRequested, listenerScope);
     }
 
@@ -96,6 +98,7 @@ function DodgeBufferControllerOverride(config) {
         currentMockBuffer = 0;
         lastTimeSinceStreamEnd = 0;
         altInitCache.clear();
+        appendChain = Promise.resolve();
         // parent.resetInitialSettings resets mockBuffer
         _parentResetInitialSettings.call(parent, errored, keepBuffers);
     }
@@ -180,6 +183,26 @@ function DodgeBufferControllerOverride(config) {
     }
 
     /**
+     * Releases are serialized. The event bus does not await its handlers, so
+     * a flush that releases several segments starts every handler back to back.
+     * Without a chain the quality override sandwich below (changeType, alternate
+     * init, media, changeType, home init) interleaves with the next release:
+     * media lands under the alternate codec, before its own init segment, and
+     * out of segment order. Serializing keeps each release whole and preserves
+     * the order the events were fired in, which DodgeHandler has already sorted
+     * by segment index.
+     */
+    function _onMediaFragmentLoaded(e) {
+        appendChain = appendChain
+            .then(() => _appendMediaFragment(e))
+            .catch((err) => {
+                // One failed release must not poison the chain for the rest.
+                logger.warn('Media fragment append failed, defense may not progress: ' + (err && err.message ? err.message : err));
+            });
+        return appendChain;
+    }
+
+    /**
      * Override media fragment loading to handle quality override cycles.
      * When a chunk carries a homeRepresentationId, the media bytes come from
      * an alternate representation and require the matching init segment.
@@ -196,7 +219,7 @@ function DodgeBufferControllerOverride(config) {
      * (capability supported AND setting enabled), wraps the sandwich with
      * changeType calls; otherwise appends init/media/init without them.
      */
-    async function _onMediaFragmentLoaded(e) {
+    async function _appendMediaFragment(e) {
         const chunk = e.chunk;
 
         if (chunk.homeRepresentationId) {
