@@ -1986,6 +1986,95 @@ describe('DodgeHandler', function () {
         });
     });
 
+    // paddingLengthBase is the only request-side normalization Dodge has: with
+    // it at 0, applyRequestPadding returns immediately and URL, Range header and
+    // CMCD lengths all vary with the content being requested.
+
+    describe('paddingLengthBase warning in tryProcessExtendedManifest', function () {
+
+        const MPD = '<MPD xmlns="urn:mpeg:dash:schema:mpd:2011"><Period><AdaptationSet mimeType="video/mp4"><Representation id="video_1000k" bandwidth="1000000"/></AdaptationSet></Period></MPD>';
+
+        function makeManifest() {
+            return { start: { mpd: MPD, base_uri: 'https://example.com/' },
+                streams: [{ label: 'video_1000k', init: [{ range: '-855' }], data: [{ index: 0, buffer: true }] }] };
+        }
+
+        let eventBus, settings, logMessages, testListener;
+
+        beforeEach(function () {
+            context = {};
+            eventBus = EventBus(context).getInstance();
+            settings = Settings(context).getInstance();
+            settings.update({ debug: { dispatchEvent: true, logLevel: Debug.LOG_LEVEL_WARNING } });
+            Debug(context).getInstance({ settings: settings });
+            testListener = {};
+            logMessages = [];
+            eventBus.on(Events.LOG, (e) => { logMessages.push(e); }, testListener);
+        });
+
+        function createDodgeHandler(paddingLengthBase, strictMode) {
+            settings.update({ dodge: { paddingLengthBase, strictMode } });
+            return DodgeHandler(context).create({
+                eventBus, events: Events, settings,
+                streamController: null,
+                mediaPlayer: { extend: () => {}, updateSettings: () => {} }
+            });
+        }
+
+        function hasPaddingWarn() {
+            return logMessages.some(m => m.level === Debug.LOG_LEVEL_WARNING && m.message.includes('paddingLengthBase'));
+        }
+
+        it('paddingLengthBase 0 under representation: warns and still accepts', function () {
+            const handler = createDodgeHandler(0, 'representation');
+            const result = handler.tryProcessExtendedManifest(JSON.stringify(makeManifest()), 'test.exmfst.json');
+            expect(result).to.exist; // jshint ignore:line
+            expect(hasPaddingWarn()).to.be.true; // jshint ignore:line
+            handler.reset();
+        });
+
+        it('paddingLengthBase 0 under manifest: warns and still accepts', function () {
+            const handler = createDodgeHandler(0, 'manifest');
+            const result = handler.tryProcessExtendedManifest(JSON.stringify(makeManifest()), 'test.exmfst.json');
+            expect(result).to.exist; // jshint ignore:line
+            expect(hasPaddingWarn()).to.be.true; // jshint ignore:line
+            handler.reset();
+        });
+
+        it('paddingLengthBase 0 under max: rejects the manifest', function () {
+            const handler = createDodgeHandler(0, 'max');
+            const result = handler.tryProcessExtendedManifest(JSON.stringify(makeManifest()), 'test.exmfst.json');
+            expect(result).to.be.false; // jshint ignore:line
+            handler.reset();
+        });
+
+        it('negative paddingLengthBase is treated as disabled: warns', function () {
+            // applyRequestPadding clamps a negative value to 0, so it disables
+            // padding just as surely as 0 does.
+            const handler = createDodgeHandler(-1, 'representation');
+            const result = handler.tryProcessExtendedManifest(JSON.stringify(makeManifest()), 'test.exmfst.json');
+            expect(result).to.exist; // jshint ignore:line
+            expect(hasPaddingWarn()).to.be.true; // jshint ignore:line
+            handler.reset();
+        });
+
+        it('paddingLengthBase set under max: accepted without warning', function () {
+            const handler = createDodgeHandler(1024, 'max');
+            const result = handler.tryProcessExtendedManifest(JSON.stringify(makeManifest()), 'test.exmfst.json');
+            expect(result).to.exist; // jshint ignore:line
+            expect(hasPaddingWarn()).to.be.false; // jshint ignore:line
+            handler.reset();
+        });
+
+        it('strictMode off: no warning even with paddingLengthBase 0', function () {
+            const handler = createDodgeHandler(0, false);
+            const result = handler.tryProcessExtendedManifest(JSON.stringify(makeManifest()), 'test.exmfst.json');
+            expect(result).to.exist; // jshint ignore:line
+            expect(hasPaddingWarn()).to.be.false; // jshint ignore:line
+            handler.reset();
+        });
+    });
+
     describe('_concatPartialSegments via _onFragmentLoadingCompleted', function () {
         let handler, eventBus, settings;
         let loadedSpy, testListener;

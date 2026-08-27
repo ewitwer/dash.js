@@ -366,10 +366,9 @@ import SwitchRequest from '../streaming/rules/SwitchRequest.js';
  *          dodge: {
  *            scheduleWaitBase: 100,
  *            scheduleWaitRandom: 50,
- *            maxIdLength: 32,
  *            queryParam: 'padding',
- *            paddingLengthBase: 0,
- *            paddingLengthRandom: 0,
+ *            paddingLengthBase: 1024,
+ *            paddingLengthRandom: 32,
  *            strictMode: 'representation'
  *          }
  * }
@@ -559,13 +558,15 @@ import SwitchRequest from '../streaming/rules/SwitchRequest.js';
  * Base interval in milliseconds between segment requests for random-walk scheduling.
  * @property {number} [scheduleWaitRandom=50]
  * Maximum additional random delay in milliseconds added to scheduleWaitBase per request.
- * @property {number} [maxIdLength=32]
- * Maximum expected length of a representation ID string, required for proper URL padding.
  * @property {string} [queryParam='padding']
- * Name of the query parameter appended to segment URLs to normalize their lengths.
- * @property {number} [paddingLengthBase=0]
+ * Name of the query parameter appended to segment URLs. It carries a cache-busting
+ * value, and is extended to normalize the wire size of each request.
+ * @property {number} [paddingLengthBase=1024]
  * Base target HTTP/1.1 wire size in bytes (URL + request headers) for Dodge requests.
- * @property {number} [paddingLengthRandom=0]
+ * This is the only request-side normalization Dodge performs, so a value of 0 disables
+ * it entirely. A value smaller than the largest request leaves that request unpadded,
+ * which leaks its real size, so err high.
+ * @property {number} [paddingLengthRandom=32]
  * Maximum additional random bytes added to paddingLengthBase per request.
  * @property {false|'representation'|'manifest'} [strictMode='representation']
  * Controls fallback behavior when defense info is not available. Note that it is risky to
@@ -1546,10 +1547,9 @@ function Settings() {
         dodge: {
             scheduleWaitBase: 100,
             scheduleWaitRandom: 50,
-            maxIdLength: 32,
             queryParam: 'padding',
-            paddingLengthBase: 0,
-            paddingLengthRandom: 0,
+            paddingLengthBase: 1024,
+            paddingLengthRandom: 32,
             strictMode: 'representation'
         }
     };

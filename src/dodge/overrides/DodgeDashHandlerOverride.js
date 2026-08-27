@@ -32,12 +32,7 @@
 import DefenseRegistry, { getCycleIndexBySegmentIndex } from '../DefenseRegistry.js';
 import DashConstants from '../../dash/constants/DashConstants.js';
 import Settings from '../../core/Settings.js';
-import {
-    replaceIDForTemplate,
-    replaceTokenForTemplate,
-    unescapeDollarsInTemplate,
-    countUnpaddedTokenOccurrences
-} from '../utils/SegmentsUtils.js';
+import { processUriTemplate } from '../../dash/utils/SegmentsUtils.js';
 import FragmentRequest from '../../streaming/vo/FragmentRequest.js';
 import {HTTPRequest} from '../../streaming/vo/metrics/HTTPRequest.js';
 
@@ -78,8 +73,7 @@ function DodgeDashHandlerOverride(config) {
         timelineSegments,
         mediaHasFinished,
         lastResolvedLabel,
-        reportedLabels,
-        warnedInvalidMaxIdLength;
+        reportedLabels;
 
     function setup() {
         logger = debug.getLogger({ __dashjs_factory_name: 'DodgeDashHandlerOverride' });
@@ -95,7 +89,6 @@ function DodgeDashHandlerOverride(config) {
         mediaHasFinished = false;
         lastResolvedLabel = null;
         reportedLabels = new Set();
-        warnedInvalidMaxIdLength = false;
     }
 
     // Return true if strict mode is 'representation', 'manifest', or 'max'
@@ -116,13 +109,18 @@ function DodgeDashHandlerOverride(config) {
     }
 
     // ************************************************************************
-    // URL PADDING
+    // REQUEST URL
     // ************************************************************************
 
     /**
-     * Sets the request URL with padding to normalize URL lengths.
+     * Set the request URL, resolving it against the BaseURL the way vanilla
+     * DashHandler does, and attach a cache-busting query value.
+     *
+     * Wire size is normalized later, by applyRequestPadding() in the loader
+     * overrides, which extends this same query parameter until the whole
+     * request reaches dodge.paddingLengthBase.
      */
-    function _setRequestUrlWithPadding(request, destination, representation, replacements) {
+    function _setRequestUrlWithCacheBuster(request, destination, representation) {
         const baseURL = baseURLController.resolve(representation.path);
         let url, serviceLocation, queryParams = {};
 
@@ -133,61 +131,8 @@ function DodgeDashHandlerOverride(config) {
             serviceLocation = baseURL.serviceLocation;
             // Clone: every request resolved against the same BaseURL would
             // otherwise share one queryParams object, leaving in-flight
-            // requests pointing at the newest random padding value.
+            // requests pointing at the newest random value.
             queryParams = baseURL.queryParams ? Object.assign({}, baseURL.queryParams) : {};
-
-            // Start with a short random string for cache busting.
-            let random = Math.random().toString(36).substring(2, 10);
-
-            // Pad to normalize URL lengths across different template values.
-            if (replacements) {
-                let max = Number.MAX_SAFE_INTEGER.toString().length;
-
-                if (replacements['Number'] > 0) {
-                    let count = replacements['Number'];
-                    let chars = request.replacementNumber.toString().length;
-                    let pad = max - chars;
-                    if (pad > 0) {
-                        random += '0'.repeat(count * pad);
-                    } else if (pad < 0) {
-                        logger.warn('Set request URL: replacement number ' + request.replacementNumber + ' exceeds max length ' + max);
-                    }
-                }
-                if (replacements['Time'] > 0) {
-                    let count = replacements['Time'];
-                    let chars = request.replacementTime.toString().length;
-                    let pad = max - chars;
-                    if (pad > 0) {
-                        random += '0'.repeat(count * pad);
-                    } else if (pad < 0) {
-                        logger.warn('Set request URL: replacement time ' + request.replacementTime + ' exceeds max length ' + max);
-                    }
-                }
-                if (replacements['Bandwidth'] > 0) {
-                    let count = replacements['Bandwidth'];
-                    let chars = request.representation.bandwidth.toString().length;
-                    let pad = max - chars;
-                    if (pad > 0) {
-                        random += '0'.repeat(count * pad);
-                    } else if (pad < 0) {
-                        logger.warn('Set request URL: bandwidth ' + request.representation.bandwidth + ' exceeds max length ' + max);
-                    }
-                }
-                if (replacements['ID'] > 0) {
-                    let count = replacements['ID'];
-                    let chars = request.representation.id.toString().length;
-                    const maxId = _getValidatedMaxIdLength();
-                    let pad = maxId - chars;
-                    if (pad > 0) {
-                        random += '0'.repeat(count * pad);
-                    } else if (pad < 0) {
-                        logger.warn('Set request URL: representation ID "' + request.representation.id + '" exceeds maxIdLength ' + maxId);
-                    }
-                }
-            }
-
-            const queryParam = (settings.get().dodge || {}).queryParam || 'padding';
-            queryParams[queryParam] = random;
 
             if (destination) {
                 url = urlUtils.resolve(destination, url);
@@ -197,6 +142,9 @@ function DodgeDashHandlerOverride(config) {
         if (urlUtils.isRelative(url)) {
             return false;
         }
+
+        const queryParam = (settings.get().dodge || {}).queryParam || 'padding';
+        queryParams[queryParam] = Math.random().toString(36).substring(2, 10);
 
         request.url = url;
         request.serviceLocation = serviceLocation;
@@ -259,15 +207,9 @@ function DodgeDashHandlerOverride(config) {
         const presentationStartTime = period.start;
         const isDynamicManifest = parent.getStreamInfo().manifestInfo.isDynamic;
 
+        // SegmentBase / byte-range: initialization URL is null and resolves
+        // from BaseURL at load time.
         const initUrl = representation.initialization;
-
-        // SegmentBase / byte-range: initialization URL is null (resolved
-        // from BaseURL at load time). No template tokens to normalize.
-        // SegmentTemplate: initialization URL contains $Bandwidth$
-        // (and possibly $RepresentationID$) that must be expanded.
-        const replacements = initUrl
-            ? { 'Bandwidth': 1, 'Number': 0, 'Time': 0, 'ID': 0 }
-            : { 'Bandwidth': 0, 'Number': 0, 'Time': 0, 'ID': 0 };
 
         request.mediaType = mediaType;
         request.type = HTTPRequest.INIT_SEGMENT_TYPE;
@@ -286,11 +228,14 @@ function DodgeDashHandlerOverride(config) {
         request.availabilityEndTime = timelineConverter.calcAvailabilityEndTimeFromPresentationTime(presentationStartTime + period.duration, representation, isDynamicManifest);
         request.representation = representation;
 
-        if (_setRequestUrlWithPadding(request, initUrl, representation, replacements)) {
+        if (_setRequestUrlWithCacheBuster(request, initUrl, representation)) {
             if (initUrl) {
-                request.url = replaceTokenForTemplate(request.url, 'Bandwidth', representation.bandwidth);
-                request.url = replaceIDForTemplate(request.url, representation.id);
-                request.url = unescapeDollarsInTemplate(request.url);
+                // DashManifestModel substitutes $Bandwidth$ and $RepresentationID$
+                // into representation.initialization at parse time, so this pass
+                // normally only resolves the $$ escape. It mirrors vanilla
+                // DashHandler rather than assuming that, so the two cannot drift.
+                request.url = processUriTemplate(
+                    request.url, representation.id, undefined, undefined, representation.bandwidth);
             }
             return request;
         }
@@ -299,33 +244,6 @@ function DodgeDashHandlerOverride(config) {
     // ************************************************************************
     // DATA REQUEST GENERATION
     // ************************************************************************
-
-    /**
-     * Validate dodge.maxIdLength. Returns the configured value when it is a
-     * positive number. Invalid values (0, negative, non-numeric) fall back
-     * to the largest label length across all currently loaded extended
-     * manifests (0 if none are loaded yet) and are logged once per
-     * override instance so misconfiguration is visible.
-     */
-    function _getValidatedMaxIdLength() {
-        const raw = (settings.get().dodge || {}).maxIdLength;
-        const fallback = defenseRegistry.getMaxLabelLength();
-        if (raw === undefined || raw === null) {
-            if (!warnedInvalidMaxIdLength) {
-                logger.warn('dodge.maxIdLength is unset (' + raw + '), treating as ' + fallback + ' (largest label length across loaded extended manifests)');
-                warnedInvalidMaxIdLength = true;
-            }
-            return fallback;
-        }
-        if (typeof raw === 'number' && raw > 0) {
-            return raw;
-        }
-        if (!warnedInvalidMaxIdLength) {
-            logger.warn('dodge.maxIdLength is invalid (' + raw + '), treating as ' + fallback + ' (largest label length across loaded extended manifests)');
-            warnedInvalidMaxIdLength = true;
-        }
-        return fallback;
-    }
 
     /**
      * Resolve the effective representation for a data cycle. When cycle.quality
@@ -431,44 +349,20 @@ function DodgeDashHandlerOverride(config) {
         const request = new FragmentRequest();
         const representation = segment.representation;
         const bandwidth = representation.bandwidth;
-        let url = segment.media;
-
-        // Since dash.js 5.2.0 the segment getters expand the media template
-        // themselves (SegmentsUtils._addTimeBasedInformation) and keep the raw
-        // one in segment.mediaUrl, so the padding calculation has to count
-        // tokens there. SegmentList is the exception: ListSegmentsGetter
-        // overwrites segment.media with SegmentURL@media after expansion and
-        // never sets mediaUrl, so there segment.media is the unexpanded value.
-        const template = segment.mediaUrl || segment.media;
-        let replacements;
-
-        if (url) {
-            // SegmentTemplate / SegmentList: the template's variable-length
-            // token substitutions must be accounted for in the padding
-            // calculation.
-            replacements = {
-                'Number': countUnpaddedTokenOccurrences(template, 'Number'),
-                'Time': countUnpaddedTokenOccurrences(template, 'Time'),
-                'Bandwidth': countUnpaddedTokenOccurrences(template, 'Bandwidth'),
-                // replaceIDForTemplate() replaces every occurrence, so every
-                // occurrence has to be padded for.
-                'ID': template.split('$RepresentationID$').length - 1,
-            };
-
-            // Expansion is a no-op wherever the getter has already done it, but
-            // it mirrors the processUriTemplate() call vanilla DashHandler
-            // still makes, which is what expands a SegmentList @media.
-            url = replaceTokenForTemplate(url, 'Number', segment.replacementNumber);
-            url = replaceTokenForTemplate(url, 'Time', segment.replacementTime);
-            url = replaceTokenForTemplate(url, 'Bandwidth', bandwidth);
-            url = replaceIDForTemplate(url, representation.id);
-            url = unescapeDollarsInTemplate(url);
-        } else {
-            // SegmentBase / byte-range: segment.media is null because all
-            // segments share a single file URL (resolved from BaseURL).
-            // No template tokens to expand or normalize.
-            replacements = { 'Number': 0, 'Time': 0, 'Bandwidth': 0, 'ID': 0 };
-        }
+        // SegmentBase / byte-range leaves segment.media null, because all
+        // segments share a single file URL resolved from BaseURL.
+        // The time-based getters already expanded the template, but this mirrors
+        // the second pass vanilla DashHandler still makes, and it is what expands
+        // a SegmentList @media: ListSegmentsGetter overwrites segment.media with
+        // the raw SegmentURL@media after getIndexBasedSegment() has run.
+        const url = processUriTemplate(
+            segment.media,
+            representation.id,
+            segment.replacementNumber,
+            segment.replacementSubNumber,
+            bandwidth,
+            segment.replacementTime
+        );
 
         request.mediaType = parent.getType();
         request.bandwidth = representation.bandwidth;
@@ -495,13 +389,11 @@ function DodgeDashHandlerOverride(config) {
         request.index = segment.index;
         request.adaptationIndex = representation.adaptation.index;
         request.representation = representation;
-        request.replacementNumber = segment.replacementNumber;
-        request.replacementTime = segment.replacementTime;
         if (homeRepresentation) {
             request.homeRepresentationId = homeRepresentation.id;
         }
 
-        if (_setRequestUrlWithPadding(request, url, representation, replacements)) {
+        if (_setRequestUrlWithCacheBuster(request, url, representation)) {
             return request;
         }
     }

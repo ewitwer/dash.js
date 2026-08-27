@@ -224,6 +224,16 @@ function DodgeHandler(config) {
             }
         }
 
+        if ((settings.get().dodge || {}).paddingLengthBase <= 0) {
+            if (strictMode === 'max') {
+                logger.error('dodge.paddingLengthBase is not set, request wire sizes are not normalized, rejected by strict mode max');
+                _triggerStrictModeError(url);
+                return false;
+            } else if (strictMode !== false) {
+                logger.warn('dodge.paddingLengthBase is not set, request wire sizes are not normalized, request lengths vary with the content being requested!');
+            }
+        }
+
         // DRM, CMCD, DVB reporting, content steering: likely a non-issue, warn
         if (strictMode !== false && _mpdContainsDrm(mpd)) {
             logger.warn('Extended manifest contains DRM-protected content, which has not been tested with defenses, verify that license request patterns do not undermine the defense!');

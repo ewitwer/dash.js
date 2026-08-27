@@ -281,7 +281,7 @@ describe('DodgeDashHandlerOverride', function () {
         });
 
         it('getNextSegmentRequest() stalls without advancing the cycle when URL resolution fails', function () {
-            // Force _setRequestUrlWithPadding to fail: a relative segment media
+            // Force _setRequestUrlWithCacheBuster to fail: a relative segment media
             // with no absolute BaseURL resolves to a relative URL, so the
             // builder returns undefined. The override must stall.
             segmentsController.getSegmentByIndex.callsFake((r, idx) => {
@@ -823,9 +823,9 @@ describe('DodgeDashHandlerOverride', function () {
         });
     });
 
-    // URL padding
+    // Request URL query parameter
 
-    describe('URL padding', function () {
+    describe('Request URL query parameter', function () {
         let paddingContext, paddingRegistry, paddingRep, paddingParent, paddingOverride;
 
         beforeEach(function () {
@@ -894,44 +894,32 @@ describe('DodgeDashHandlerOverride', function () {
             expect(request.queryParams.padding.length).to.be.greaterThan(0);
         });
 
-        it('$Number$ padding is longer for a 1-digit index than for a 2-digit index', function () {
-            const r0 = paddingOverride.getNextSegmentRequest({}, paddingRep); // index 0, 1 digit
-            const r10 = paddingOverride.getNextSegmentRequest({}, paddingRep); // index 10, 2 digits
-            // A shorter numeric string needs more zero-padding to reach max length.
-            expect(r0.queryParams.padding.length).to.be.greaterThan(r10.queryParams.padding.length);
+
+
+
+        // Every URL shape must carry the cache-busting value. Dodge re-requests
+        // the same segment across cycles, so identical URLs let the browser
+        // cache satisfy a padding cycle and it never reaches the wire.
+
+        it('absolute media URL: request carries the cache-busting query parameter', function () {
+            // `override` uses makeSegment, whose media URL is absolute, so the
+            // BaseURL resolution branch is skipped entirely.
+            defenseController.addExtendedManifest(makeManifest());
+            override.updateDefendedStreamInfo(rep);
+            const request = override.getNextSegmentRequest({}, rep);
+            expect(request.queryParams.padding).to.be.a('string');
+            expect(request.queryParams.padding.length).to.be.greaterThan(0);
         });
 
-        // Regression: dash.js expands the media template inside the segment
-        // getters and keeps the raw one in `mediaUrl`, so counting tokens on
-        // `segment.media` finds none and the padding collapses to the
-        // cache-busting prefix alone.
-
-        it('media expanded by the segment getter: padding is still sized from the template', function () {
-            // Math.random() feeds the cache-busting prefix, so pin it to make
-            // the zero count exact. (0.5).toString(36) is '0.i', and the
-            // prefix is characters 2 through 10 of that, i.e. 'i'.
-            const random = sinon.stub(Math, 'random').returns(0.5);
-            try {
-                const r0 = paddingOverride.getNextSegmentRequest({}, paddingRep); // index 0
-                const r10 = paddingOverride.getNextSegmentRequest({}, paddingRep); // index 10
-
-                // One $Number$ occurrence, padded out to the 16 digits of
-                // Number.MAX_SAFE_INTEGER.
-                expect(r0.queryParams.padding).to.equal('i' + '0'.repeat(15));
-                expect(r10.queryParams.padding).to.equal('i' + '0'.repeat(14));
-            } finally {
-                random.restore();
-            }
-        });
-
-        it('$RepresentationID$ occurring twice is padded twice', function () {
+        it('media URL identical to the BaseURL: request carries the cache-busting query parameter', function () {
+            // The single-file shape, where the resolved media URL is the BaseURL
+            // itself and the resolution branch is skipped for a second reason.
             const ctx = {};
             Debug(ctx).getInstance();
             const registry = DefenseRegistry(ctx).getInstance();
             registry.reset();
-            Settings(ctx).getInstance().update({ dodge: { maxIdLength: 32 } });
 
-            const localRep = makeRepresentation(); // id 'rep0', 4 characters
+            const localRep = makeRepresentation();
             const localParent = {
                 getInitRequest: sinon.stub().returns(null),
                 getNextSegmentRequest: sinon.stub().returns(null),
@@ -942,7 +930,7 @@ describe('DodgeDashHandlerOverride', function () {
             };
             const localSegmentsController = {
                 getSegmentByIndex: sinon.stub().callsFake(
-                    (r, idx) => makeTemplateSegment(r, idx, '$RepresentationID$/$RepresentationID$_$Number$.m4s')),
+                    (r, idx) => makeTemplateSegment(r, idx, 'https://example.com/video.mp4')),
                 getSegmentByTime: sinon.stub().returns(null),
             };
             const localOverride = DodgeDashHandlerOverride.call(
@@ -953,7 +941,11 @@ describe('DodgeDashHandlerOverride', function () {
                     urlUtils: URLUtils(ctx).getInstance(),
                     segmentsController: localSegmentsController,
                     baseURLController: {
-                        resolve: () => ({ url: 'https://example.com/', serviceLocation: 'example.com', queryParams: {} })
+                        resolve: () => ({
+                            url: 'https://example.com/video.mp4',
+                            serviceLocation: 'example.com',
+                            queryParams: {}
+                        })
                     },
                     timelineConverter: objectsHelper.getDummyTimelineConverter(),
                     playbackController: {
@@ -972,23 +964,9 @@ describe('DodgeDashHandlerOverride', function () {
             });
             localOverride.updateDefendedStreamInfo(localRep);
 
-            const random = sinon.stub(Math, 'random').returns(0.5);
-            try {
-                const request = localOverride.getNextSegmentRequest({}, localRep);
-                // 'i' prefix, two $RepresentationID$ occurrences padded out to
-                // maxIdLength 32, and one $Number$ occurrence at index 0.
-                expect(request.queryParams.padding).to.equal('i' + '0'.repeat(2 * (32 - 4) + 15));
-            } finally {
-                random.restore();
-            }
-        });
-
-        it('absolute URL (no template expansion), queryParams has no padding key', function () {
-            // `override` uses makeSegment which has an absolute URL
-            defenseController.addExtendedManifest(makeManifest());
-            override.updateDefendedStreamInfo(rep);
-            const request = override.getNextSegmentRequest({}, rep);
-            expect(request.queryParams.padding).to.be.undefined; // jshint ignore:line
+            const request = localOverride.getNextSegmentRequest({}, localRep);
+            expect(request.queryParams.padding).to.be.a('string');
+            expect(request.queryParams.padding.length).to.be.greaterThan(0);
         });
 
         // BaseURL.queryParams isolation: each generated request must own its
@@ -1170,100 +1148,6 @@ describe('DodgeDashHandlerOverride', function () {
             expect(requestA.queryParams.padding).to.not.equal(requestB.queryParams.padding);
         });
 
-        it('maxIdLength invalid (negative): falls back to max loaded label length and warns exactly once across requests', function () {
-            const ctx = {};
-            const loggerSpy = { fatal: sinon.spy(), error: sinon.spy(), warn: sinon.spy(), info: sinon.spy(), debug: sinon.spy() };
-            sinon.stub(Debug(ctx).getInstance(), 'getLogger').returns(loggerSpy);
-
-            const registry = DefenseRegistry(ctx).getInstance();
-            registry.reset();
-
-            const localSettings = Settings(ctx).getInstance();
-            localSettings.update({ dodge: { maxIdLength: -5 } });
-
-            const localRep = makeRepresentation(); // id = 'rep0' (4 chars)
-
-            const localParent = {
-                getInitRequest: sinon.stub().returns(null),
-                getNextSegmentRequest: sinon.stub().returns(null),
-                resetInitialSettings: sinon.stub(),
-                initialize: sinon.stub(),
-                getStreamInfo: sinon.stub().returns({ manifestInfo: { isDynamic: false } }),
-                getType: sinon.stub().returns('video'),
-            };
-
-            const localBaseURLController = {
-                resolve: () => ({ url: 'https://example.com/', serviceLocation: 'example.com', queryParams: {} })
-            };
-
-            // Template contains $RepresentationID$ so the ID branch fires.
-            const localSegmentsController = {
-                getSegmentByIndex: sinon.stub().callsFake(
-                    (r, idx) => makeTemplateSegment(r, idx, 'seg_$RepresentationID$.m4s')),
-                getSegmentByTime: sinon.stub().returns(null),
-            };
-
-            const localOverride = DodgeDashHandlerOverride.call(
-                { context: ctx, parent: localParent, factory: {} },
-                {
-                    adapter: { getVoRepresentations: sinon.stub().returns([]) },
-                    debug: Debug(ctx).getInstance(),
-                    urlUtils: URLUtils(ctx).getInstance(),
-                    segmentsController: localSegmentsController,
-                    baseURLController: localBaseURLController,
-                    timelineConverter: objectsHelper.getDummyTimelineConverter(),
-                    playbackController: {
-                        getTimeSinceStreamEnd: sinon.stub().returns(0),
-                        getStreamEndTime: sinon.stub().returns(100),
-                    },
-                }
-            );
-
-            // Two streams so the fallback resolves to a non-trivial max label
-            // length. `rep0` is 4 chars; `rep_longer` is 10 chars.
-            registry.addExtendedManifest({
-                start: { mpd: '<MPD/>', base_uri: 'https://example.com/' },
-                streams: [
-                    {
-                        label: 'rep0',
-                        init: [{}],
-                        // Ten data cycles so 10 sequential getNextSegmentRequest calls resolve.
-                        data: [
-                            { index: 0, buffer: true }, { index: 1, buffer: true },
-                            { index: 2, buffer: true }, { index: 3, buffer: true },
-                            { index: 4, buffer: true }, { index: 5, buffer: true },
-                            { index: 6, buffer: true }, { index: 7, buffer: true },
-                            { index: 8, buffer: true }, { index: 9, buffer: true },
-                        ]
-                    },
-                    {
-                        label: 'rep_longer',
-                        init: [{}],
-                        data: [{ index: 0, buffer: true }]
-                    }
-                ]
-            });
-            localOverride.updateDefendedStreamInfo(localRep);
-
-            for (let i = 0; i < 10; i++) {
-                const req = localOverride.getNextSegmentRequest({}, localRep);
-                expect(req).to.exist; // jshint ignore:line
-                expect(req.queryParams.padding).to.be.a('string');
-                // Fallback maxId = 10 ('rep_longer'), chars = 4 ('rep0'), pad = 6,
-                // the padding string contains at least 6 zeros from the ID branch
-                // (one $RepresentationID$ in the template). Total length is the
-                // cache-busting prefix + at least 6 zeros.
-                expect(req.queryParams.padding.length).to.be.at.least(6);
-            }
-
-            // Warn once: exactly one warning despite 10 requests, and the warning
-            // text carries the dynamically computed fallback value (10).
-            const invalidWarnings = loggerSpy.warn.getCalls().filter(
-                c => c.args[0] && c.args[0].indexOf('maxIdLength is invalid') !== -1
-            );
-            expect(invalidWarnings.length).to.equal(1);
-            expect(invalidWarnings[0].args[0]).to.include('treating as 10');
-        });
     });
 
     // Strict mode
@@ -2588,6 +2472,78 @@ describe('DodgeDashHandlerOverride', function () {
             const request = override.getNextSegmentRequest({}, rep);
             expect(request.range).to.equal('100-200');
             expect(request.partial).to.be.true; // jshint ignore:line
+        });
+    });
+
+    describe('Media URL token expansion', function () {
+
+        // ListSegmentsGetter overwrites segment.media with the raw SegmentURL@media
+        // after getIndexBasedSegment() has run, and never passes mediaUrl, so a
+        // SegmentList segment reaches the handler with its tokens unexpanded. These
+        // segments reproduce that shape; the handler's own pass is what resolves them.
+        function segmentWithRawMedia(media, extra) {
+            return Object.assign({
+                index: 0,
+                media,
+                mediaUrl: undefined,
+                presentationStartTime: 0,
+                duration: 4,
+                representation: rep,
+                replacementNumber: 0,
+                replacementTime: 0,
+                mediaRange: null,
+                availabilityStartTime: 0,
+                availabilityEndTime: Infinity,
+                wallStartTime: 0,
+                mediaStartTime: 0
+            }, extra || {});
+        }
+
+        function urlFor(media, extra) {
+            segmentsController.getSegmentByIndex.callsFake(
+                () => segmentWithRawMedia(media, extra));
+            defenseController.addExtendedManifest(makeManifest());
+            override.updateDefendedStreamInfo(rep);
+
+            const request = override.getNextSegmentRequest({}, rep);
+            expect(request).to.exist; // jshint ignore:line
+            return request.url;
+        }
+
+        it('SegmentList media carrying $RepresentationID$ is expanded', function () {
+            expect(urlFor('https://example.com/seg_$RepresentationID$.m4s'))
+                .to.contain('/seg_rep0.m4s');
+        });
+
+        it('$Bandwidth$ is expanded from the representation', function () {
+            expect(urlFor('https://example.com/seg_$Bandwidth$.m4s'))
+                .to.contain('/seg_1000000.m4s');
+        });
+
+        it('$SubNumber$ is expanded from segment.replacementSubNumber', function () {
+            expect(urlFor('https://example.com/seg_$Number$_$SubNumber$.m4s',
+                { replacementNumber: 4, replacementSubNumber: 3 }))
+                .to.contain('/seg_4_3.m4s');
+        });
+
+        it('$$ is a literal dollar, not the start of a token', function () {
+            // Per the DASH URI template rules $$ escapes a literal '$', so this
+            // names a file called seg$Number$.m4s rather than a $Number$ template.
+            expect(urlFor('https://example.com/seg$$Number$$.m4s',
+                { replacementNumber: 7 }))
+                .to.contain('/seg$Number$.m4s');
+        });
+
+        it('a format tag zero-pads the substituted value', function () {
+            expect(urlFor('https://example.com/seg_$Number%05d$.m4s',
+                { replacementNumber: 7 }))
+                .to.contain('/seg_00007.m4s');
+        });
+
+        it('a token with no corresponding value is left intact', function () {
+            expect(urlFor('https://example.com/seg_$Time$.m4s',
+                { replacementTime: undefined }))
+                .to.contain('/seg_$Time$.m4s');
         });
     });
 });

@@ -173,7 +173,7 @@ On any resolution failure - no sibling representations available, string ID not 
 
 ### R2.11 - Request generation stalls without advancing when URL resolution fails
 
-The index/`lastSegment` invariants are advanced only *after* a request is successfully built. When the final request builder fails to produce a request - `_generateInitRequest` / `_getRequestForSegment` return `undefined` because `_setRequestUrlWithPadding` could not resolve an absolute URL - the override returns `null` (stall) **without** advancing `lastInitIndex` / `lastCycleIndex` or mutating `lastSegment`. This ensures the scheduler retries the *same* cycle rather than skipping it, preserving the defense traffic pattern (mirroring the "no segment found" stall). Applies to all three request generation methods.
+The index/`lastSegment` invariants are advanced only *after* a request is successfully built. When the final request builder fails to produce a request - `_generateInitRequest` / `_getRequestForSegment` return `undefined` because `_setRequestUrlWithCacheBuster` could not resolve an absolute URL - the override returns `null` (stall) **without** advancing `lastInitIndex` / `lastCycleIndex` or mutating `lastSegment`. This ensures the scheduler retries the *same* cycle rather than skipping it, preserving the defense traffic pattern (mirroring the "no segment found" stall). Applies to all three request generation methods.
 
 | File | Description | Test |
 |---|---|---|
@@ -227,7 +227,7 @@ Covered by R2.4 above.
 
 ### R3.6 - SegmentBase (byte range) content
 
-SegmentBase representations (used by WebM and single-file MP4 content) store all segments in a single monolithic file, differentiated by byte range. Unlike SegmentTemplate, `segment.media` is `null` and the URL is resolved entirely from BaseURL. The override explicitly handles this: when `segment.media` is null, template expansion is skipped and the URL resolves to the base URL with the padding query parameter. Byte ranges from `cycle.range` override `segment.mediaRange` (partial request) or fall back to the full segment range. Init segments similarly resolve from BaseURL when `representation.initialization` is null, using `representation.range` as the byte range.
+SegmentBase representations (used by WebM and single-file MP4 content) store all segments in a single monolithic file, differentiated by byte range. Unlike SegmentTemplate, `segment.media` is `null` and the URL is resolved entirely from BaseURL. The override explicitly handles this: when `segment.media` is null, template expansion is skipped and the URL resolves to the base URL, carrying the cache-busting query parameter like any other request. Byte ranges from `cycle.range` override `segment.mediaRange` (partial request) or fall back to the full segment range. Init segments similarly resolve from BaseURL when `representation.initialization` is null, using `representation.range` as the byte range.
 
 | File | Description | Test |
 |---|---|---|
@@ -251,7 +251,7 @@ Muxed representations (audio and video in the same segments) are defended by the
 
 ### R3.8 - `_generateInitRequest` constructs init requests correctly
 
-The internal `_generateInitRequest` function builds a `FragmentRequest` for init segments. For SegmentTemplate representations, it sets `Bandwidth` replacement count to 1 and applies template token substitution. For SegmentBase representations (`representation.initialization = null`), all replacement counts are 0 and no template expansion occurs. Range overrides set `request.range` and `request.partial = true`; without a range override, `representation.range` is used with `partial = false`.
+The internal `_generateInitRequest` function builds a `FragmentRequest` for init segments. `DashManifestModel` substitutes `$Bandwidth$` and `$RepresentationID$` into `representation.initialization` at parse time, so in practice this pass only resolves the `$$` escape, but it runs the same `processUriTemplate` call vanilla `DashHandler` makes rather than assuming that (see R3.11). For SegmentBase representations (`representation.initialization = null`) there is no init URL to expand at all. Range overrides set `request.range` and `request.partial = true`; without a range override, `representation.range` is used with `partial = false`.
 
 | File | Description | Test |
 |---|---|---|
@@ -263,7 +263,7 @@ The internal `_generateInitRequest` function builds a `FragmentRequest` for init
 
 ### R3.9 - `_getRequestForSegment` constructs data requests correctly
 
-The internal `_getRequestForSegment` function builds a `FragmentRequest` for media segments. Returns `null` for null segments. For SegmentTemplate, applies token replacement to the URL and counts the token occurrences that URL padding has to equalize. For SegmentBase (`segment.media = null`), skips template expansion with all replacement counts at 0. When `homeRepresentation` is provided, sets `homeRepresentationId` on the request.
+The internal `_getRequestForSegment` function builds a `FragmentRequest` for media segments. Returns `null` for null segments. Token expansion is covered by R3.11. For SegmentBase (`segment.media = null`), `segment.media` is null so expansion is a no-op. When `homeRepresentation` is provided, sets `homeRepresentationId` on the request.
 
 | File | Description | Test |
 |---|---|---|
@@ -291,6 +291,26 @@ These tests drive a real `SegmentsController` and a real `TimelineSegmentsGetter
 | `dodge.DodgeDashHandlerOverride.js` | SegmentTimeline content | a padding cycle repeating an earlier index resolves to that segment |
 | `dodge.DodgeDashHandlerOverride.js` | SegmentTimeline content | representation.segmentDuration tracks the resolved segment, including on repeat lookups |
 | `dodge.DodgeDashHandlerOverride.js` | SegmentTimeline content | an index past the end of the timeline stalls without advancing |
+
+### R3.11 - Media URL tokens are expanded by the upstream template processor
+
+Both request paths call `processUriTemplate` from `src/dash/utils/SegmentsUtils.js`, the same
+function vanilla `DashHandler` uses, which since dash.js 5.2.0 delegates to `@svta/cml-dash`.
+
+The second pass is load-bearing rather than defensive. `ListSegmentsGetter` overwrites
+`segment.media` with the raw `SegmentURL@media` after `getIndexBasedSegment()` has run, and never
+passes `mediaUrl`, so a SegmentList segment reaches the handler with its tokens unexpanded. For
+time-based getters the template is already resolved and this pass is a no-op, which is also why
+vanilla makes the same call twice.
+
+| File | Description | Test |
+|---|---|---|
+| `dodge.DodgeDashHandlerOverride.js` | Media URL token expansion | SegmentList media carrying $RepresentationID$ is expanded |
+| `dodge.DodgeDashHandlerOverride.js` | Media URL token expansion | $Bandwidth$ is expanded from the representation |
+| `dodge.DodgeDashHandlerOverride.js` | Media URL token expansion | $SubNumber$ is expanded from segment.replacementSubNumber |
+| `dodge.DodgeDashHandlerOverride.js` | Media URL token expansion | $$ is a literal dollar, not the start of a token |
+| `dodge.DodgeDashHandlerOverride.js` | Media URL token expansion | a format tag zero-pads the substituted value |
+| `dodge.DodgeDashHandlerOverride.js` | Media URL token expansion | a token with no corresponding value is left intact |
 
 ---
 
@@ -519,27 +539,26 @@ After scheduling, `_onPaddingLoaded` calls `onPaddingLoaded()` on the stream pro
 
 ---
 
-## 8. URL and Request Padding
+## 8. Request URL and Request Padding
 
-### R8.1 - URL padding normalizes template URL lengths across representations
+### R8.1 - Every request URL carries a cache-busting query value
 
-`_setRequestUrlWithPadding()` adds a `queryParams.padding` value sized to equalize URL lengths across all numeric token values (e.g., single-digit vs multi-digit segment numbers) and across `$RepresentationID$` values up to `dodge.maxIdLength` (default 32). Every occurrence of a token is counted, since `replaceIDForTemplate()` and `replaceTokenForTemplate()` replace all of them.
+`_setRequestUrlWithCacheBuster()` resolves the request URL against the BaseURL the way vanilla `DashHandler._setRequestUrl()` does, then sets `queryParams[dodge.queryParam]` (default `padding`) to a short random string. `HTTPLoader` merges `queryParams` into the URL, and `applyRequestPadding()` later extends that same parameter to normalize wire size (R8.2).
 
-The counts are taken from the **raw** template, `segment.mediaUrl`. Since dash.js 5.2.0, the segment getters expand the template themselves and leave the result in `segment.media`, so counting there finds no tokens at all and the padding silently collapses to the cache-busting prefix. `segment.media` remains the counting source only for SegmentList, where `ListSegmentsGetter` overwrites it with the unexpanded `SegmentURL@media` and never sets `mediaUrl`.
+The value is attached for **every** URL shape, including an absolute `SegmentTemplate@media` or `SegmentURL@media` and the single-file case where the resolved media URL is the BaseURL itself. Those two shapes skip the BaseURL resolution branch, and previously skipped the query value with it. Dodge re-requests the same segment across cycles, so without a value that differs per request the browser cache can satisfy a padding cycle and it never reaches the wire.
 
-Absolute URLs are not padded (no template expansion, so `queryParams.padding` is not set). Invalid values of `dodge.maxIdLength` (non-positive or non-numeric) fall back to the largest stream label length across all currently loaded extended manifests (0 if none are loaded) and are logged once per override instance.
+Each request owns its `queryParams` object: the BaseURL's is cloned, never aliased, because `HTTPLoader`'s retry path appends `request.queryParams` to `request.url` and a shared object would produce duplicate parameters on the wire.
+
+No URL length equalization is performed. Wire size is normalized in full by R8.2, which also covers the `Range` header and CMCD.
 
 | File | Description | Test |
 |---|---|---|
-| `dodge.DodgeDashHandlerOverride.js` | URL padding | relative template URL, queryParams.padding is set on the request |
-| `dodge.DodgeDashHandlerOverride.js` | URL padding | $Number$ padding is longer for a 1-digit index than for a 2-digit index |
-| `dodge.DodgeDashHandlerOverride.js` | URL padding | media expanded by the segment getter: padding is still sized from the template |
-| `dodge.DodgeDashHandlerOverride.js` | URL padding | $RepresentationID$ occurring twice is padded twice |
-| `dodge.DodgeDashHandlerOverride.js` | URL padding | absolute URL (no template expansion), queryParams has no padding key |
-| `dodge.DodgeDashHandlerOverride.js` | URL padding | request.queryParams is not the BaseURL.queryParams object (cloned, not aliased) |
-| `dodge.DodgeDashHandlerOverride.js` | URL padding | baseURL.queryParams is not mutated by request generation |
-| `dodge.DodgeDashHandlerOverride.js` | URL padding | request.queryParams.padding is stable across subsequent request generations against the same BaseURL |
-| `dodge.DodgeDashHandlerOverride.js` | URL padding | maxIdLength invalid (negative): falls back to max loaded label length and warns exactly once across requests |
+| `dodge.DodgeDashHandlerOverride.js` | Request URL query parameter | relative template URL, queryParams.padding is set on the request |
+| `dodge.DodgeDashHandlerOverride.js` | Request URL query parameter | absolute media URL: request carries the cache-busting query parameter |
+| `dodge.DodgeDashHandlerOverride.js` | Request URL query parameter | media URL identical to the BaseURL: request carries the cache-busting query parameter |
+| `dodge.DodgeDashHandlerOverride.js` | Request URL query parameter | request.queryParams is not the BaseURL.queryParams object (cloned, not aliased) |
+| `dodge.DodgeDashHandlerOverride.js` | Request URL query parameter | baseURL.queryParams is not mutated by request generation |
+| `dodge.DodgeDashHandlerOverride.js` | Request URL query parameter | request.queryParams.padding is stable across subsequent generated requests against the same BaseURL |
 
 ### R8.2 - Request padding normalizes HTTP wire size to `[paddingLengthBase, paddingLengthBase + paddingLengthRandom]`
 
@@ -578,6 +597,21 @@ Absolute URLs are not padded (no template expansion, so `queryParams.padding` is
 | `dodge.RequestPadding.js` | DodgeXHRLoaderOverride | extends URL before calling parent.load() when paddingLengthBase is set |
 | `dodge.RequestPadding.js` | DodgeXHRLoaderOverride | preserves original request headers after padding |
 | `dodge.RequestPadding.js` | DodgeXHRLoaderOverride | passes through config argument to parent.load() |
+
+---
+
+### R8.5 - An unset `dodge.paddingLengthBase` is reported
+
+Wire size normalization is the only request-side defense Dodge performs, so `paddingLengthBase ≤ 0` leaves URL, `Range` header and CMCD lengths varying with the content being requested. `tryProcessExtendedManifest()` reports it alongside the side-channel scans: a warning under `'representation'` and `'manifest'`, rejection under `'max'`, and silence when `strictMode` is `false`. Negative values are included, since `applyRequestPadding()` clamps them to 0. The default is 1024, so this fires only on a deliberate override.
+
+| File | Description | Test |
+|---|---|---|
+| `dodge.DodgeHandler.js` | paddingLengthBase warning in tryProcessExtendedManifest | paddingLengthBase 0 under representation: warns and still accepts |
+| `dodge.DodgeHandler.js` | paddingLengthBase warning in tryProcessExtendedManifest | paddingLengthBase 0 under manifest: warns and still accepts |
+| `dodge.DodgeHandler.js` | paddingLengthBase warning in tryProcessExtendedManifest | paddingLengthBase 0 under max: rejects the manifest |
+| `dodge.DodgeHandler.js` | paddingLengthBase warning in tryProcessExtendedManifest | negative paddingLengthBase is treated as disabled: warns |
+| `dodge.DodgeHandler.js` | paddingLengthBase warning in tryProcessExtendedManifest | paddingLengthBase set under max: accepted without warning |
+| `dodge.DodgeHandler.js` | paddingLengthBase warning in tryProcessExtendedManifest | strictMode off: no warning even with paddingLengthBase 0 |
 
 ---
 
@@ -708,7 +742,7 @@ Init cycles may carry a `quality` field with the same semantics as on data cycle
 
 ### R9.6 - Registry stores and retrieves extended manifests by label
 
-`addExtendedManifest()` validates and stores manifests. `getDefendedStreamInfo()` retrieves a stream entry by label. `hasContent()` reflects whether any manifests are stored. `getMaxLabelLength()` returns the longest stream label across all loaded manifests (0 if none) and is used as a fallback for a misconfigured `dodge.maxIdLength`. `reset()` clears all state.
+`addExtendedManifest()` validates and stores manifests. `getDefendedStreamInfo()` retrieves a stream entry by label. `hasContent()` reflects whether any manifests are stored. `reset()` clears all state.
 
 | File | Description | Test |
 |---|---|---|
@@ -717,8 +751,6 @@ Init cycles may carry a `quality` field with the same semantics as on data cycle
 | `dodge.DefenseRegistry.js` | instance | getDefendedStreamInfo finds a registered stream by label |
 | `dodge.DefenseRegistry.js` | instance | getDefendedStreamInfo returns null for an unknown label |
 | `dodge.DefenseRegistry.js` | instance | reset clears all manifests, getDefendedStreamInfo returns null after reset |
-| `dodge.DefenseRegistry.js` | instance | getMaxLabelLength returns 0 when no manifests are loaded |
-| `dodge.DefenseRegistry.js` | instance | getMaxLabelLength returns the longest stream label across multiple streams and manifests |
 
 ### R9.7 - Period field validation
 
@@ -1126,6 +1158,7 @@ When `_onFragmentLoadingCompleted` receives an errored Dodge request (`e.error` 
 | R3.8 _generateInitRequest construction | 5 |
 | R3.9 _getRequestForSegment construction | 6 |
 | R3.10 SegmentTimeline content is addressed by index | 5 |
+| R3.11 Media URL tokens use the upstream template processor | 6 |
 | R4.1 No spurious seeks during trailing | 4 |
 | R4.2 Segment downloading not complete early | 2 |
 | R4.3 Schedule timer continues (buffering icon) | 5 |
@@ -1145,16 +1178,17 @@ When `_onFragmentLoadingCompleted` receives an errored Dodge request (`e.error` 
 | R7.3 Suppressed events skip scheduling | 2 |
 | R7.4 Padding event routing | 2 |
 | R7.5 Random walk delay on all scheduling paths | 9 |
-| R8.1 URL padding normalizes template lengths | 9 |
+| R8.1 Every request URL carries a cache-busting query value | 6 |
 | R8.2 Request padding normalizes wire size | 13 |
 | R8.3 FetchLoader applies padding | 4 |
 | R8.4 XHRLoader applies padding | 4 |
+| R8.5 Unset paddingLengthBase is reported | 6 |
 | R9.1 Structural validation rejects malformed manifests | 48 |
 | R9.2 Init cycle validation | 16 |
 | R9.3 Init cycle quality validation and explicit buffer requirement | 9 |
 | R9.4 Data cycle validation, maxNoPad, and cycle.full precomputation | 11 |
 | R9.5 Cycle index lookup | 4 |
-| R9.6 Registry stores and retrieves manifests | 7 |
+| R9.6 Registry stores and retrieves manifests | 5 |
 | R9.7 Period field validation | 6 |
 | R9.8 Period-scoped stream lookup | 4 |
 | R9.9 Override passes period index to registry | 3 |
@@ -1185,4 +1219,4 @@ When `_onFragmentLoadingCompleted` receives an errored Dodge request (`e.error` 
 | R12.2 _createDataChunk population | 4 |
 | R12.3 getStreamStats counts | 3 |
 | R12.4 Error fragment stalling | 3 |
-| **Total** | **473** |
+| **Total** | **478** |
