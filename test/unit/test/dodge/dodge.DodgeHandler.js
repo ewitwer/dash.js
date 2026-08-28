@@ -1,4 +1,6 @@
 import { DodgeHandler } from '../../../../src/dodge/index.js';
+import DashParser from '../../../../src/dash/parser/DashParser.js';
+import DebugMock from '../../mocks/DebugMock.js';
 import DefenseRegistry from '../../../../src/dodge/DefenseRegistry.js';
 import DodgeErrors from '../../../../src/dodge/errors/DodgeErrors.js';
 import DodgeEvents from '../../../../src/dodge/events/DodgeEvents.js';
@@ -2744,6 +2746,122 @@ describe('DodgeHandler', function () {
             }), 5000);
             expect(e.sender).to.not.be.null; // jshint ignore:line
             expect(rangeErrors().length).to.equal(0);
+        });
+    });
+
+    describe('rejectIfDynamic, post-parse dynamic MPD gate', function () {
+        let eventBus, settings, errorSpy, listener;
+
+        function parsed(type) {
+            return type === undefined ? {} : { type };
+        }
+
+        beforeEach(function () {
+            eventBus = EventBus(context).getInstance();
+            settings = Settings(context).getInstance();
+            listener = {};
+            errorSpy = sinon.spy();
+            eventBus.on(Events.INTERNAL_MANIFEST_LOADED, errorSpy, listener);
+        });
+
+        afterEach(function () {
+            eventBus.off(Events.INTERNAL_MANIFEST_LOADED, errorSpy, listener);
+            settings.update({ dodge: { strictMode: false } });
+        });
+
+        it('a dynamic manifest is rejected', function () {
+            expect(dodgeHandler.rejectIfDynamic(parsed('dynamic'), 'http://example.com/v.json')).to.be.true; // jshint ignore:line
+        });
+
+        it('a static manifest passes', function () {
+            expect(dodgeHandler.rejectIfDynamic(parsed('static'), 'x')).to.be.false; // jshint ignore:line
+            expect(errorSpy.called).to.be.false; // jshint ignore:line
+        });
+
+        // @type defaults to static when the attribute is absent.
+        it('a manifest with no type passes', function () {
+            expect(dodgeHandler.rejectIfDynamic(parsed(undefined), 'x')).to.be.false; // jshint ignore:line
+            expect(errorSpy.called).to.be.false; // jshint ignore:line
+        });
+
+        it('a null manifest passes', function () {
+            expect(dodgeHandler.rejectIfDynamic(null, 'x')).to.be.false; // jshint ignore:line
+            expect(errorSpy.called).to.be.false; // jshint ignore:line
+        });
+
+        it('rejection fires INTERNAL_MANIFEST_LOADED with the dynamic manifest error code', function () {
+            dodgeHandler.rejectIfDynamic(parsed('dynamic'), 'http://example.com/v.json');
+            expect(errorSpy.calledOnce).to.be.true; // jshint ignore:line
+            const payload = errorSpy.firstCall.args[0];
+            expect(payload.manifest).to.be.null; // jshint ignore:line
+            expect(payload.error.code).to.equal(DodgeErrors.DODGE_DYNAMIC_MANIFEST_ERROR_CODE);
+        });
+
+        it('the error is distinct from the strict mode error', function () {
+            expect(DodgeErrors.DODGE_DYNAMIC_MANIFEST_ERROR_CODE)
+                .to.not.equal(DodgeErrors.DODGE_STRICT_MODE_ERROR_CODE);
+        });
+
+        it('the error message includes the URL', function () {
+            const url = 'http://example.com/live.exmfst.json';
+            dodgeHandler.rejectIfDynamic(parsed('dynamic'), url);
+            expect(errorSpy.firstCall.args[0].error.message).to.include(url);
+        });
+
+        // A live stream has no cycles for the segments it will add, so there is
+        // no partial defense to degrade to. Fatal in every mode.
+        [false, 'representation', 'manifest', 'max'].forEach(function (mode) {
+            it('is fatal under strictMode ' + JSON.stringify(mode), function () {
+                settings.update({ dodge: { strictMode: mode } });
+                expect(dodgeHandler.rejectIfDynamic(parsed('dynamic'), 'x')).to.be.true; // jshint ignore:line
+                expect(errorSpy.calledOnce).to.be.true; // jshint ignore:line
+            });
+        });
+
+        it('registry content is cleared so no stale defense survives the rejection', function () {
+            const m = {
+                start: { mpd: '<MPD/>', base_uri: 'https://example.com/' },
+                streams: [{ label: 'video_1000k', init: [{ range: '0-9' }], data: [{ index: 0, buffer: true }] }]
+            };
+            expect(dodgeHandler.tryProcessExtendedManifest(JSON.stringify(m), 'x')).to.exist; // jshint ignore:line
+            expect(DefenseRegistry(context).getInstance().hasContent()).to.be.true; // jshint ignore:line
+            dodgeHandler.rejectIfDynamic(parsed('dynamic'), 'x');
+            expect(DefenseRegistry(context).getInstance().hasContent()).to.be.false; // jshint ignore:line
+        });
+
+        // The point of reading the parsed value: every legal spelling of the
+        // attribute has to be caught, and a string scan cannot do that.
+        describe('every legal spelling is caught once dash.js has parsed it', function () {
+            const dashParser = DashParser({}).create({ debug: new DebugMock() });
+            const TAIL = '<Period id="p0" duration="PT10S"><AdaptationSet mimeType="video/mp4">'
+                + '<Representation id="v0" bandwidth="1000"><BaseURL>x/</BaseURL></Representation>'
+                + '</AdaptationSet></Period></MPD>';
+
+            const spellings = [
+                ['double quotes', '<MPD xmlns="urn:mpeg:dash:schema:mpd:2011" type="dynamic" minBufferTime="PT1S">'],
+                ['single quotes', '<MPD xmlns="urn:mpeg:dash:schema:mpd:2011" type=\'dynamic\' minBufferTime="PT1S">'],
+                ['spaces around the equals sign', '<MPD xmlns="urn:mpeg:dash:schema:mpd:2011" type = "dynamic" minBufferTime="PT1S">'],
+                ['type as the last attribute', '<MPD xmlns="urn:mpeg:dash:schema:mpd:2011" minBufferTime="PT1S" type="dynamic">']
+            ];
+
+            spellings.forEach(function (entry) {
+                it(entry[0] + ' is rejected', function () {
+                    const manifest = dashParser.parse(entry[1] + TAIL);
+                    expect(dodgeHandler.rejectIfDynamic(manifest, 'x')).to.be.true; // jshint ignore:line
+                });
+            });
+
+            it('an equivalent static MPD is not rejected', function () {
+                const manifest = dashParser.parse(
+                    '<MPD xmlns="urn:mpeg:dash:schema:mpd:2011" type="static" minBufferTime="PT1S">' + TAIL);
+                expect(dodgeHandler.rejectIfDynamic(manifest, 'x')).to.be.false; // jshint ignore:line
+            });
+
+            it('an MPD with no type attribute is not rejected', function () {
+                const manifest = dashParser.parse(
+                    '<MPD xmlns="urn:mpeg:dash:schema:mpd:2011" minBufferTime="PT1S">' + TAIL);
+                expect(dodgeHandler.rejectIfDynamic(manifest, 'x')).to.be.false; // jshint ignore:line
+            });
         });
     });
 

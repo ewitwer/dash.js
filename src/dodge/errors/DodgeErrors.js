@@ -43,6 +43,16 @@ class DodgeErrors extends ErrorsBase {
          */
         this.DODGE_STRICT_MODE_ERROR_CODE = 300;
         this.DODGE_STRICT_MODE_ERROR_MESSAGE = 'DODGE_STRICT_MODE_ERROR: Strict mode is enabled but defense info is unavailable.';
+
+        /**
+         * Error code returned when an extended manifest embeds a dynamic
+         * (live) MPD. Live content keeps adding segments that have no cycle
+         * in the fixed cycle array, so there is no defense to run and no
+         * partial defense to degrade to. Unlike the strict mode error,
+         * this one does not depend on dodge.strictMode.
+         */
+        this.DODGE_DYNAMIC_MANIFEST_ERROR_CODE = 301;
+        this.DODGE_DYNAMIC_MANIFEST_ERROR_MESSAGE = 'DODGE_DYNAMIC_MANIFEST_ERROR: Extended manifests embed a dynamic (live) MPD, which has no cycles for the segments it will add.';
     }
 }
 

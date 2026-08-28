@@ -42,13 +42,13 @@ describe('DefenseRegistry', function () {
         it('missing start.base_uri, false', function () {
             expect(isValidExtendedManifest({ start: { mpd: '<MPD/>' }, streams: [] })).to.be.false; // jshint ignore:line
         });
-
-        it('dynamic MPD, false', function () {
+        
+        it('dynamic MPD is not gated by structural validation', function () {
             const m = {
                 start: { mpd: '<MPD type="dynamic"/>', base_uri: 'https://x.com/' },
                 streams: [{ label: 'a', init: [{}], data: [{ index: 0, buffer: true }] }]
             };
-            expect(isValidExtendedManifest(m)).to.be.false; // jshint ignore:line
+            expect(isValidExtendedManifest(m)).to.be.true; // jshint ignore:line
         });
 
         it('missing streams, false', function () {

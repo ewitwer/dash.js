@@ -674,7 +674,7 @@ The gate reads the setting through `resolveNumericSetting()` (R11.8) rather than
 
 ### R9.1 - Structural validation rejects malformed manifests
 
-`isValidExtendedManifest()` validates the top-level structure of extended manifest files: `start.mpd` and `start.base_uri` must be present and strings, `streams` must be a non-empty array where each entry has a `label` and at least one of `init` or `data`. Dynamic MPDs (containing `type="dynamic"`) are rejected. Data cycle fields are validated: `index` must parse to a non-negative integer, `range` must be a well-formed string, `padding` must be a boolean (or a string parseable to boolean) or absent, `buffer` must be a boolean (or a string parseable to boolean), an array of non-negative integers (selective buffer), or absent, and `quality` is optional - when present, it must be either a non-empty string (representation ID, resolved lazily in the override against `adapter.getVoRepresentations(mediaInfo)`) or a non-negative JSON number (index into the same array). Numeric strings are kept as strings and treated as representation IDs; a warning is logged to flag the ambiguity. Use a JSON number if an index is intended.
+`isValidExtendedManifest()` validates the top-level structure of extended manifest files: `start.mpd` and `start.base_uri` must be present and strings, `streams` must be a non-empty array where each entry has a `label` and at least one of `init` or `data`. It does **not** gate on the embedded MPD's `@type`; that check lives in R10.15, which reads the parsed value. Data cycle fields are validated: `index` must parse to a non-negative integer, `range` must be a well-formed string, `padding` must be a boolean (or a string parseable to boolean) or absent, `buffer` must be a boolean (or a string parseable to boolean), an array of non-negative integers (selective buffer), or absent, and `quality` is optional - when present, it must be either a non-empty string (representation ID, resolved lazily in the override against `adapter.getVoRepresentations(mediaInfo)`) or a non-negative JSON number (index into the same array). Numeric strings are kept as strings and treated as representation IDs; a warning is logged to flag the ambiguity. Use a JSON number if an index is intended.
 
 | File | Description | Test |
 |---|---|---|
@@ -682,7 +682,7 @@ The gate reads the setting through `resolveNumericSetting()` (R11.8) rather than
 | `dodge.DefenseRegistry.js` | isValidExtendedManifest | missing start, false |
 | `dodge.DefenseRegistry.js` | isValidExtendedManifest | missing start.mpd, false |
 | `dodge.DefenseRegistry.js` | isValidExtendedManifest | missing start.base_uri, false |
-| `dodge.DefenseRegistry.js` | isValidExtendedManifest | dynamic MPD, false |
+| `dodge.DefenseRegistry.js` | isValidExtendedManifest | dynamic MPD is not gated by structural validation |
 | `dodge.DefenseRegistry.js` | isValidExtendedManifest | missing streams, false |
 | `dodge.DefenseRegistry.js` | isValidExtendedManifest | empty streams array with valid start, false |
 | `dodge.DefenseRegistry.js` | isValidExtendedManifest | non-array streams with valid start, false |
@@ -1083,6 +1083,42 @@ When `streaming.cacheInitSegments` is enabled during defended playback, `tryProc
 | `dodge.DodgeHandler.js` | cacheInitSegments warning in tryProcessExtendedManifest | cacheInitSegments disabled, multiple representations: no warning |
 | `dodge.DodgeHandler.js` | cacheInitSegments warning in tryProcessExtendedManifest | strictMode off: no warning even with cache enabled |
 
+### R10.15 - A dynamic (live) MPD is rejected after parsing, in every strict mode
+
+Extended manifests describe a fixed cycle array. Live content keeps adding segments that
+have no cycle in it, so there is no defense to run and no partial defense to degrade to.
+
+The check reads `manifest.type` after `DashParser` has run, via
+`DodgeHandler.rejectIfDynamic()`, which `ManifestLoader` calls immediately after
+`parser.parse(data)` and only when Dodge processed the source.
+
+On rejection the handler clears the registry, so a defense registered before the parse
+cannot survive into a later load, and fires `INTERNAL_MANIFEST_LOADED` with
+`DODGE_DYNAMIC_MANIFEST_ERROR` (301).
+
+An absent `@type` means static, per the DASH spec, and is not rejected.
+
+| File | Description | Test |
+|---|---|---|
+| `dodge.DodgeHandler.js` | rejectIfDynamic, post-parse dynamic MPD gate | a dynamic manifest is rejected |
+| `dodge.DodgeHandler.js` | rejectIfDynamic, post-parse dynamic MPD gate | a static manifest passes |
+| `dodge.DodgeHandler.js` | rejectIfDynamic, post-parse dynamic MPD gate | a manifest with no type passes |
+| `dodge.DodgeHandler.js` | rejectIfDynamic, post-parse dynamic MPD gate | a null manifest passes |
+| `dodge.DodgeHandler.js` | rejectIfDynamic, post-parse dynamic MPD gate | rejection fires INTERNAL_MANIFEST_LOADED with the dynamic manifest error code |
+| `dodge.DodgeHandler.js` | rejectIfDynamic, post-parse dynamic MPD gate | the error is distinct from the strict mode error |
+| `dodge.DodgeHandler.js` | rejectIfDynamic, post-parse dynamic MPD gate | the error message includes the URL |
+| `dodge.DodgeHandler.js` | rejectIfDynamic, post-parse dynamic MPD gate | is fatal under strictMode false |
+| `dodge.DodgeHandler.js` | rejectIfDynamic, post-parse dynamic MPD gate | is fatal under strictMode "representation" |
+| `dodge.DodgeHandler.js` | rejectIfDynamic, post-parse dynamic MPD gate | is fatal under strictMode "manifest" |
+| `dodge.DodgeHandler.js` | rejectIfDynamic, post-parse dynamic MPD gate | is fatal under strictMode "max" |
+| `dodge.DodgeHandler.js` | rejectIfDynamic, post-parse dynamic MPD gate | registry content is cleared so no stale defense survives the rejection |
+| `dodge.DodgeHandler.js` | every legal spelling is caught once dash.js has parsed it | double quotes is rejected |
+| `dodge.DodgeHandler.js` | every legal spelling is caught once dash.js has parsed it | single quotes is rejected |
+| `dodge.DodgeHandler.js` | every legal spelling is caught once dash.js has parsed it | spaces around the equals sign is rejected |
+| `dodge.DodgeHandler.js` | every legal spelling is caught once dash.js has parsed it | type as the last attribute is rejected |
+| `dodge.DodgeHandler.js` | every legal spelling is caught once dash.js has parsed it | an equivalent static MPD is not rejected |
+| `dodge.DodgeHandler.js` | every legal spelling is caught once dash.js has parsed it | an MPD with no type attribute is not rejected |
+
 ---
 
 ## 11. Strict Mode Enforcement
@@ -1424,6 +1460,7 @@ override stalls rather than falling back.
 | R10.12 CMCD warning during defended playback | 3 |
 | R10.13 Warning when strictMode is disabled | 1 |
 | R10.14 cacheInitSegments warning for anonymity set asymmetry | 4 |
+| R10.15 Dynamic MPD rejected after parsing, every strict mode | 18 |
 | R11.1 strictMode = representation enforcement | 8 |
 | R11.2 strictMode = manifest enforcement | 6 |
 | R11.3 strictMode = max enforcement | 5 |
@@ -1437,4 +1474,4 @@ override stalls rather than falling back.
 | R12.3 getStreamStats counts | 3 |
 | R12.4 Error fragment stalling | 3 |
 | R12.5 Range-ignoring origin detection | 15 |
-| **Total** | **578** |
+| **Total** | **596** |

@@ -213,6 +213,12 @@ function ManifestLoader(config) {
                     return;
                 }
 
+                // Dodge: the embedded MPD must be static, and @type is only
+                // reliably readable once it has been parsed.
+                if (dodgeResult && dodgeHandler.rejectIfDynamic(manifest, url)) {
+                    return; // error event already fired by DodgeHandler
+                }
+
                 if (manifest) {
                     manifest.url = dodgeResult ? `${dodgeResult.baseUri}static.mpd` : (actualUrl || url);
 

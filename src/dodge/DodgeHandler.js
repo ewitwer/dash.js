@@ -43,6 +43,7 @@ import DodgeScheduleControllerOverride from './overrides/DodgeScheduleController
 import DodgeXHRLoaderOverride from './overrides/DodgeXHRLoaderOverride.js';
 import Constants from '../streaming/constants/Constants.js';
 import DodgeConstants from './constants/DodgeConstants.js';
+import DashConstants from '../dash/constants/DashConstants.js';
 import { createStrictModeReader, resolveNumericSetting } from './utils/StrictMode.js';
 import FactoryMaker from '../core/FactoryMaker.js';
 import EventBus from '../core/EventBus.js';
@@ -292,6 +293,47 @@ function DodgeHandler(config) {
             mpd: mpd,
             baseUri: extended['start']['base_uri'],
         };
+    }
+
+    /**
+     * Reject a parsed manifest that turned out to be dynamic (live).
+     *
+     * Called by ManifestLoader once DashParser has run, rather than scanned
+     * out of the MPD string during validation. `@type` is an XML attribute,
+     * and `type='dynamic'` and `type = "dynamic"` are both well formed, so
+     * any substring scan has false negatives. Reading the parsed value is
+     * also the only way Dodge and dash.js cannot disagree about whether
+     * the stream is live.
+     *
+     * Live content keeps adding segments that have no cycle in the fixed
+     * cycle array, so the module has nothing to run and nothing to partially
+     * degrade to. This is fatal regardless of `dodge.strictMode`, the same
+     * way an unresolvable quality override is.
+     *
+     * @param {Object} manifest - Manifest as parsed by DashParser.
+     * @param {string} [url] - Original request URL, for the error message.
+     * @returns {boolean} True when rejected and manifest loading must stop.
+     */
+    function rejectIfDynamic(manifest, url) {
+        if (!manifest || manifest.type !== DashConstants.DYNAMIC) {
+            return false;
+        }
+
+        logger.error('Extended manifest at ' + (url || '(unknown URL)') +
+            ' embeds a dynamic (live) MPD, which has no cycles for the segments it will add; blocking playback');
+
+        // Drop what was registered before the parse, so a later load cannot
+        // pick up a defense belonging to a manifest that was refused.
+        defenseRegistry.reset();
+
+        eventBus.trigger(events.INTERNAL_MANIFEST_LOADED, {
+            manifest: null,
+            error: new DashJSError(
+                DodgeErrors.DODGE_DYNAMIC_MANIFEST_ERROR_CODE,
+                DodgeErrors.DODGE_DYNAMIC_MANIFEST_ERROR_MESSAGE + (url || '')
+            )
+        });
+        return true;
     }
 
     function _triggerStrictModeError(url) {
@@ -971,6 +1013,7 @@ function DodgeHandler(config) {
         registerExtensions,
         registerEvents,
         tryProcessExtendedManifest,
+        rejectIfDynamic,
         getStreamStats,
         isDodgeActive,
         isDodgeTrailing,

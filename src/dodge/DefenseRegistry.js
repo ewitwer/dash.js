@@ -576,15 +576,12 @@ function isValidExtendedManifest(manifest, logger) {
         return false;
     }
 
-    // Extended manifests are only valid for static (on-demand) content. Live
-    // MPDs continuously add new segments that have no corresponding cycles in
-    // the fixed cycle array, so the behavior would be undefined.
-    if (manifest['start']['mpd'].includes('type="dynamic"')) {
-        if (logger) {
-            logger.error('Extended manifest rejected: dynamic MPDs are not supported');
-        }
-        return false;
-    }
+    // Extended manifests are only valid for static (on-demand) content, but
+    // that is not checked here. `@type` is an XML attribute, and this function
+    // sees the MPD only as an opaque string, so any check at this point is a
+    // substring scan with false negatives ('dynamic' in single quotes, spaces
+    // around the equals sign). DodgeHandler.rejectIfDynamic() reads the value
+    // DashParser produced instead.
 
     // An extended manifest MUST contain defended stream info: a non-empty
     // array of stream entries. An empty array (or a non-array value) would
