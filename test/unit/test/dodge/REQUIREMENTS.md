@@ -780,7 +780,9 @@ Padding cycles are deliberately *not* excluded from the scan, which is where the
 
 ### R9.4 - Data cycle validation enforces index validity, computes `maxNoPad` and precomputes `cycle.full`
 
-`checkDataCycles()` validates that data cycle indices are non-negative integers, computes `stream.maxNoPad` as the index of the last non-padding cycle, and precomputes `cycle.full` for each data cycle via a right-to-left scan. A cycle is `full = true` when it is the last one for a segment index before that index is buffered (buffer directive that is boolean `true` or non-empty array) - forcing segment assembly at that point - or when it is the last non-padding, non-buffered occurrence of a segment index.
+`checkDataCycles()` validates that data cycle indices are non-negative integers, computes `stream.maxNoPad` as the index of the last non-padding cycle, and precomputes `cycle.full` for each data cycle via a right-to-left scan.
+
+A valid index is **normalized to a number in place**, alongside `padding`, `buffer` and each element of a selective buffer array. `checkDataCycleFields` is shared by the full-manifest, `appendDataCycles` and `finalizeStream` paths, so all three normalize.
 
 | File | Description | Test |
 |---|---|---|
@@ -795,6 +797,17 @@ Padding cycles are deliberately *not* excluded from the scan, which is where the
 | `dodge.DefenseRegistry.js` | isValidExtendedManifest | precomputes cycle.full: selective buffer only marks target indices, remainder marked at next flush |
 | `dodge.DefenseRegistry.js` | isValidExtendedManifest | precomputes cycle.full: empty buffer array does not force full |
 | `dodge.DefenseRegistry.js` | isValidExtendedManifest | precomputes cycle.full: padding cycles are never full |
+| `dodge.DefenseRegistry.js` | data cycle index normalization | a string index is stored as a number |
+| `dodge.DefenseRegistry.js` | data cycle index normalization | a string index with a selective buffer array is accepted |
+| `dodge.DefenseRegistry.js` | data cycle index normalization | full flags with string indices match the numeric equivalent |
+| `dodge.DefenseRegistry.js` | data cycle index normalization | getCycleIndexBySegmentIndex finds a cycle authored with a string index |
+| `dodge.DefenseRegistry.js` | data cycle index normalization, progressive runtime paths | appendDataCycles normalizes a string index |
+| `dodge.DefenseRegistry.js` | data cycle index normalization, progressive runtime paths | finalizeStream normalizes a string index on a trailing padding cycle |
+| `dodge.DefenseRegistry.js` | data cycle index normalization | a numeric index is unchanged |
+| `dodge.DefenseRegistry.js` | data cycle index normalization | a non-numeric string index is still rejected |
+| `dodge.DefenseRegistry.js` | data cycle index normalization | a fractional index is still rejected |
+| `dodge.DefenseRegistry.js` | data cycle index normalization | a negative index is still rejected |
+| `dodge.DefenseRegistry.js` | data cycle index normalization | a numeric-string quality is still stored as a string |
 
 ### R9.5 - Cycle index lookup
 
@@ -1436,7 +1449,7 @@ override stalls rather than falling back.
 | R9.1 Structural validation rejects malformed manifests | 48 |
 | R9.2 Init cycle validation | 16 |
 | R9.3 Init cycle quality validation and explicit buffer requirement | 17 |
-| R9.4 Data cycle validation, maxNoPad, and cycle.full precomputation | 11 |
+| R9.4 Data cycle validation, maxNoPad, and cycle.full precomputation | 22 |
 | R9.5 Cycle index lookup | 4 |
 | R9.6 Registry stores and retrieves manifests | 5 |
 | R9.7 Period field validation | 6 |
@@ -1474,4 +1487,4 @@ override stalls rather than falling back.
 | R12.3 getStreamStats counts | 3 |
 | R12.4 Error fragment stalling | 3 |
 | R12.5 Range-ignoring origin detection | 15 |
-| **Total** | **596** |
+| **Total** | **607** |

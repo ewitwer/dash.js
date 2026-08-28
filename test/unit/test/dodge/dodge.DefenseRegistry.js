@@ -42,7 +42,7 @@ describe('DefenseRegistry', function () {
         it('missing start.base_uri, false', function () {
             expect(isValidExtendedManifest({ start: { mpd: '<MPD/>' }, streams: [] })).to.be.false; // jshint ignore:line
         });
-        
+
         it('dynamic MPD is not gated by structural validation', function () {
             const m = {
                 start: { mpd: '<MPD type="dynamic"/>', base_uri: 'https://x.com/' },
@@ -961,6 +961,109 @@ describe('DefenseRegistry', function () {
         it('non-progressive counterpart of the same unflushed data is valid (implicit end-of-stream flush)', function () {
             const m = { start: { mpd: '<MPD/>', base_uri: 'x' }, streams: [{ label: 'a', init: [{}], data: [{ index: 0 }] }] };
             expect(isValidExtendedManifest(m)).to.be.true; // jshint ignore:line
+        });
+    });
+
+    // data cycle index normalization
+
+    describe('data cycle index normalization', function () {
+
+        function manifest(data, extra) {
+            return {
+                start: { mpd: '<MPD/>', base_uri: 'https://x.com/' },
+                streams: [Object.assign({ label: 'a', init: [{ range: '0-9' }], data: data }, extra || {})]
+            };
+        }
+
+        it('a string index is stored as a number', function () {
+            const m = manifest([{ index: '0', buffer: true }]);
+            expect(isValidExtendedManifest(m)).to.be.true; // jshint ignore:line
+            expect(m.streams[0].data[0].index).to.equal(0);
+        });
+        
+        it('a string index with a selective buffer array is accepted', function () {
+            const m = manifest([
+                { index: '0' },
+                { index: '1', buffer: [0, 1] }
+            ]);
+            expect(isValidExtendedManifest(m)).to.be.true; // jshint ignore:line
+            expect(m.streams[0].data.map(c => c.index)).to.deep.equal([0, 1]);
+        });
+
+        it('full flags with string indices match the numeric equivalent', function () {
+            const cycles = [{ index: 0 }, { index: 0 }, { index: 1, buffer: true }];
+            const strings = [{ index: '0' }, { index: '0' }, { index: '1', buffer: true }];
+
+            const numeric = manifest(cycles);
+            const stringy = manifest(strings);
+            expect(isValidExtendedManifest(numeric)).to.be.true; // jshint ignore:line
+            expect(isValidExtendedManifest(stringy)).to.be.true; // jshint ignore:line
+
+            expect(stringy.streams[0].data.map(c => c.full))
+                .to.deep.equal(numeric.streams[0].data.map(c => c.full));
+            expect(stringy.streams[0].maxNoPad).to.equal(numeric.streams[0].maxNoPad);
+        });
+
+        it('getCycleIndexBySegmentIndex finds a cycle authored with a string index', function () {
+            const m = manifest([{ index: '3', buffer: true }]);
+            expect(isValidExtendedManifest(m)).to.be.true; // jshint ignore:line
+            expect(getCycleIndexBySegmentIndex(m.streams[0], 3)).to.equal(0);
+        });
+
+        // The other two call sites of checkDataCycleFields are the progressive
+        // runtime paths, which validate clones before pushing them.
+        describe('progressive runtime paths', function () {
+            let context, registry;
+
+            beforeEach(function () {
+                context = {};
+                Debug(context).getInstance();
+                registry = DefenseRegistry(context).getInstance();
+                registry.reset();
+                registry.addExtendedManifest(
+                    manifest([{ index: 0, buffer: true }], { progressive: true }));
+            });
+
+            it('appendDataCycles normalizes a string index', function () {
+                expect(registry.appendDataCycles('a', null, [{ index: '1', buffer: true }])).to.be.true; // jshint ignore:line
+                const stream = registry.getDefendedStreamInfo('a');
+                expect(stream.data[1].index).to.equal(1);
+            });
+
+            it('finalizeStream normalizes a string index on a trailing padding cycle', function () {
+                expect(registry.finalizeStream('a', null, [{ index: '0', padding: true }])).to.be.true; // jshint ignore:line
+                const stream = registry.getDefendedStreamInfo('a');
+                expect(stream.data[1].index).to.equal(0);
+            });
+        });
+
+        // Regression pins.
+
+        it('a numeric index is unchanged', function () {
+            const m = manifest([{ index: 4, buffer: true }]);
+            expect(isValidExtendedManifest(m)).to.be.true; // jshint ignore:line
+            expect(m.streams[0].data[0].index).to.equal(4);
+        });
+
+        it('a non-numeric string index is still rejected', function () {
+            expect(isValidExtendedManifest(manifest([{ index: 'abc', buffer: true }]))).to.be.false; // jshint ignore:line
+        });
+
+        it('a fractional index is still rejected', function () {
+            expect(isValidExtendedManifest(manifest([{ index: 1.5, buffer: true }]))).to.be.false; // jshint ignore:line
+        });
+
+        it('a negative index is still rejected', function () {
+            expect(isValidExtendedManifest(manifest([{ index: -1, buffer: true }]))).to.be.false; // jshint ignore:line
+        });
+
+        // quality is deliberately NOT normalized: a numeric string there is a
+        // representation ID, and coercing it would turn it into an array index.
+        it('a numeric-string quality is still stored as a string', function () {
+            const m = manifest([{ index: '0', quality: '2', buffer: true }]);
+            expect(isValidExtendedManifest(m)).to.be.true; // jshint ignore:line
+            expect(m.streams[0].data[0].index).to.equal(0);
+            expect(m.streams[0].data[0].quality).to.equal('2');
         });
     });
 

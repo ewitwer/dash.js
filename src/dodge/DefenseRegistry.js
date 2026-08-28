@@ -257,6 +257,9 @@ function checkDataCycleFields(label, cycle, i, logger) {
         return false;
     }
 
+    // Store the validated value.
+    cycle.index = idx;
+
     // range is optional
     if (range) {
         if (typeof range !== 'string' && !(range instanceof String)) {
