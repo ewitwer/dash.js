@@ -752,7 +752,11 @@ The gate reads the setting through `resolveNumericSetting()` (R11.8) rather than
 
 ### R9.3 - Init cycle quality validation and explicit buffer requirement
 
-Init cycles may carry a `quality` field with the same semantics as on data cycles (non-empty string matched against representation ID, or non-negative integer index into the adaptation set). Numeric strings are accepted as representation IDs with a warning. `full` is derived per quality group via a backward scan (the last cycle per group is `full`). `buffer` is designer-owned; as a backward-compatible default, if no cycle carries a `quality` override and no cycle has `buffer: true`, the last init cycle is auto-buffered.
+Init cycles may carry a `quality` field with the same semantics as on data cycles (non-empty string matched against representation ID, or non-negative integer index into the adaptation set). Numeric strings are accepted as representation IDs with a warning. `buffer` is designer-owned; as a backward-compatible default, if no cycle carries a `quality` override and no cycle has `buffer: true`, the last init cycle is auto-buffered.
+
+`full` is derived per quality group via a backward scan: the last cycle of each group is `full`, **unless that group contains no non-padding cycle**, in which case no cycle in it is `full`.
+
+Padding cycles are deliberately *not* excluded from the scan, which is where the init side departs from `computeDataCycleFull` (R9.4). A trailing padding init cycle carrying `full` is the intended shape: it holds the init segment's release until after the padding, and `_onFragmentLoadingCompleted` never accumulates a padding response, so only the earlier real pieces of that group are assembled. Excluding padding outright would move the release earlier and change the buffer timing.
 
 | File | Description | Test |
 |---|---|---|
@@ -765,6 +769,14 @@ Init cycles may carry a `quality` field with the same semantics as on data cycle
 | `dodge.DefenseRegistry.js` | init-cycle quality validation and explicit buffer requirement | multi-representation init without buffer flags: no default (designer-owned) |
 | `dodge.DefenseRegistry.js` | init-cycle quality validation and explicit buffer requirement | single primary-init group without buffer: defaults buffer: true on last cycle |
 | `dodge.DefenseRegistry.js` | init-cycle quality validation and explicit buffer requirement | explicit multi-representation init: each buffer-flagged cycle is full |
+| `dodge.DefenseRegistry.js` | init cycle full computation with padding cycles | a trailing padding cycle carries full for its group |
+| `dodge.DefenseRegistry.js` | init cycle full computation with padding cycles | only the last of several trailing padding cycles is full |
+| `dodge.DefenseRegistry.js` | init cycle full computation with padding cycles | each quality group ends at its own last cycle |
+| `dodge.DefenseRegistry.js` | init cycle full computation with padding cycles | an all-padding init list marks no cycle full |
+| `dodge.DefenseRegistry.js` | init cycle full computation with padding cycles | a home padding cycle is not full when only an override cycle is real |
+| `dodge.DefenseRegistry.js` | init cycle full computation with padding cycles | an override padding cycle with no real cycle of its own is not full |
+| `dodge.DefenseRegistry.js` | init cycle full computation with padding cycles | the same holds for a numeric quality key |
+| `dodge.DefenseRegistry.js` | init cycle full computation with padding cycles | a padding cycle that is not full still keeps its default buffer flag |
 
 ### R9.4 - Data cycle validation enforces index validity, computes `maxNoPad` and precomputes `cycle.full`
 
@@ -1257,6 +1269,8 @@ The internal `_concatPartialSegments` function combines accumulated partial resp
 | `dodge.DodgeHandler.js` | _concatPartialSegments via _onFragmentLoadingCompleted | unmatched pieces are not consumed: different mediaType is not assembled |
 | `dodge.DodgeHandler.js` | _concatPartialSegments via _onFragmentLoadingCompleted | originalRange is used when available, range overrides it |
 | `dodge.DodgeHandler.js` | _concatPartialSegments via _onFragmentLoadingCompleted | matched pieces are removed from partialSegments array |
+| `dodge.DodgeHandler.js` | _concatPartialSegments via _onFragmentLoadingCompleted | a padding cycle carrying full assembles the earlier real pieces and not its own bytes |
+| `dodge.DodgeHandler.js` | _concatPartialSegments via _onFragmentLoadingCompleted | a padding cycle response is not accumulated as a partial |
 
 ### R12.2 - `_createDataChunk` populates DataChunk correctly
 
@@ -1385,7 +1399,7 @@ override stalls rather than falling back.
 | R8.5 Unset paddingLengthBase is reported | 10 |
 | R9.1 Structural validation rejects malformed manifests | 48 |
 | R9.2 Init cycle validation | 16 |
-| R9.3 Init cycle quality validation and explicit buffer requirement | 9 |
+| R9.3 Init cycle quality validation and explicit buffer requirement | 17 |
 | R9.4 Data cycle validation, maxNoPad, and cycle.full precomputation | 11 |
 | R9.5 Cycle index lookup | 4 |
 | R9.6 Registry stores and retrieves manifests | 5 |
@@ -1418,9 +1432,9 @@ override stalls rather than falling back.
 | R11.6 strictMode validation and fail-closed normalization | 16 |
 | R11.7 Invalid strictMode enforces as max at both levels | 11 |
 | R11.8 Numeric dodge settings validated and fail closed | 23 |
-| R12.1 _concatPartialSegments assembly | 8 |
+| R12.1 _concatPartialSegments assembly | 10 |
 | R12.2 _createDataChunk population | 4 |
 | R12.3 getStreamStats counts | 3 |
 | R12.4 Error fragment stalling | 3 |
 | R12.5 Range-ignoring origin detection | 15 |
-| **Total** | **568** |
+| **Total** | **578** |

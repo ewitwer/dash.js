@@ -33,6 +33,22 @@ import Debug from '../core/Debug.js';
 import FactoryMaker from '../core/FactoryMaker.js';
 
 /**
+ * Group key for an init cycle's `full` computation. Cycles are grouped by the
+ * representation they fetch from, so an override cycle terminates its own run
+ * rather than the home representation's. Undefined and null both mean the home
+ * representation, and the number/string prefixes keep quality `2` distinct from
+ * quality `'2'`, which resolve differently.
+ * @param {Object} cycle - The init cycle to key.
+ * @returns {string} Group key.
+ */
+function _initQualityKey(cycle) {
+    if (cycle.quality === undefined || cycle.quality === null) {
+        return 'home';
+    }
+    return (typeof cycle.quality === 'number' ? 'n:' : 's:') + cycle.quality;
+}
+
+/**
  * Validate init cycles in a stream entry. Check that each range, if
  * present, is a string of the form "<start>-<end>" with start <= end.
  * Check that padding and buffer are booleans, strings true/false, or
@@ -189,12 +205,23 @@ function checkInitCycles(stream, logger) {
         stream['init'][stream['init'].length - 1].buffer = true;
     }
 
+    // A cycle can only be `full` if there are pieces to assemble by the time it
+    // arrives, and DodgeHandler never accumulates a padding response. A group
+    // of nothing but padding therefore has nothing to assemble: marking one of
+    // its cycles `full` runs the assembler over an empty match set, which
+    // computes a negative size and throws. Its cycles are plain padding.
+    const assemblable = new Set();
+    for (let i = 0; i < stream['init'].length; i++) {
+        if (!stream['init'][i].padding) {
+            assemblable.add(_initQualityKey(stream['init'][i]));
+        }
+    }
+
     const seen = new Set();
     for (let i = stream['init'].length - 1; i >= 0; i--) {
         const cycle = stream['init'][i];
-        const key = (cycle.quality === undefined || cycle.quality === null) ? 'home'
-            : (typeof cycle.quality === 'number' ? 'n:' + cycle.quality : 's:' + cycle.quality);
-        if (seen.has(key)) {
+        const key = _initQualityKey(cycle);
+        if (seen.has(key) || !assemblable.has(key)) {
             cycle.full = false;
         } else {
             cycle.full = true;

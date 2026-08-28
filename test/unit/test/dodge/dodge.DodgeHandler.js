@@ -2480,6 +2480,39 @@ describe('DodgeHandler', function () {
             eventBus.off(Events.INIT_FRAGMENT_LOADED, initLoadedSpy, testListener);
         });
 
+        // A padding init cycle after all non-padding ones is the designated
+        // assembly point: it holds the release until after the padding, and
+        // its own response is never accumulated, so only the earlier real
+        // pieces are assembled.
+        it('a padding cycle carrying full assembles the earlier real pieces and not its own bytes', function () {
+            const initLoadedSpy = sinon.spy();
+            eventBus.on(Events.INIT_FRAGMENT_LOADED, initLoadedSpy, testListener);
+
+            const initCycle = { index: NaN, isInitializationRequest: () => true, type: 'InitializationSegment' };
+
+            triggerFragmentLoaded(makeRequest(Object.assign({
+                full: false, buffer: false, range: '0-1'
+            }, initCycle)), new Uint8Array([0x11, 0x22]).buffer);
+
+            triggerFragmentLoaded(makeRequest(Object.assign({
+                full: false, buffer: false, range: '2-3'
+            }, initCycle)), new Uint8Array([0x33, 0x44]).buffer);
+
+            triggerFragmentLoaded(makeRequest(Object.assign({
+                full: true, buffer: true, padding: true, range: '0-49'
+            }, initCycle)), new Uint8Array(50).fill(0xAA).buffer);
+
+            expect(initLoadedSpy.calledOnce).to.be.true; // jshint ignore:line
+            const chunk = initLoadedSpy.firstCall.args[0].chunk;
+            expect(Array.from(chunk.bytes)).to.deep.equal([0x11, 0x22, 0x33, 0x44]);
+        });
+
+        it('a padding cycle response is not accumulated as a partial', function () {
+            triggerFragmentLoaded(makeRequest({ full: false, buffer: false, padding: true, range: '0-3' }),
+                new Uint8Array(4).buffer);
+            expect(handler.getStreamStats('stream-1').partialSegments).to.equal(0);
+        });
+
         it('unmatched pieces are not consumed: different mediaType is not assembled', function () {
             // Partial for audio
             triggerFragmentLoaded(makeRequest({

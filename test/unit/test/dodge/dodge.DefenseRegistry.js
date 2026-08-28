@@ -836,6 +836,76 @@ describe('DefenseRegistry', function () {
         });
     });
 
+    describe('init cycle full computation with padding cycles', function () {
+
+        function init(cycles) {
+            const m = {
+                start: { mpd: '<MPD/>', base_uri: 'x' },
+                streams: [{ label: 'a', init: cycles, data: [{ index: 0, buffer: true }] }]
+            };
+            expect(isValidExtendedManifest(m)).to.be.true; // jshint ignore:line
+            return m.streams[0].init;
+        }
+
+        // Padding responses are never accumulated, so a padding cycle carrying
+        // `full` assembles the earlier real pieces of its own quality group and
+        // releases them after the padding. That is the intended shape and must
+        // keep working.
+
+        it('a trailing padding cycle carries full for its group', function () {
+            const cycles = init([{ range: '0-99' }, { padding: true }]);
+            expect(cycles[0].full).to.be.false; // jshint ignore:line
+            expect(cycles[1].full).to.be.true; // jshint ignore:line
+            expect(cycles[1].buffer).to.be.true; // jshint ignore:line
+        });
+
+        it('only the last of several trailing padding cycles is full', function () {
+            const cycles = init([{ range: '0-99' }, { padding: true }, { padding: true }]);
+            expect(cycles.map(c => c.full)).to.deep.equal([false, false, true]);
+        });
+
+        it('each quality group ends at its own last cycle', function () {
+            const cycles = init([{ range: '0-99', quality: 'v1' }, { range: '100-199' }, { padding: true }]);
+            expect(cycles.map(c => c.full)).to.deep.equal([true, false, true]);
+        });
+
+        // A group with nothing but padding has no pieces to assemble. Marking
+        // one of its cycles `full` runs the assembler over an empty match set,
+        // which computes a negative size and throws inside the
+        // FRAGMENT_LOADING_COMPLETED handler.
+
+        it('an all-padding init list marks no cycle full', function () {
+            const cycles = init([{ padding: true }]);
+            expect(cycles[0].full).to.be.false; // jshint ignore:line
+        });
+
+        it('a home padding cycle is not full when only an override cycle is real', function () {
+            const cycles = init([{ range: '0-99', quality: 'v1' }, { padding: true }]);
+            expect(cycles[0].full).to.be.true; // jshint ignore:line
+            expect(cycles[1].full).to.be.false; // jshint ignore:line
+        });
+
+        // A padding request shaped like an override init fetch is legitimate,
+        // so it stays accepted; it is simply padding, not an assembly point.
+        it('an override padding cycle with no real cycle of its own is not full', function () {
+            const cycles = init([{ range: '0-99' }, { quality: 'v1', padding: true }]);
+            expect(cycles[0].full).to.be.true; // jshint ignore:line
+            expect(cycles[1].full).to.be.false; // jshint ignore:line
+        });
+
+        it('the same holds for a numeric quality key', function () {
+            const cycles = init([{ range: '0-99' }, { quality: 2, padding: true }]);
+            expect(cycles[0].full).to.be.true; // jshint ignore:line
+            expect(cycles[1].full).to.be.false; // jshint ignore:line
+        });
+
+        it('a padding cycle that is not full still keeps its default buffer flag', function () {
+            const cycles = init([{ padding: true }]);
+            expect(cycles[0].buffer).to.be.true; // jshint ignore:line
+            expect(cycles[0].full).to.be.false; // jshint ignore:line
+        });
+    });
+
     describe('progressive flag validation', function () {
         function progressiveManifest(data) {
             return {
