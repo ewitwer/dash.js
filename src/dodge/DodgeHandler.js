@@ -336,6 +336,132 @@ function DodgeHandler(config) {
         return true;
     }
 
+    /**
+     * Reason a representation's byte ranges have to be discovered at runtime,
+     * or null when the MPD pins them.
+     *
+     * Mirrors `DashManifestModel._deriveSegmentInfo` plus the two guards that
+     * decide whether `SegmentBaseLoader` runs: `Representation.hasInitialization()`
+     * and `hasSegments()`. ObjectIron has already pushed an AdaptationSet- or
+     * Period-level `SegmentBase` down onto each representation by this point,
+     * so reading the representation alone is correct.
+     *
+     * @param {Object} representation - Parsed Representation node.
+     * @returns {string|null} Human-readable reason, or null.
+     */
+    function _rangeDiscoveryReason(representation) {
+        let segmentInfo = null;
+        let isByteRange = false;
+
+        if (representation.hasOwnProperty(DashConstants.SEGMENT_BASE)) {
+            segmentInfo = representation[DashConstants.SEGMENT_BASE];
+            isByteRange = true;
+        } else if (representation.hasOwnProperty(DashConstants.SEGMENT_LIST)) {
+            segmentInfo = representation[DashConstants.SEGMENT_LIST];
+        } else if (representation.hasOwnProperty(DashConstants.SEGMENT_TEMPLATE)) {
+            segmentInfo = representation[DashConstants.SEGMENT_TEMPLATE];
+        } else {
+            // No segment info at all: the BaseURL is a single file and both the
+            // init range and the index are probed for.
+            isByteRange = true;
+        }
+
+        const initialization = segmentInfo ? segmentInfo[DashConstants.INITIALIZATION] : null;
+        const hasInitialization = !!segmentInfo && (
+            segmentInfo.hasOwnProperty(DashConstants.INITIALIZATION_MINUS) ||
+            (!!initialization && (initialization.hasOwnProperty(DashConstants.SOURCE_URL) ||
+                initialization.hasOwnProperty(DashConstants.RANGE))));
+
+        const reasons = [];
+        if (!hasInitialization) {
+            reasons.push('no initialization range');
+        }
+        if (isByteRange && !(segmentInfo && segmentInfo.hasOwnProperty(DashConstants.INDEX_RANGE))) {
+            reasons.push('no index range');
+        }
+
+        return reasons.length > 0 ? reasons.join(' and ') : null;
+    }
+
+    /**
+     * Report representations whose byte ranges dash.js has to discover by
+     * probing the media file, and reject them under strict mode 'max'.
+     *
+     * When an MPD does not pin `Initialization@range`, `SegmentBaseLoader`
+     * fetches bytes 0-1500, then 0-3000, then 0-4500, and so on until it finds
+     * `moov`. When it does not pin `SegmentBase@indexRange`, a comparable walk
+     * runs for `sidx`, this time with start offsets taken from the file's own
+     * box layout. Either way, the request sequence is a function of where
+     * those boxes sit in that particular file.
+     *
+     * The requests themselves are padded, since SegmentBaseLoader builds its
+     * loader through FactoryMaker and so inherits the Dodge loader overrides.
+     * What leaks is their number, and for the sidx walk their byte ranges. None
+     * of it is under cycle control: Defense designers should publish explicit
+     * ranges, which reduces this to one fetch per representation with a
+     * range that is already part of the anonymity set.
+     *
+     * Called by ManifestLoader after DashParser has run, because these are
+     * nested XML elements and attributes that no substring scan reads reliably.
+     *
+     * @param {Object} manifest - Manifest as parsed by DashParser.
+     * @param {string} [url] - Original request URL, for the error message.
+     * @returns {boolean} True when rejected and manifest loading must stop.
+     */
+    function rejectIfRangeDiscovery(manifest, url) {
+        const strictMode = getStrictMode();
+        if (strictMode === DodgeConstants.STRICT_MODE.NONE) {
+            return false;
+        }
+
+        const affected = [];
+        const periods = (manifest && manifest[DashConstants.PERIOD]) || [];
+        for (let p = 0; p < periods.length; p++) {
+            const adaptations = periods[p][DashConstants.ADAPTATION_SET] || [];
+            for (let a = 0; a < adaptations.length; a++) {
+                const representations = adaptations[a][DashConstants.REPRESENTATION] || [];
+                for (let r = 0; r < representations.length; r++) {
+                    const reason = _rangeDiscoveryReason(representations[r]);
+                    if (reason) {
+                        affected.push((representations[r].id || '(no id)') + ': ' + reason);
+                    }
+                }
+            }
+        }
+
+        if (affected.length === 0) {
+            return false;
+        }
+
+        const detail = 'representations whose byte ranges dash.js must discover by probing the media file - ' +
+            affected.join(', ') + ' - producing a request sequence that follows the file layout and is outside cycle control';
+
+        if (strictMode === DodgeConstants.STRICT_MODE.MAX) {
+            logger.error('Extended manifest contains ' + detail + ', rejected by strict mode max');
+            _triggerStrictModeError(url);
+            return true;
+        }
+
+        logger.warn('Extended manifest contains ' + detail +
+            ', publish explicit Initialization@range and SegmentBase@indexRange to remove it!');
+        return false;
+    }
+
+    /**
+     * Every gate that has to run on the parsed manifest in one call.
+     *
+     * `ManifestLoader` invokes this immediately after `parser.parse(data)` and
+     * aborts the load when it returns true.
+     *
+     * @param {Object} manifest - Manifest as parsed by DashParser.
+     * @param {string} [url] - Original request URL, for the error message.
+     * @returns {boolean} True when a gate rejected it and loading must stop.
+     */
+    function rejectParsedManifest(manifest, url) {
+        return rejectIfDynamic(manifest, url) ||
+            rejectIfRangeDiscovery(manifest, url);
+    }
+
     function _triggerStrictModeError(url) {
         logger.error('Dodge strict mode is enabled and no valid extended manifest at ' + (url || '(unknown URL)') + ', blocking playback');
         eventBus.trigger(events.INTERNAL_MANIFEST_LOADED, {
@@ -1013,7 +1139,9 @@ function DodgeHandler(config) {
         registerExtensions,
         registerEvents,
         tryProcessExtendedManifest,
+        rejectParsedManifest,
         rejectIfDynamic,
+        rejectIfRangeDiscovery,
         getStreamStats,
         isDodgeActive,
         isDodgeTrailing,

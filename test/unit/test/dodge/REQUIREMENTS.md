@@ -1102,8 +1102,8 @@ Extended manifests describe a fixed cycle array. Live content keeps adding segme
 have no cycle in it, so there is no defense to run and no partial defense to degrade to.
 
 The check reads `manifest.type` after `DashParser` has run, via
-`DodgeHandler.rejectIfDynamic()`, which `ManifestLoader` calls immediately after
-`parser.parse(data)` and only when Dodge processed the source.
+`DodgeHandler.rejectIfDynamic()`, reached through `rejectParsedManifest()` (R10.17) and
+only when Dodge processed the source.
 
 On rejection the handler clears the registry, so a defense registered before the parse
 cannot survive into a later load, and fires `INTERNAL_MANIFEST_LOADED` with
@@ -1131,6 +1131,65 @@ An absent `@type` means static, per the DASH spec, and is not rejected.
 | `dodge.DodgeHandler.js` | every legal spelling is caught once dash.js has parsed it | type as the last attribute is rejected |
 | `dodge.DodgeHandler.js` | every legal spelling is caught once dash.js has parsed it | an equivalent static MPD is not rejected |
 | `dodge.DodgeHandler.js` | every legal spelling is caught once dash.js has parsed it | an MPD with no type attribute is not rejected |
+
+### R10.16 - Representations needing byte-range discovery are reported
+
+When an MPD does not pin `Initialization@range`, `SegmentBaseLoader` fetches bytes 0-1500,
+then 0-3000, then 0-4500, and so on until it finds `moov`. When it does not pin
+`SegmentBase@indexRange`, a comparable walk runs for `sidx`, with start offsets taken from
+the file's own box layout. Either way, the request sequence is a function of where those
+boxes sit in that particular file.
+
+The requests themselves *are* padded: `SegmentBaseLoader` builds its loader through
+`FactoryMaker` (`URLLoader`), so it inherits the Dodge loader overrides. What leaks is
+their number, and for the `sidx` walk their byte ranges. None of it is under cycle control;
+it comes from `SegmentsController` at representation setup, not from `DashHandler`, so
+the extended manifest cannot shape it.
+
+`DodgeHandler.rejectIfRangeDiscovery()` walks the parsed manifest and reports every
+representation that would trigger either probe.
+
+The fix on the manifest side is to publish explicit ranges, which reduces this to one `sidx`
+fetch per representation with a range that is already part of the anonymity set. That
+residual fetch is not shaped, and its response size scales with the segment count.
+
+| File | Description | Test |
+|---|---|---|
+| `dodge.DodgeHandler.js` | rejectIfRangeDiscovery, detection | SegmentBase with neither index range nor initialization range |
+| `dodge.DodgeHandler.js` | rejectIfRangeDiscovery, detection | SegmentBase with an index range but no initialization range |
+| `dodge.DodgeHandler.js` | rejectIfRangeDiscovery, detection | SegmentBase with an initialization range but no index range |
+| `dodge.DodgeHandler.js` | rejectIfRangeDiscovery, detection | a BaseURL-only representation |
+| `dodge.DodgeHandler.js` | rejectIfRangeDiscovery, detection | SegmentBase inherited from the AdaptationSet |
+| `dodge.DodgeHandler.js` | rejectIfRangeDiscovery, detection | one unranged representation among several ranged ones |
+| `dodge.DodgeHandler.js` | rejectIfRangeDiscovery, representations that need no discovery | SegmentBase with both an index range and an initialization range |
+| `dodge.DodgeHandler.js` | rejectIfRangeDiscovery, representations that need no discovery | SegmentTemplate with an initialization attribute |
+| `dodge.DodgeHandler.js` | rejectIfRangeDiscovery, representations that need no discovery | SegmentList with an Initialization sourceURL |
+| `dodge.DodgeHandler.js` | rejectIfRangeDiscovery, representations that need no discovery | no error is fired and nothing is warned |
+| `dodge.DodgeHandler.js` | rejectIfRangeDiscovery, strict mode gradation | max blocks and fires the strict mode error |
+| `dodge.DodgeHandler.js` | rejectIfRangeDiscovery, strict mode gradation | manifest warns and does not block |
+| `dodge.DodgeHandler.js` | rejectIfRangeDiscovery, strict mode gradation | representation warns and does not block |
+| `dodge.DodgeHandler.js` | rejectIfRangeDiscovery, strict mode gradation | strictMode false is silent |
+| `dodge.DodgeHandler.js` | rejectIfRangeDiscovery, strict mode gradation | the diagnostic names the affected representation |
+| `dodge.DodgeHandler.js` | rejectIfRangeDiscovery, strict mode gradation | the diagnostic names every affected representation |
+
+### R10.17 - One post-parse gate is exposed to the dash.js core
+
+`ManifestLoader` calls a single function, `DodgeHandler.rejectParsedManifest()`, immediately
+after `parser.parse(data)`, and aborts the load when it returns true. The composition of
+the individual gates (R10.15, R10.16) lives in `DodgeHandler`, so a new check that needs
+the parsed manifest is added inside Dodge with no further edits to the dash.js core.
+
+Gates run in order and stop at the first rejection. A manifest that is already refused will
+not be played, so the remaining gates have nothing to report on and must not add a second
+diagnostic for the same source.
+
+| File | Description | Test |
+|---|---|---|
+| `dodge.DodgeHandler.js` | rejectParsedManifest, the single post-parse gate | runs the dynamic gate |
+| `dodge.DodgeHandler.js` | rejectParsedManifest, the single post-parse gate | runs the range discovery gate |
+| `dodge.DodgeHandler.js` | rejectParsedManifest, the single post-parse gate | a static manifest with explicit ranges passes both gates |
+| `dodge.DodgeHandler.js` | rejectParsedManifest, the single post-parse gate | stops at the first rejection |
+| `dodge.DodgeHandler.js` | rejectParsedManifest, the single post-parse gate | a non-blocking warning still lets the manifest through |
 
 ---
 
@@ -1474,6 +1533,8 @@ override stalls rather than falling back.
 | R10.13 Warning when strictMode is disabled | 1 |
 | R10.14 cacheInitSegments warning for anonymity set asymmetry | 4 |
 | R10.15 Dynamic MPD rejected after parsing, every strict mode | 18 |
+| R10.16 Byte-range discovery representations reported | 16 |
+| R10.17 Single post-parse gate exposed to the core | 5 |
 | R11.1 strictMode = representation enforcement | 8 |
 | R11.2 strictMode = manifest enforcement | 6 |
 | R11.3 strictMode = max enforcement | 5 |
@@ -1487,4 +1548,4 @@ override stalls rather than falling back.
 | R12.3 getStreamStats counts | 3 |
 | R12.4 Error fragment stalling | 3 |
 | R12.5 Range-ignoring origin detection | 15 |
-| **Total** | **607** |
+| **Total** | **628** |

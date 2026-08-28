@@ -213,9 +213,9 @@ function ManifestLoader(config) {
                     return;
                 }
 
-                // Dodge: the embedded MPD must be static, and @type is only
-                // reliably readable once it has been parsed.
-                if (dodgeResult && dodgeHandler.rejectIfDynamic(manifest, url)) {
+                // Dodge: run every gate that needs the parsed manifest rather
+                // than the raw string.
+                if (dodgeResult && dodgeHandler.rejectParsedManifest(manifest, url)) {
                     return; // error event already fired by DodgeHandler
                 }
 

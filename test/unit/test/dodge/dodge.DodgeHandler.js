@@ -2865,6 +2865,244 @@ describe('DodgeHandler', function () {
         });
     });
 
+    describe('rejectIfRangeDiscovery, unranged SegmentBase detection', function () {
+        let eventBus, settings, handler, loggerSpy, errorSpy, listener;
+        const dashParser = DashParser({}).create({ debug: new DebugMock() });
+
+        // A representation whose init or index ranges are absent forces dash.js
+        // to discover them by probing the media file (SegmentBaseLoader walks
+        // 0-1500, 0-3000, 0-4500 ... until it finds moov, and a comparable walk
+        // for sidx). That request sequence is a function of the file's box
+        // layout, and it runs outside the cycle plan entirely.
+        function mpd(body) {
+            return '<MPD xmlns="urn:mpeg:dash:schema:mpd:2011" type="static" minBufferTime="PT1S">'
+                + '<Period id="p0" duration="PT10S">' + body + '</Period></MPD>';
+        }
+
+        function videoSet(inner, setAttrs) {
+            return '<AdaptationSet mimeType="video/mp4"' + (setAttrs || '') + '>' + inner + '</AdaptationSet>';
+        }
+
+        function rep(id, inner) {
+            return '<Representation id="' + id + '" bandwidth="1000"><BaseURL>v.mp4</BaseURL>'
+                + (inner || '') + '</Representation>';
+        }
+
+        function check(strictMode, xml) {
+            settings.update({ dodge: { strictMode } });
+            return handler.rejectIfRangeDiscovery(dashParser.parse(xml), 'http://example.com/v.json');
+        }
+
+        function warnings() {
+            return loggerSpy.warn.getCalls().filter(c => c.args[0] && c.args[0].indexOf('range') !== -1);
+        }
+
+        beforeEach(function () {
+            eventBus = EventBus(context).getInstance();
+            settings = Settings(context).getInstance();
+
+            loggerSpy = { fatal: sinon.spy(), error: sinon.spy(), warn: sinon.spy(), info: sinon.spy(), debug: sinon.spy() };
+            sinon.stub(Debug(context).getInstance(), 'getLogger').returns(loggerSpy);
+
+            handler = DodgeHandler(context).create({
+                eventBus, events: Events, settings,
+                streamController: null,
+                mediaPlayer: { extend: () => {}, updateSettings: () => {} }
+            });
+
+            listener = {};
+            errorSpy = sinon.spy();
+            eventBus.on(Events.INTERNAL_MANIFEST_LOADED, errorSpy, listener);
+        });
+
+        afterEach(function () {
+            eventBus.off(Events.INTERNAL_MANIFEST_LOADED, errorSpy, listener);
+            settings.update({ dodge: { strictMode: false } });
+            handler.reset();
+        });
+
+        describe('detection', function () {
+            it('SegmentBase with neither index range nor initialization range', function () {
+                expect(check('max', mpd(videoSet(rep('v0', '<SegmentBase/>'))))).to.be.true; // jshint ignore:line
+            });
+
+            // @indexRange present: the sidx fetch is a single ranged request,
+            // but the init range is still discovered by the ladder.
+            it('SegmentBase with an index range but no initialization range', function () {
+                expect(check('max', mpd(videoSet(rep('v0', '<SegmentBase indexRange="0-999"/>'))))).to.be.true; // jshint ignore:line
+            });
+
+            it('SegmentBase with an initialization range but no index range', function () {
+                expect(check('max', mpd(videoSet(rep('v0',
+                    '<SegmentBase><Initialization range="0-855"/></SegmentBase>'))))).to.be.true; // jshint ignore:line
+            });
+
+            // No segment info element at all: dash.js treats the BaseURL as a
+            // single file and probes for both.
+            it('a BaseURL-only representation', function () {
+                expect(check('max', mpd(videoSet(rep('v0'))))).to.be.true; // jshint ignore:line
+            });
+
+            // ObjectIron pushes SegmentBase down from the AdaptationSet, so the
+            // check has to see the inherited element, not just a local one.
+            it('SegmentBase inherited from the AdaptationSet', function () {
+                expect(check('max', mpd(videoSet('<SegmentBase/>' + rep('v0'))))).to.be.true; // jshint ignore:line
+            });
+
+            it('one unranged representation among several ranged ones', function () {
+                const good = '<SegmentBase indexRange="0-99"><Initialization range="0-9"/></SegmentBase>';
+                expect(check('max', mpd(videoSet(rep('v0', good) + rep('v1', '<SegmentBase/>'))))).to.be.true; // jshint ignore:line
+            });
+        });
+
+        describe('representations that need no discovery', function () {
+            it('SegmentBase with both an index range and an initialization range', function () {
+                expect(check('max', mpd(videoSet(rep('v0',
+                    '<SegmentBase indexRange="0-999"><Initialization range="0-855"/></SegmentBase>'))))).to.be.false; // jshint ignore:line
+            });
+
+            it('SegmentTemplate with an initialization attribute', function () {
+                expect(check('max', mpd(videoSet(rep('v0',
+                    '<SegmentTemplate initialization="init.mp4" media="$Number$.m4s" duration="4"/>'))))).to.be.false; // jshint ignore:line
+            });
+
+            it('SegmentList with an Initialization sourceURL', function () {
+                expect(check('max', mpd(videoSet(rep('v0',
+                    '<SegmentList duration="4"><Initialization sourceURL="init.mp4"/>'
+                    + '<SegmentURL media="0.m4s"/></SegmentList>'))))).to.be.false; // jshint ignore:line
+            });
+
+            it('no error is fired and nothing is warned', function () {
+                check('max', mpd(videoSet(rep('v0',
+                    '<SegmentBase indexRange="0-999"><Initialization range="0-855"/></SegmentBase>'))));
+                expect(errorSpy.called).to.be.false; // jshint ignore:line
+                expect(warnings().length).to.equal(0);
+            });
+        });
+
+        describe('strict mode gradation', function () {
+            const UNRANGED = mpd(videoSet(rep('v0', '<SegmentBase/>')));
+
+            it('max blocks and fires the strict mode error', function () {
+                expect(check('max', UNRANGED)).to.be.true; // jshint ignore:line
+                expect(errorSpy.calledOnce).to.be.true; // jshint ignore:line
+                expect(errorSpy.firstCall.args[0].error.code).to.equal(DodgeErrors.DODGE_STRICT_MODE_ERROR_CODE);
+            });
+
+            it('manifest warns and does not block', function () {
+                expect(check('manifest', UNRANGED)).to.be.false; // jshint ignore:line
+                expect(warnings().length).to.equal(1);
+                expect(errorSpy.called).to.be.false; // jshint ignore:line
+            });
+
+            it('representation warns and does not block', function () {
+                expect(check('representation', UNRANGED)).to.be.false; // jshint ignore:line
+                expect(warnings().length).to.equal(1);
+            });
+
+            it('strictMode false is silent', function () {
+                expect(check(false, UNRANGED)).to.be.false; // jshint ignore:line
+                expect(warnings().length).to.equal(0);
+                expect(errorSpy.called).to.be.false; // jshint ignore:line
+            });
+
+            it('the diagnostic names the affected representation', function () {
+                check('representation', UNRANGED);
+                expect(warnings()[0].args[0]).to.include('v0');
+            });
+
+            it('the diagnostic names every affected representation', function () {
+                check('representation', mpd(videoSet(rep('v0', '<SegmentBase/>') + rep('v1', '<SegmentBase/>'))));
+                const msg = warnings()[0].args[0];
+                expect(msg).to.include('v0');
+                expect(msg).to.include('v1');
+            });
+        });
+    });
+
+    describe('rejectParsedManifest, the single post-parse gate', function () {
+        let eventBus, settings, handler, loggerSpy, errorSpy, listener;
+        const dashParser = DashParser({}).create({ debug: new DebugMock() });
+
+        const HEAD = '<MPD xmlns="urn:mpeg:dash:schema:mpd:2011" minBufferTime="PT1S" type=';
+        const RANGED = '<SegmentBase indexRange="0-999"><Initialization range="0-855"/></SegmentBase>';
+
+        function mpd(type, repInner) {
+            return HEAD + '"' + type + '"><Period id="p0" duration="PT10S">'
+                + '<AdaptationSet mimeType="video/mp4">'
+                + '<Representation id="v0" bandwidth="1000"><BaseURL>v.mp4</BaseURL>'
+                + (repInner || '') + '</Representation>'
+                + '</AdaptationSet></Period></MPD>';
+        }
+
+        function gate(strictMode, xml) {
+            settings.update({ dodge: { strictMode } });
+            return handler.rejectParsedManifest(dashParser.parse(xml), 'http://example.com/v.json');
+        }
+
+        function rangeWarnings() {
+            return loggerSpy.warn.getCalls().filter(c => c.args[0] && c.args[0].indexOf('range') !== -1);
+        }
+
+        beforeEach(function () {
+            eventBus = EventBus(context).getInstance();
+            settings = Settings(context).getInstance();
+
+            loggerSpy = { fatal: sinon.spy(), error: sinon.spy(), warn: sinon.spy(), info: sinon.spy(), debug: sinon.spy() };
+            sinon.stub(Debug(context).getInstance(), 'getLogger').returns(loggerSpy);
+
+            handler = DodgeHandler(context).create({
+                eventBus, events: Events, settings,
+                streamController: null,
+                mediaPlayer: { extend: () => {}, updateSettings: () => {} }
+            });
+
+            listener = {};
+            errorSpy = sinon.spy();
+            eventBus.on(Events.INTERNAL_MANIFEST_LOADED, errorSpy, listener);
+        });
+
+        afterEach(function () {
+            eventBus.off(Events.INTERNAL_MANIFEST_LOADED, errorSpy, listener);
+            settings.update({ dodge: { strictMode: false } });
+            handler.reset();
+        });
+
+        // ManifestLoader calls this one function, so a new post-parse check is
+        // added here rather than in the dash.js core.
+
+        it('runs the dynamic gate', function () {
+            expect(gate('representation', mpd('dynamic', RANGED))).to.be.true; // jshint ignore:line
+            expect(errorSpy.firstCall.args[0].error.code).to.equal(DodgeErrors.DODGE_DYNAMIC_MANIFEST_ERROR_CODE);
+        });
+
+        it('runs the range discovery gate', function () {
+            expect(gate('max', mpd('static'))).to.be.true; // jshint ignore:line
+            expect(errorSpy.firstCall.args[0].error.code).to.equal(DodgeErrors.DODGE_STRICT_MODE_ERROR_CODE);
+        });
+
+        it('a static manifest with explicit ranges passes both gates', function () {
+            expect(gate('max', mpd('static', RANGED))).to.be.false; // jshint ignore:line
+            expect(errorSpy.called).to.be.false; // jshint ignore:line
+            expect(rangeWarnings().length).to.equal(0);
+        });
+
+        // A rejected manifest is not played, so the later gates have nothing to
+        // report on and must not add a second diagnostic for the same source.
+        it('stops at the first rejection', function () {
+            expect(gate('representation', mpd('dynamic'))).to.be.true; // jshint ignore:line
+            expect(errorSpy.calledOnce).to.be.true; // jshint ignore:line
+            expect(errorSpy.firstCall.args[0].error.code).to.equal(DodgeErrors.DODGE_DYNAMIC_MANIFEST_ERROR_CODE);
+            expect(rangeWarnings().length).to.equal(0);
+        });
+
+        it('a non-blocking warning still lets the manifest through', function () {
+            expect(gate('representation', mpd('static'))).to.be.false; // jshint ignore:line
+            expect(rangeWarnings().length).to.equal(1);
+            expect(errorSpy.called).to.be.false; // jshint ignore:line
+        });
+    });
+
     describe('_createDataChunk via _onFragmentLoadingCompleted', function () {
         let handler, eventBus, settings;
         let loadedSpy, testListener;
