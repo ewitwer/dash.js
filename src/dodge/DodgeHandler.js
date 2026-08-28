@@ -637,6 +637,24 @@ function DodgeHandler(config) {
             return;
         }
 
+        // An origin that ignores the Range header answers a range request with
+        // the whole resource and a 200, which HTTPLoader accepts as success (it
+        // tests for 2xx, never for 206, and reads no Content-Range). Assembling
+        // from that body overruns the buffer sized from the declared range and
+        // throws out of this handler, which EventBus does not guard.
+        //
+        // The crash is the smaller half. If ranges are not being served, every
+        // cycle fetches the whole segment, so the defense is broken. Stall rather
+        // than play on: a defense that cannot run correctly must not run at all.
+        const requested = _parseRequestRange(request);
+        const requestedLength = requested.end - requested.start + 1;
+        if (requested.end >= requested.start && bytes.byteLength > requestedLength) {
+            logger.error(request.mediaType + ' response is ' + bytes.byteLength + ' bytes for a ' +
+                requestedLength + '-byte range request; the origin ignored the Range header, so cycles are ' +
+                'fetching whole segments and the defense is not running. Stalling. URL: ' + request.url);
+            return;
+        }
+
         const state = _getStreamState(strInfo.id);
         const { partialSegments, pendingInit, pendingMedia } = state;
 
@@ -839,6 +857,36 @@ function DodgeHandler(config) {
         }
     }
 
+    /**
+     * Byte range a request asked for, using the same precedence the assembler
+     * uses: `originalRange` from the MPD first, then the cycle's `range`,
+     * which overrides it. An omitted start bound means 0 and an omitted end
+     * bound means "not pinned", matching the range semantics DefenseRegistry
+     * documents ("-855" is 0 through 855, "44-" runs to the end).
+     *
+     * @param {Object} request - The FragmentRequest to read.
+     * @returns {{start: number, end: number}} Bounds, with `end` of -1 when
+     *          the request did not pin one.
+     */
+    function _parseRequestRange(request) {
+        let start = 0;
+        let end = -1;
+
+        const sources = [request.originalRange, request.range];
+        for (let i = 0; i < sources.length; i++) {
+            if (!sources[i]) {
+                continue;
+            }
+            const tokens = String(sources[i]).split('-');
+            const s = parseInt(tokens[0], 10);
+            const e = parseInt(tokens[1], 10);
+            if (!isNaN(s)) { start = s; }
+            if (!isNaN(e)) { end = e; }
+        }
+
+        return { start, end };
+    }
+
     // Combine partial responses for a given segment index / representation and
     // remove them from the partialSegments array.
     function _concatPartialSegments(partialSegments, index, representationId, mediaType) {
@@ -855,24 +903,9 @@ function DodgeHandler(config) {
                 mediaType == piece.request.mediaType &&
                 representationId == piece.request.representation.id) {
 
-                let rangeStart = 0;
-                let rangeEnd = -1;
-
-                if (piece.request.originalRange) {
-                    const rangeTokens = piece.request.originalRange.split('-');
-                    const ors = parseInt(rangeTokens[0], 10);
-                    const ore = parseInt(rangeTokens[1], 10);
-                    if (!isNaN(ors)) { rangeStart = ors; }
-                    if (!isNaN(ore)) { rangeEnd = ore; }
-                }
-
-                if (piece.request.range) {
-                    const rangeTokens = piece.request.range.split('-');
-                    const rs = parseInt(rangeTokens[0], 10);
-                    const re = parseInt(rangeTokens[1], 10);
-                    if (!isNaN(rs)) { rangeStart = rs; }
-                    if (!isNaN(re)) { rangeEnd = re; }
-                }
+                const parsedRange = _parseRequestRange(piece.request);
+                const rangeStart = parsedRange.start;
+                let rangeEnd = parsedRange.end;
 
                 if (rangeEnd < 0) {
                     rangeEnd = rangeStart + piece.response.byteLength - 1;

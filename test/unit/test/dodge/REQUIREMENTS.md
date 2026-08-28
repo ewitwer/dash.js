@@ -1245,7 +1245,7 @@ module scope.
 
 ### R12.1 - `_concatPartialSegments` assembles byte ranges correctly
 
-The internal `_concatPartialSegments` function combines accumulated partial responses into a single `Uint8Array`. It matches pieces by `index` (with `NaN` for init segments), `mediaType`, and `representation.id`. Range parsing uses `originalRange` first, then `range` (which overrides). When no valid range end is found, it computes `rangeStart + byteLength - 1`. Pieces are placed at their range offset in the result buffer; gaps are filled with zeros - but there should never be any gaps. Matched pieces are removed from the `partialSegments` array.
+The internal `_concatPartialSegments` function combines accumulated partial responses into a single `Uint8Array`. It matches pieces by `index` (with `NaN` for init segments), `mediaType`, and `representation.id`. Range parsing uses `originalRange` first, then `range` (which overrides), through the shared `_parseRequestRange()` helper (R12.5). When no valid range end is found, it computes `rangeStart + byteLength - 1`. Pieces are placed at their range offset in the result buffer; gaps are filled with zeros - but there should never be any gaps. Matched pieces are removed from the `partialSegments` array.
 
 | File | Description | Test |
 |---|---|---|
@@ -1288,6 +1288,43 @@ When `_onFragmentLoadingCompleted` receives an errored Dodge request (`e.error` 
 | `dodge.DodgeHandler.js` | Error fragment stalling, _onFragmentLoadingCompleted | errored Dodge request does not fire any Dodge events |
 | `dodge.DodgeHandler.js` | Error fragment stalling, _onFragmentLoadingCompleted | errored Dodge request does not accumulate partial segments |
 | `dodge.DodgeHandler.js` | Error fragment stalling, _onFragmentLoadingCompleted | errored vanilla request passes through without sender nulling |
+
+### R12.5 - A response longer than its declared range stalls the stream
+
+An origin that ignores the `Range` header answers a ranged request with the whole resource
+and a 200. `HTTPLoader` accepts it: it tests for 2xx, never for 206, and reads no
+`Content-Range`. Two things then go wrong, and the second is the serious one.
+
+`_concatPartialSegments` sizes its output buffer from the declared range, so writing a
+longer body into it throws a `RangeError` out of `_onFragmentLoadingCompleted`.
+`EventBus.trigger` has no try/catch around handler invocation, so the throw skips every
+remaining listener and wedges the player. More importantly, if ranges are not being served
+then every cycle is fetching the whole segment: the range-based defense is not running and
+the wire pattern is the undefended one, while playback looks healthy.
+
+`_onFragmentLoadingCompleted` therefore compares the response length against the declared
+range as soon as the response arrives, before any state is touched, and stalls on a
+mismatch: it logs at error level and returns with `e.sender` already nulled, firing no
+events and accumulating no partial. This mirrors R2.10, where an unresolvable quality
+override stalls rather than falling back.
+
+| File | Description | Test |
+|---|---|---|
+| `dodge.DodgeHandler.js` | Range-ignoring origin detection, _onFragmentLoadingCompleted | a full request whose response exceeds its range does not throw |
+| `dodge.DodgeHandler.js` | Range-ignoring origin detection, _onFragmentLoadingCompleted | a partial request whose response exceeds its range does not throw |
+| `dodge.DodgeHandler.js` | Range-ignoring origin detection, _onFragmentLoadingCompleted | an over-length response fires no fragment loaded event |
+| `dodge.DodgeHandler.js` | Range-ignoring origin detection, _onFragmentLoadingCompleted | an over-length response logs an error naming the URL and both sizes |
+| `dodge.DodgeHandler.js` | Range-ignoring origin detection, _onFragmentLoadingCompleted | an over-length response stalls by nulling e.sender |
+| `dodge.DodgeHandler.js` | Range-ignoring origin detection, _onFragmentLoadingCompleted | an over-length response is not accumulated as a partial |
+| `dodge.DodgeHandler.js` | Range-ignoring origin detection, _onFragmentLoadingCompleted | a response exactly matching the declared range is accepted |
+| `dodge.DodgeHandler.js` | Range-ignoring origin detection, _onFragmentLoadingCompleted | a response shorter than the declared range is accepted |
+| `dodge.DodgeHandler.js` | Range-ignoring origin detection, _onFragmentLoadingCompleted | an open-ended range pins no length and is not checked |
+| `dodge.DodgeHandler.js` | Range-ignoring origin detection, _onFragmentLoadingCompleted | a request with no range at all is not checked |
+| `dodge.DodgeHandler.js` | Range-ignoring origin detection, _onFragmentLoadingCompleted | a range with only an end bound is checked from 0 |
+| `dodge.DodgeHandler.js` | Range-ignoring origin detection, _onFragmentLoadingCompleted | originalRange is checked when range is absent |
+| `dodge.DodgeHandler.js` | Range-ignoring origin detection, _onFragmentLoadingCompleted | range overrides originalRange for the check |
+| `dodge.DodgeHandler.js` | Range-ignoring origin detection, _onFragmentLoadingCompleted | an init segment whose response exceeds its range is rejected |
+| `dodge.DodgeHandler.js` | Range-ignoring origin detection, _onFragmentLoadingCompleted | a vanilla request is not checked and keeps its sender |
 
 ---
 
@@ -1385,4 +1422,5 @@ When `_onFragmentLoadingCompleted` receives an errored Dodge request (`e.error` 
 | R12.2 _createDataChunk population | 4 |
 | R12.3 getStreamStats counts | 3 |
 | R12.4 Error fragment stalling | 3 |
-| **Total** | **553** |
+| R12.5 Range-ignoring origin detection | 15 |
+| **Total** | **568** |

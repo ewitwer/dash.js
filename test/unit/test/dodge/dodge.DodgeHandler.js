@@ -2534,6 +2534,186 @@ describe('DodgeHandler', function () {
         });
     });
 
+    describe('Range-ignoring origin detection, _onFragmentLoadingCompleted', function () {
+        let handler, eventBus, settings, loggerSpy;
+        let loadedSpy, initLoadedSpy, partialSpy, testListener;
+
+        function makeRequest(overrides) {
+            return Object.assign({
+                full: false, padding: false, buffer: false, trail: false,
+                index: 0, mediaType: 'video', type: 'MediaSegment', quality: 0,
+                duration: 4, startTime: 0, mediaStartTime: 0,
+                originalRange: null, range: null, bandwidth: 1000,
+                url: 'https://example.com/seg.m4s',
+                representation: {
+                    id: 'rep0', bandwidth: 1000,
+                    adaptation: { index: 0, period: { index: 0, start: 0, duration: 100 } },
+                    mediaInfo: { type: 'video', streamInfo: { id: 'stream-1' } }
+                },
+                isInitializationRequest: () => false,
+            }, overrides || {});
+        }
+
+        function triggerFragmentLoaded(request, byteCount) {
+            const e = {
+                sender: { context: 'test' },
+                request,
+                response: new Uint8Array(byteCount).fill(0x7f).buffer,
+                error: null,
+            };
+            eventBus.trigger(Events.FRAGMENT_LOADING_COMPLETED, e, { streamId: 'stream-1' });
+            return e;
+        }
+
+        function rangeErrors() {
+            return loggerSpy.error.getCalls().filter(
+                c => c.args[0] && c.args[0].indexOf('Range header') !== -1
+            );
+        }
+
+        beforeEach(function () {
+            eventBus = EventBus(context).getInstance();
+            settings = Settings(context).getInstance();
+
+            loggerSpy = { fatal: sinon.spy(), error: sinon.spy(), warn: sinon.spy(), info: sinon.spy(), debug: sinon.spy() };
+            sinon.stub(Debug(context).getInstance(), 'getLogger').returns(loggerSpy);
+
+            handler = DodgeHandler(context).create({
+                eventBus, events: Events, settings,
+                streamController: null,
+                mediaPlayer: { extend: () => {} }
+            });
+            handler.registerEvents();
+
+            testListener = {};
+            loadedSpy = sinon.spy();
+            initLoadedSpy = sinon.spy();
+            partialSpy = sinon.spy();
+            eventBus.on(Events.MEDIA_FRAGMENT_LOADED, loadedSpy, testListener);
+            eventBus.on(Events.INIT_FRAGMENT_LOADED, initLoadedSpy, testListener);
+            eventBus.on(Events.MEDIA_FRAGMENT_PARTIAL, partialSpy, testListener);
+        });
+
+        afterEach(function () {
+            eventBus.off(Events.MEDIA_FRAGMENT_LOADED, loadedSpy, testListener);
+            eventBus.off(Events.INIT_FRAGMENT_LOADED, initLoadedSpy, testListener);
+            eventBus.off(Events.MEDIA_FRAGMENT_PARTIAL, partialSpy, testListener);
+            handler.reset();
+        });
+
+        // An origin that ignores Range answers with the whole resource and a
+        // 200, which HTTPLoader accepts as success. Assembling from it throws
+        // out of an unguarded event handler, and, worse, means every cycle is
+        // fetching the entire segment.
+
+        it('a full request whose response exceeds its range does not throw', function () {
+            expect(() => triggerFragmentLoaded(
+                makeRequest({ full: true, buffer: true, range: '0-3' }), 5000
+            )).to.not.throw();
+        });
+
+        it('a partial request whose response exceeds its range does not throw', function () {
+            expect(() => triggerFragmentLoaded(
+                makeRequest({ full: false, buffer: false, range: '0-3' }), 5000
+            )).to.not.throw();
+        });
+
+        it('an over-length response fires no fragment loaded event', function () {
+            triggerFragmentLoaded(makeRequest({ full: true, buffer: true, range: '0-3' }), 5000);
+            expect(loadedSpy.called).to.be.false; // jshint ignore:line
+            expect(partialSpy.called).to.be.false; // jshint ignore:line
+        });
+
+        it('an over-length response logs an error naming the URL and both sizes', function () {
+            triggerFragmentLoaded(makeRequest({ full: true, buffer: true, range: '0-3' }), 5000);
+            expect(rangeErrors().length).to.equal(1);
+            const msg = rangeErrors()[0].args[0];
+            expect(msg).to.include('https://example.com/seg.m4s');
+            expect(msg).to.include('5000');
+            expect(msg).to.include('4');
+        });
+
+        it('an over-length response stalls by nulling e.sender', function () {
+            const e = triggerFragmentLoaded(makeRequest({ full: true, buffer: true, range: '0-3' }), 5000);
+            expect(e.sender).to.be.null; // jshint ignore:line
+        });
+
+        // The oversized body must not enter partialSegments: a later cycle at
+        // the same index would otherwise assemble from it.
+        it('an over-length response is not accumulated as a partial', function () {
+            triggerFragmentLoaded(makeRequest({ full: false, buffer: false, range: '0-3' }), 5000);
+            expect(handler.getStreamStats('stream-1').partialSegments).to.equal(0);
+        });
+
+        it('a response exactly matching the declared range is accepted', function () {
+            triggerFragmentLoaded(makeRequest({ full: true, buffer: true, range: '0-3' }), 4);
+            expect(loadedSpy.calledOnce).to.be.true; // jshint ignore:line
+            expect(rangeErrors().length).to.equal(0);
+        });
+
+        // A range that runs past the end of the resource is answered with a
+        // short 206 and a correct Content-Range. That is a well-behaved origin.
+        it('a response shorter than the declared range is accepted', function () {
+            triggerFragmentLoaded(makeRequest({ full: true, buffer: true, range: '0-99' }), 10);
+            expect(loadedSpy.calledOnce).to.be.true; // jshint ignore:line
+            expect(rangeErrors().length).to.equal(0);
+        });
+
+        it('an open-ended range pins no length and is not checked', function () {
+            triggerFragmentLoaded(makeRequest({ full: true, buffer: true, range: '44-' }), 5000);
+            expect(loadedSpy.calledOnce).to.be.true; // jshint ignore:line
+            expect(rangeErrors().length).to.equal(0);
+        });
+
+        it('a request with no range at all is not checked', function () {
+            triggerFragmentLoaded(makeRequest({ full: true, buffer: true, range: null, originalRange: null }), 5000);
+            expect(loadedSpy.calledOnce).to.be.true; // jshint ignore:line
+            expect(rangeErrors().length).to.equal(0);
+        });
+
+        // An omitted start bound means 0, matching the range semantics
+        // DefenseRegistry documents and _concatPartialSegments implements.
+        it('a range with only an end bound is checked from 0', function () {
+            triggerFragmentLoaded(makeRequest({ full: true, buffer: true, range: '-3' }), 5000);
+            expect(rangeErrors().length).to.equal(1);
+            expect(loadedSpy.called).to.be.false; // jshint ignore:line
+        });
+
+        it('originalRange is checked when range is absent', function () {
+            triggerFragmentLoaded(makeRequest({ full: true, buffer: true, range: null, originalRange: '0-3' }), 5000);
+            expect(rangeErrors().length).to.equal(1);
+            expect(loadedSpy.called).to.be.false; // jshint ignore:line
+        });
+
+        // range overrides originalRange in _concatPartialSegments, so the
+        // check has to use the same precedence or the two disagree.
+        it('range overrides originalRange for the check', function () {
+            triggerFragmentLoaded(makeRequest({ full: true, buffer: true, originalRange: '0-3', range: '0-4999' }), 5000);
+            expect(rangeErrors().length).to.equal(0);
+            expect(loadedSpy.calledOnce).to.be.true; // jshint ignore:line
+        });
+
+        it('an init segment whose response exceeds its range is rejected', function () {
+            triggerFragmentLoaded(makeRequest({
+                full: true, buffer: true, range: '0-855',
+                index: NaN, type: 'InitializationSegment',
+                isInitializationRequest: () => true,
+            }), 5000);
+            expect(rangeErrors().length).to.equal(1);
+            expect(initLoadedSpy.called).to.be.false; // jshint ignore:line
+        });
+
+        // Vanilla requests return before the check, so a non-Dodge SegmentBase
+        // fetch keeps whatever behavior dash.js gives it.
+        it('a vanilla request is not checked and keeps its sender', function () {
+            const e = triggerFragmentLoaded(makeRequest({
+                full: undefined, padding: undefined, range: '0-3'
+            }), 5000);
+            expect(e.sender).to.not.be.null; // jshint ignore:line
+            expect(rangeErrors().length).to.equal(0);
+        });
+    });
+
     describe('_createDataChunk via _onFragmentLoadingCompleted', function () {
         let handler, eventBus, settings;
         let loadedSpy, testListener;
