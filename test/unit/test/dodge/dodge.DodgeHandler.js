@@ -1163,7 +1163,7 @@ describe('DodgeHandler', function () {
             }
 
             const negativeWarnings = loggerSpy.warn.getCalls().filter(
-                c => c.args[0] && c.args[0].indexOf('scheduleWaitRandom is negative') !== -1
+                c => c.args[0] && c.args[0].indexOf('scheduleWaitRandom is not a non-negative number') !== -1
             );
             expect(negativeWarnings.length).to.equal(1);
         });
@@ -1193,9 +1193,60 @@ describe('DodgeHandler', function () {
             }
 
             const negativeWarnings = loggerSpy.warn.getCalls().filter(
-                c => c.args[0] && c.args[0].indexOf('scheduleWaitBase is negative') !== -1
+                c => c.args[0] && c.args[0].indexOf('scheduleWaitBase is not a non-negative number') !== -1
             );
             expect(negativeWarnings.length).to.equal(1);
+        });
+
+        it('with a non-numeric scheduleWaitBase, delay is a finite number and warns exactly once', function () {
+            const loggerSpy = { fatal: sinon.spy(), error: sinon.spy(), warn: sinon.spy(), info: sinon.spy(), debug: sinon.spy() };
+            sinon.stub(Debug(context).getInstance(), 'getLogger').returns(loggerSpy);
+
+            const timerSpy = sinon.spy();
+            makeHandler([{
+                getScheduleController: () => ({ startScheduleTimer: timerSpy, setShouldCheckPlaybackQuality: sinon.spy() }),
+                getType: () => 'video',
+                getBufferController: () => ({ onPaddingLoaded: sinon.spy() }),
+            }]);
+
+            settings.update({ dodge: { scheduleWaitBase: 'abc', scheduleWaitRandom: 50 } });
+            for (let i = 0; i < 10; i++) {
+                timerSpy.resetHistory();
+                eventBus.trigger(Events.MEDIA_FRAGMENT_PARTIAL,
+                    { index: i, suppress: false, representation: {}, quality: 0, byteLength: 100, trail: false, buffer: false },
+                    { streamId: 'stream-1', mediaType: 'video' }
+                );
+                // Without validation this is NaN, which setTimeout runs as 0:
+                // the random walk collapses into back-to-back requests.
+                const delay = timerSpy.firstCall.args[0];
+                expect(Number.isFinite(delay)).to.be.true; // jshint ignore:line
+                expect(delay).to.be.at.least(0);
+                expect(delay).to.be.at.most(50);
+            }
+
+            const warnings = loggerSpy.warn.getCalls().filter(
+                c => c.args[0] && c.args[0].indexOf('scheduleWaitBase is not a non-negative number') !== -1
+            );
+            expect(warnings.length).to.equal(1);
+        });
+
+        it('with a non-numeric scheduleWaitRandom, delay is exactly scheduleWaitBase', function () {
+            const timerSpy = sinon.spy();
+            makeHandler([{
+                getScheduleController: () => ({ startScheduleTimer: timerSpy, setShouldCheckPlaybackQuality: sinon.spy() }),
+                getType: () => 'video',
+                getBufferController: () => ({ onPaddingLoaded: sinon.spy() }),
+            }]);
+
+            settings.update({ dodge: { scheduleWaitBase: 200, scheduleWaitRandom: 'abc' } });
+            for (let i = 0; i < 10; i++) {
+                timerSpy.resetHistory();
+                eventBus.trigger(Events.MEDIA_FRAGMENT_PARTIAL,
+                    { index: i, suppress: false, representation: {}, quality: 0, byteLength: 100, trail: false, buffer: false },
+                    { streamId: 'stream-1', mediaType: 'video' }
+                );
+                expect(timerSpy.firstCall.args[0]).to.equal(200);
+            }
         });
 
         it('_schedule only targets the stream processor matching the event mediaType', function () {
@@ -2240,6 +2291,39 @@ describe('DodgeHandler', function () {
             // applyRequestPadding clamps a negative value to 0, so it disables
             // padding just as surely as 0 does.
             const handler = createDodgeHandler(-1, 'representation');
+            const result = handler.tryProcessExtendedManifest(JSON.stringify(makeManifest()), 'test.exmfst.json');
+            expect(result).to.exist; // jshint ignore:line
+            expect(hasPaddingWarn()).to.be.true; // jshint ignore:line
+            handler.reset();
+        });
+
+        // A value that is not a usable number disables padding exactly as 0
+        // does, but every comparison against it is false, so a raw `<= 0` gate
+        // waves it through. The gate exists to catch "padding is off", so it
+        // has to catch these too.
+        it('non-numeric paddingLengthBase under max: rejects the manifest', function () {
+            const handler = createDodgeHandler('abc', 'max');
+            const result = handler.tryProcessExtendedManifest(JSON.stringify(makeManifest()), 'test.exmfst.json');
+            expect(result).to.be.false; // jshint ignore:line
+            handler.reset();
+        });
+
+        it('NaN paddingLengthBase under max: rejects the manifest', function () {
+            const handler = createDodgeHandler(NaN, 'max');
+            const result = handler.tryProcessExtendedManifest(JSON.stringify(makeManifest()), 'test.exmfst.json');
+            expect(result).to.be.false; // jshint ignore:line
+            handler.reset();
+        });
+
+        it('numeric string paddingLengthBase under max: rejects the manifest', function () {
+            const handler = createDodgeHandler('1024', 'max');
+            const result = handler.tryProcessExtendedManifest(JSON.stringify(makeManifest()), 'test.exmfst.json');
+            expect(result).to.be.false; // jshint ignore:line
+            handler.reset();
+        });
+
+        it('non-numeric paddingLengthBase under representation: warns and still accepts', function () {
+            const handler = createDodgeHandler('abc', 'representation');
             const result = handler.tryProcessExtendedManifest(JSON.stringify(makeManifest()), 'test.exmfst.json');
             expect(result).to.exist; // jshint ignore:line
             expect(hasPaddingWarn()).to.be.true; // jshint ignore:line

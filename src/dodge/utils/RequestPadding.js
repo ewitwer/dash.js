@@ -29,8 +29,10 @@
  *  POSSIBILITY OF SUCH DAMAGE.
  */
 
-let warnedNegativeBase = false;
-let warnedNegativeRandom = false;
+import { resolveNumericSetting } from './StrictMode.js';
+
+let warnedBase = false;
+let warnedRandom = false;
 
 /**
  * If this is a Dodge request and `dodge.paddingLengthBase` is non-zero, extend
@@ -51,20 +53,20 @@ let warnedNegativeRandom = false;
 export function applyRequestPadding(commonMediaRequest, settings, logger) {
     const dodgeSettings = settings.get().dodge || {};
 
-    const rawPaddingLengthBase = dodgeSettings.paddingLengthBase || 0;
-    if (rawPaddingLengthBase < 0 && !warnedNegativeBase) {
-        logger.warn('dodge.paddingLengthBase is negative (' + rawPaddingLengthBase + '), treating as 0 - requests will not be padded!');
-        warnedNegativeBase = true;
+    const base = resolveNumericSetting(settings, 'paddingLengthBase');
+    if (!base.valid && !warnedBase) {
+        logger.warn(base.message + ' - requests will not be padded!');
+        warnedBase = true;
     }
 
-    const rawPaddingLengthRandom = dodgeSettings.paddingLengthRandom || 0;
-    if (rawPaddingLengthRandom < 0 && !warnedNegativeRandom) {
-        logger.warn('dodge.paddingLengthRandom is negative (' + rawPaddingLengthRandom + '), treating as 0 - requests will be padded to a fixed size');
-        warnedNegativeRandom = true;
+    const random = resolveNumericSetting(settings, 'paddingLengthRandom');
+    if (!random.valid && !warnedRandom) {
+        logger.warn(random.message + ' - requests will be padded to a fixed size');
+        warnedRandom = true;
     }
 
-    const paddingLengthBase = Math.max(0, rawPaddingLengthBase);
-    const paddingLengthRandom = Math.max(0, rawPaddingLengthRandom);
+    const paddingLengthBase = base.value;
+    const paddingLengthRandom = random.value;
 
     const queryParam = dodgeSettings.queryParam || 'padding';
 

@@ -60,6 +60,41 @@ describe('applyRequestPadding', function () {
         expect(req.url).to.equal(url);
     });
 
+    // A value that is not a usable number reaches the arithmetic as NaN, and
+    // every NaN comparison is false, so each guard in applyRequestPadding falls
+    // through and the request goes out unpadded. This is the first test in the
+    // file to pass an unusable base, so it owns the module-scoped warn-once
+    // flag for paddingLengthBase.
+    it('non-numeric paddingLengthBase: URL is not modified and warns exactly once', function () {
+        const url = 'https://example.com/seg.m4s?padding=abc';
+        const logger = makeLogger();
+        for (let i = 0; i < 5; i++) {
+            const req = makeRequest(url, {});
+            applyRequestPadding(req, makeSettings('abc'), logger);
+            expect(req.url).to.equal(url);
+        }
+        const warnings = logger.warn.getCalls().filter(
+            c => c.args[0] && c.args[0].indexOf('paddingLengthBase') !== -1
+        );
+        expect(warnings.length).to.equal(1);
+    });
+
+    it('NaN paddingLengthBase: URL is not modified', function () {
+        const url = 'https://example.com/seg.m4s?padding=abc';
+        const req = makeRequest(url, {});
+        applyRequestPadding(req, makeSettings(NaN), makeLogger());
+        expect(req.url).to.equal(url);
+    });
+
+    // A quoted number is the misconfiguration most likely to look correct in a
+    // config file. It must disable padding loudly rather than be coerced.
+    it('numeric string paddingLengthBase: URL is not modified', function () {
+        const url = 'https://example.com/seg.m4s?padding=abc';
+        const req = makeRequest(url, {});
+        applyRequestPadding(req, makeSettings('4096'), makeLogger());
+        expect(req.url).to.equal(url);
+    });
+
     it('paddingLengthBase < 0: URL is not modified', function () {
         const url = 'https://example.com/seg.m4s?padding=abc';
         const req = makeRequest(url, {});
@@ -143,9 +178,21 @@ describe('applyRequestPadding', function () {
         // at most one warning about the negative value. (Prior tests in this
         // file never pass a negative random, so this is the first trip.)
         const negativeWarnings = logger.warn.getCalls().filter(
-            c => c.args[0] && c.args[0].indexOf('paddingLengthRandom is negative') !== -1
+            c => c.args[0] && c.args[0].indexOf('paddingLengthRandom is not a non-negative number') !== -1
         );
         expect(negativeWarnings.length).to.equal(1);
+    });
+
+    // The module-scoped warn-once flag for paddingLengthRandom was already
+    // spent by the negative-value test above, so this pins the clamp only.
+    it('with a non-numeric paddingLengthRandom, wire size is deterministically paddingLengthBase', function () {
+        const base = 300;
+        for (let i = 0; i < 10; i++) {
+            const url = 'https://example.com/seg.m4s?padding=abc';
+            const req = makeRequest(url, {});
+            applyRequestPadding(req, makeSettings(base, undefined, 'abc'), makeLogger());
+            expect(wireSize(req)).to.equal(base);
+        }
     });
 
     it('with paddingLengthRandom = 0, wire size is deterministically paddingLengthBase', function () {

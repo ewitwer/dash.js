@@ -529,7 +529,7 @@ The event bus does not await its handlers, so a flush that releases several segm
 
 ### R7.1 - Schedule delay is bounded to `[scheduleWaitBase, scheduleWaitBase + scheduleWaitRandom]`
 
-`_getScheduleWait()` returns `scheduleWaitBase + Math.round(Math.random() * scheduleWaitRandom)`. With `scheduleWaitRandom = 0`, the delay is deterministically equal to `scheduleWaitBase`. A negative `scheduleWaitRandom` or `scheduleWaitBase` is clamped to 0 and logged once per DodgeHandler / DodgeScheduleControllerOverride instance.
+`_getScheduleWait()` returns `scheduleWaitBase + Math.round(Math.random() * scheduleWaitRandom)`. With `scheduleWaitRandom = 0`, the delay is deterministically equal to `scheduleWaitBase`. Both settings are read through `resolveNumericSetting()` (R11.8), so an unusable value - negative, NaN, or a quoted number - resolves to 0 and is logged once per DodgeHandler / DodgeScheduleControllerOverride instance. The delay is therefore always a finite number: an unvalidated NaN would reach `setTimeout`, which runs it immediately and collapses the random walk into back-to-back requests.
 
 | File | Description | Test |
 |---|---|---|
@@ -537,6 +537,8 @@ The event bus does not await its handlers, so a flush that releases several segm
 | `dodge.DodgeHandler.js` | Random walk scheduling, _getScheduleWait and _scheduleAll | with scheduleWaitRandom = 0, delay is always exactly scheduleWaitBase |
 | `dodge.DodgeHandler.js` | Random walk scheduling, _getScheduleWait and _scheduleAll | with scheduleWaitRandom < 0, delay is clamped to scheduleWaitBase and warns exactly once |
 | `dodge.DodgeHandler.js` | Random walk scheduling, _getScheduleWait and _scheduleAll | with scheduleWaitBase < 0, delay is clamped to 0 + random and warns exactly once |
+| `dodge.DodgeHandler.js` | Random walk scheduling, _getScheduleWait and _scheduleAll | with a non-numeric scheduleWaitBase, delay is a finite number and warns exactly once |
+| `dodge.DodgeHandler.js` | Random walk scheduling, _getScheduleWait and _scheduleAll | with a non-numeric scheduleWaitRandom, delay is exactly scheduleWaitBase |
 
 ### R7.2 - Scheduling is scoped to the event's media type
 
@@ -579,6 +581,8 @@ After scheduling, `_onPaddingLoaded` calls `onPaddingLoaded()` on the stream pro
 | `dodge.DodgeScheduleControllerOverride.js` | startScheduleTimer | defended with scheduleWaitRandom = 0: delay is exactly scheduleWaitBase |
 | `dodge.DodgeScheduleControllerOverride.js` | startScheduleTimer | defended with scheduleWaitRandom < 0: clamps to scheduleWaitBase and warns exactly once |
 | `dodge.DodgeScheduleControllerOverride.js` | startScheduleTimer | defended with scheduleWaitBase < 0: clamps to 0 and warns exactly once |
+| `dodge.DodgeScheduleControllerOverride.js` | startScheduleTimer | defended with a non-numeric scheduleWaitBase: treats as 0 and warns exactly once |
+| `dodge.DodgeScheduleControllerOverride.js` | startScheduleTimer | defended with a non-numeric scheduleWaitRandom: clamps to scheduleWaitBase |
 | `dodge.DodgeScheduleControllerOverride.js` | startScheduleTimer | defended with undefined value: treats as 0 and enforces minimum delay |
 | `dodge.DodgeScheduleControllerOverride.js` | startScheduleTimer | dashHandler absent: passes value through to parent unchanged |
 
@@ -607,11 +611,14 @@ No URL length equalization is performed. Wire size is normalized in full by R8.2
 
 ### R8.2 - Request padding normalizes HTTP wire size to `[paddingLengthBase, paddingLengthBase + paddingLengthRandom]`
 
-`applyRequestPadding()` measures the URL + headers wire size and extends a query parameter (configurable via `dodge.queryParam`, default `'padding'`) so that the total equals `paddingLengthBase + Math.round(Math.random() * paddingLengthRandom)`. Disabled when `paddingLengthBase ≤ 0`. When the padding query param doesn't already exist in the URL, it is added and the overhead of `?key=` / `&key=` is accounted for. Invalid URLs are handled gracefully with a warning. A negative `paddingLengthRandom` is clamped to 0 and logged once per module load (misconfiguration is visible but not fatal).
+`applyRequestPadding()` measures the URL + headers wire size and extends a query parameter (configurable via `dodge.queryParam`, default `'padding'`) so that the total equals `paddingLengthBase + Math.round(Math.random() * paddingLengthRandom)`. Disabled when `paddingLengthBase ≤ 0`. When the padding query param doesn't already exist in the URL, it is added and the overhead of `?key=` / `&key=` is accounted for. Invalid URLs are handled gracefully with a warning. Both length settings are read through `resolveNumericSetting()` (R11.8), so an unusable value - negative, NaN, or a quoted number - resolves to 0 and is logged once per module load (misconfiguration is visible but not fatal). An unusable `paddingLengthBase` therefore disables padding through the same `<= 0` branch as an explicit 0, instead of falling through every guard as NaN and leaving the request unpadded but unreported.
 
 | File | Description | Test |
 |---|---|---|
 | `dodge.RequestPadding.js` | applyRequestPadding | paddingLengthBase = 0: URL is not modified |
+| `dodge.RequestPadding.js` | applyRequestPadding | non-numeric paddingLengthBase: URL is not modified and warns exactly once |
+| `dodge.RequestPadding.js` | applyRequestPadding | NaN paddingLengthBase: URL is not modified |
+| `dodge.RequestPadding.js` | applyRequestPadding | numeric string paddingLengthBase: URL is not modified |
 | `dodge.RequestPadding.js` | applyRequestPadding | paddingLengthBase < 0: URL is not modified |
 | `dodge.RequestPadding.js` | applyRequestPadding | request with pad > 0: URL is extended by exactly pad bytes |
 | `dodge.RequestPadding.js` | applyRequestPadding | after padding, wire size equals paddingLengthBase (when paddingLengthRandom = 0) |
@@ -619,6 +626,7 @@ No URL length equalization is performed. Wire size is normalized in full by R8.2
 | `dodge.RequestPadding.js` | applyRequestPadding | existing padding value is preserved as prefix of the extended value |
 | `dodge.RequestPadding.js` | applyRequestPadding | with paddingLengthRandom > 0, wire size is in [paddingLengthBase, paddingLengthBase + paddingLengthRandom] |
 | `dodge.RequestPadding.js` | applyRequestPadding | with paddingLengthRandom < 0, clamps to 0 and warns exactly once across calls |
+| `dodge.RequestPadding.js` | applyRequestPadding | with a non-numeric paddingLengthRandom, wire size is deterministically paddingLengthBase |
 | `dodge.RequestPadding.js` | applyRequestPadding | with paddingLengthRandom = 0, wire size is deterministically paddingLengthBase |
 | `dodge.RequestPadding.js` | applyRequestPadding | pad = 0 (already at paddingLengthBase): URL is not modified |
 | `dodge.RequestPadding.js` | applyRequestPadding | request already exceeds padding length: warns and does not modify URL |
@@ -647,7 +655,9 @@ No URL length equalization is performed. Wire size is normalized in full by R8.2
 
 ### R8.5 - An unset `dodge.paddingLengthBase` is reported
 
-Wire size normalization is the only request-side defense Dodge performs, so `paddingLengthBase ≤ 0` leaves URL, `Range` header and CMCD lengths varying with the content being requested. `tryProcessExtendedManifest()` reports it alongside the side-channel scans: a warning under `'representation'` and `'manifest'`, rejection under `'max'`, and silence when `strictMode` is `false`. Negative values are included, since `applyRequestPadding()` clamps them to 0. The default is 1024, so this fires only on a deliberate override.
+Wire size normalization is the only request-side defense Dodge performs, so `paddingLengthBase ≤ 0` leaves URL, `Range` header and CMCD lengths varying with the content being requested. `tryProcessExtendedManifest()` reports it alongside the side-channel scans: a warning under `'representation'` and `'manifest'`, rejection under `'max'`, and silence when `strictMode` is `false`. The default is 1024, so this fires only on a deliberate override.
+
+The gate reads the setting through `resolveNumericSetting()` (R11.8) rather than comparing the raw value. Every value that disables padding has to trip it, and a raw `<= 0` comparison catches only the literal 0 and negatives: `'abc' <= 0` and `NaN <= 0` are both false, so an unusable value would pass the one check that exists to catch "padding is off" and be accepted even under `'max'`.
 
 | File | Description | Test |
 |---|---|---|
@@ -1185,6 +1195,50 @@ representations rather than delegating to the vanilla `DashHandler`.
 | `dodge.DodgeDashHandlerOverride.js` | strictMode = invalid value (fails closed) | with extended manifest loaded but unknown label, getNextSegmentRequest returns null |
 | `dodge.DodgeDashHandlerOverride.js` | strictMode = invalid value (fails closed) | with a known label, defended requests are still generated normally |
 
+### R11.8 - The numeric `dodge` settings are validated and fail closed
+
+`resolveNumericSetting()` accepts a non-negative finite number and rejects everything else,
+resolving the rejected value to 0 and returning the warning its caller logs. It covers
+`scheduleWaitBase`, `scheduleWaitRandom`, `paddingLengthBase` and `paddingLengthRandom`. It
+lives alongside `createStrictModeReader()` in `src/dodge/utils/StrictMode.js`, since both are
+readers for the same settings block and both fail closed.
+
+Rejected values resolve to 0, not to the documented default, because 0 is already the
+"this defense is off" value for each of these settings and `paddingLengthBase = 0` is
+already reported by strict mode (R8.5). Falling back to the default would paper over the
+misconfiguration and leave the operator believing their value took effect.
+
+The warn-once flag belongs to the caller, not to the resolver, so that one consumer's
+warning cannot mask another's. `DodgeHandler` and `DodgeScheduleControllerOverride` each
+hold per-instance flags; `applyRequestPadding` is a plain function and holds its flags at
+module scope.
+
+| File | Description | Test |
+|---|---|---|
+| `dodge.StrictMode.js` | non-negative finite numbers pass through unchanged | 0 is returned unchanged with no message |
+| `dodge.StrictMode.js` | non-negative finite numbers pass through unchanged | 1 is returned unchanged with no message |
+| `dodge.StrictMode.js` | non-negative finite numbers pass through unchanged | 32 is returned unchanged with no message |
+| `dodge.StrictMode.js` | non-negative finite numbers pass through unchanged | 1024 is returned unchanged with no message |
+| `dodge.StrictMode.js` | non-negative finite numbers pass through unchanged | 0.5 is returned unchanged with no message |
+| `dodge.StrictMode.js` | unusable values resolve to 0 | negative resolves to 0 and is reported as invalid |
+| `dodge.StrictMode.js` | unusable values resolve to 0 | NaN resolves to 0 and is reported as invalid |
+| `dodge.StrictMode.js` | unusable values resolve to 0 | Infinity resolves to 0 and is reported as invalid |
+| `dodge.StrictMode.js` | unusable values resolve to 0 | -Infinity resolves to 0 and is reported as invalid |
+| `dodge.StrictMode.js` | unusable values resolve to 0 | numeric string resolves to 0 and is reported as invalid |
+| `dodge.StrictMode.js` | unusable values resolve to 0 | non-numeric string resolves to 0 and is reported as invalid |
+| `dodge.StrictMode.js` | unusable values resolve to 0 | empty string resolves to 0 and is reported as invalid |
+| `dodge.StrictMode.js` | unusable values resolve to 0 | null resolves to 0 and is reported as invalid |
+| `dodge.StrictMode.js` | unusable values resolve to 0 | undefined resolves to 0 and is reported as invalid |
+| `dodge.StrictMode.js` | unusable values resolve to 0 | boolean true resolves to 0 and is reported as invalid |
+| `dodge.StrictMode.js` | unusable values resolve to 0 | object resolves to 0 and is reported as invalid |
+| `dodge.StrictMode.js` | unusable values resolve to 0 | empty array resolves to 0 and is reported as invalid |
+| `dodge.StrictMode.js` | unusable values resolve to 0 | single-element array resolves to 0 and is reported as invalid |
+| `dodge.StrictMode.js` | unusable values resolve to 0 | a missing dodge settings block resolves to 0 |
+| `dodge.StrictMode.js` | diagnostic message | names the setting and states the fallback |
+| `dodge.StrictMode.js` | diagnostic message | quotes a string value so it is distinguishable from the number |
+| `dodge.StrictMode.js` | diagnostic message | shows NaN as NaN rather than as null |
+| `dodge.StrictMode.js` | diagnostic message | reads the setting named in the call, not a fixed one |
+
 ---
 
 ## 12. Internal Helpers
@@ -1282,16 +1336,16 @@ When `_onFragmentLoadingCompleted` receives an errored Dodge request (`e.error` 
 | R6.2 homeRepresentationId tagging | 5 |
 | R6.3 Dodge-owned alternate init cache, invalidated on quality switch | 8 |
 | R6.4 Media fragment releases are serialized | 3 |
-| R7.1 Random walk delay bounded | 4 |
+| R7.1 Random walk delay bounded | 6 |
 | R7.2 Scheduling is scoped to correct stream processor | 3 |
 | R7.3 Suppressed events skip scheduling | 2 |
 | R7.4 Padding event routing | 2 |
-| R7.5 Random walk delay on all scheduling paths | 9 |
+| R7.5 Random walk delay on all scheduling paths | 11 |
 | R8.1 Every request URL carries a cache-busting query value | 6 |
-| R8.2 Request padding normalizes wire size | 13 |
+| R8.2 Request padding normalizes wire size | 17 |
 | R8.3 FetchLoader applies padding | 4 |
 | R8.4 XHRLoader applies padding | 4 |
-| R8.5 Unset paddingLengthBase is reported | 6 |
+| R8.5 Unset paddingLengthBase is reported | 10 |
 | R9.1 Structural validation rejects malformed manifests | 48 |
 | R9.2 Init cycle validation | 16 |
 | R9.3 Init cycle quality validation and explicit buffer requirement | 9 |
@@ -1326,8 +1380,9 @@ When `_onFragmentLoadingCompleted` receives an errored Dodge request (`e.error` 
 | R11.5 NEED_KEY event handling (warn only) | 2 |
 | R11.6 strictMode validation and fail-closed normalization | 16 |
 | R11.7 Invalid strictMode enforces as max at both levels | 11 |
+| R11.8 Numeric dodge settings validated and fail closed | 23 |
 | R12.1 _concatPartialSegments assembly | 8 |
 | R12.2 _createDataChunk population | 4 |
 | R12.3 getStreamStats counts | 3 |
 | R12.4 Error fragment stalling | 3 |
-| **Total** | **518** |
+| **Total** | **553** |

@@ -30,6 +30,13 @@
  */
 
 
+/**
+ * Readers for the `dodge` settings block. Every setting here is one that
+ * can be set wrong in a way that removes a defense while playback continues
+ * normally, so each reader validates rather than coerces, and resolves an
+ * unusable value to the safest one rather than to the configured one.
+ */
+
 import DodgeConstants from '../constants/DodgeConstants.js';
 
 const ACCEPTED = [
@@ -73,5 +80,46 @@ export function createStrictModeReader(settings, logger) {
         }
 
         return DodgeConstants.STRICT_MODE.MAX;
+    };
+}
+
+/**
+ * Render a rejected value for a log message. Numbers are printed as-is so
+ * NaN and Infinity read as themselves; JSON.stringify would turn both into
+ * `null`. Everything else is quoted, so the string '1024' is distinguishable
+ * from the number 1024 in the log.
+ *
+ * @param {*} raw - The rejected value.
+ * @returns {string} Printable form.
+ */
+function _describe(raw) {
+    if (typeof raw === 'number') {
+        return String(raw);
+    }
+    const json = JSON.stringify(raw);
+    return json === undefined ? String(raw) : json;
+}
+
+/**
+ * Resolve one numeric `dodge` setting to a usable non-negative number.
+ *
+ * The caller owns the warn-once flag, so that one consumer's warning cannot
+ * mask another's.
+ *
+ * @param {object} settings - Settings instance to read from.
+ * @param {string} name - Key within the `dodge` settings block.
+ * @returns {{value: number, valid: boolean, message: (string|null)}} Resolved
+ *          value, whether the configured value was usable, and the warning to
+ *          log when it was not.
+ */
+export function resolveNumericSetting(settings, name) {
+    const raw = (settings.get().dodge || {})[name];
+    const valid = typeof raw === 'number' && isFinite(raw) && raw >= 0;
+
+    return {
+        value: valid ? raw : 0,
+        valid: valid,
+        message: valid ? null :
+            'dodge.' + name + ' is not a non-negative number (' + _describe(raw) + '), treating as 0'
     };
 }

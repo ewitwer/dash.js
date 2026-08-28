@@ -31,7 +31,7 @@
 
 
 import DodgeConstants from '../../../../src/dodge/constants/DodgeConstants.js';
-import { createStrictModeReader } from '../../../../src/dodge/utils/StrictMode.js';
+import { createStrictModeReader, resolveNumericSetting } from '../../../../src/dodge/utils/StrictMode.js';
 
 import sinon from 'sinon';
 import { expect } from 'chai';
@@ -115,6 +115,90 @@ describe('Dodge StrictMode', function () {
             second.read();
             expect(first.logger.warn.calledOnce).to.be.true; // jshint ignore:line
             expect(second.logger.warn.calledOnce).to.be.true; // jshint ignore:line
+        });
+    });
+});
+
+function resolve(value) {
+    const settings = { get: () => ({ dodge: { paddingLengthBase: value } }) };
+    return resolveNumericSetting(settings, 'paddingLengthBase');
+}
+
+describe('Dodge numeric settings', function () {
+
+    describe('non-negative finite numbers pass through unchanged', function () {
+        [0, 1, 32, 1024, 0.5].forEach(function (value) {
+            it(value + ' is returned unchanged with no message', function () {
+                const result = resolve(value);
+                expect(result.value).to.equal(value);
+                expect(result.valid).to.be.true; // jshint ignore:line
+                expect(result.message).to.be.null; // jshint ignore:line
+            });
+        });
+    });
+
+    describe('unusable values resolve to 0', function () {
+        // Every entry here reaches the arithmetic as NaN or as a negative
+        // number, and every consumer of these settings then silently stops
+        // defending: no padding, no scheduling delay.
+        const rejected = [
+            ['negative', -1],
+            ['NaN', NaN],
+            ['Infinity', Infinity],
+            ['-Infinity', -Infinity],
+            // A quoted number is the most likely misconfiguration of all, and
+            // the one a coercing resolver would wave through.
+            ['numeric string', '1024'],
+            ['non-numeric string', 'abc'],
+            ['empty string', ''],
+            ['null', null],
+            ['undefined', undefined],
+            ['boolean true', true],
+            ['object', {}],
+            // Number([]) is 0 and Number(['1024']) is 1024, so an array must be
+            // rejected on its type rather than on its coerced value.
+            ['empty array', []],
+            ['single-element array', ['1024']]
+        ];
+
+        rejected.forEach(function (entry) {
+            it(entry[0] + ' resolves to 0 and is reported as invalid', function () {
+                const result = resolve(entry[1]);
+                expect(result.value).to.equal(0);
+                expect(result.valid).to.be.false; // jshint ignore:line
+                expect(result.message).to.be.a('string');
+            });
+        });
+
+        it('a missing dodge settings block resolves to 0', function () {
+            const result = resolveNumericSetting({ get: () => ({}) }, 'paddingLengthBase');
+            expect(result.value).to.equal(0);
+            expect(result.valid).to.be.false; // jshint ignore:line
+        });
+    });
+
+    describe('diagnostic message', function () {
+        it('names the setting and states the fallback', function () {
+            const message = resolve('abc').message;
+            expect(message).to.include('dodge.paddingLengthBase');
+            expect(message).to.include('treating as 0');
+        });
+
+        it('quotes a string value so it is distinguishable from the number', function () {
+            expect(resolve('1024').message).to.include('"1024"');
+        });
+
+        it('shows NaN as NaN rather than as null', function () {
+            const message = resolve(NaN).message;
+            expect(message).to.include('NaN');
+            expect(message).to.not.include('null');
+        });
+
+        it('reads the setting named in the call, not a fixed one', function () {
+            const settings = { get: () => ({ dodge: { scheduleWaitBase: 'abc', paddingLengthBase: 1024 } }) };
+            const result = resolveNumericSetting(settings, 'scheduleWaitBase');
+            expect(result.valid).to.be.false; // jshint ignore:line
+            expect(result.message).to.include('dodge.scheduleWaitBase');
         });
     });
 });

@@ -43,6 +43,7 @@
  */
 
 import Debug from '../../core/Debug.js';
+import { resolveNumericSetting } from '../utils/StrictMode.js';
 
 function DodgeScheduleControllerOverride(config) {
     config = config || {};
@@ -55,27 +56,22 @@ function DodgeScheduleControllerOverride(config) {
     const settings = config.settings;
 
     const logger = Debug(context).getInstance().getLogger({ __dashjs_factory_name: 'DodgeScheduleControllerOverride' });
-    let warnedNegativeScheduleRandom = false;
-    let warnedNegativeScheduleBase = false;
+    let warnedScheduleRandom = false;
+    let warnedScheduleBase = false;
 
     function _getScheduleWait() {
-        const dodgeSettings = (settings.get().dodge) || {};
-        
-        const rawBase = dodgeSettings.scheduleWaitBase || 0;
-        if (rawBase < 0 && !warnedNegativeScheduleBase) {
-            logger.warn('dodge.scheduleWaitBase is negative (' + rawBase + '), treating as 0');
-            warnedNegativeScheduleBase = true;
+        const base = resolveNumericSetting(settings, 'scheduleWaitBase');
+        if (!base.valid && !warnedScheduleBase) {
+            logger.warn(base.message);
+            warnedScheduleBase = true;
         }
-        const rawRandom = dodgeSettings.scheduleWaitRandom || 0;
-        if (rawRandom < 0 && !warnedNegativeScheduleRandom) {
-            logger.warn('dodge.scheduleWaitRandom is negative (' + rawRandom + '), treating as 0');
-            warnedNegativeScheduleRandom = true;
+        const random = resolveNumericSetting(settings, 'scheduleWaitRandom');
+        if (!random.valid && !warnedScheduleRandom) {
+            logger.warn(random.message);
+            warnedScheduleRandom = true;
         }
 
-        const base = Math.max(0, rawBase);
-        const random = Math.max(0, rawRandom);
-        
-        return base + Math.round(Math.random() * random);
+        return base.value + Math.round(Math.random() * random.value);
     }
 
     function _shouldClearScheduleTimer() {

@@ -568,6 +568,12 @@ import SwitchRequest from '../streaming/rules/SwitchRequest.js';
  * which leaks its real size, so err high.
  * @property {number} [paddingLengthRandom=32]
  * Maximum additional random bytes added to paddingLengthBase per request.
+ *
+ * Each of the four numeric settings above must be a non-negative finite number.
+ * Anything else - a negative value, NaN, or a quoted number such as '1024' - is
+ * rejected and treated as 0, with a warning, rather than coerced. A paddingLengthBase
+ * of 0 is in turn reported by strictMode: a warning under 'representation' and
+ * 'manifest', and a rejected manifest under 'max'.
  * @property {false|'representation'|'manifest'|'max'} [strictMode='representation']
  * Controls fallback behavior when defense info is not available. Note that it is risky to
  * set strictMode to false; this allows representations that don't appear in the extended

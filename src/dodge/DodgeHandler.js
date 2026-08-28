@@ -43,7 +43,7 @@ import DodgeScheduleControllerOverride from './overrides/DodgeScheduleController
 import DodgeXHRLoaderOverride from './overrides/DodgeXHRLoaderOverride.js';
 import Constants from '../streaming/constants/Constants.js';
 import DodgeConstants from './constants/DodgeConstants.js';
-import { createStrictModeReader } from './utils/StrictMode.js';
+import { createStrictModeReader, resolveNumericSetting } from './utils/StrictMode.js';
 import FactoryMaker from '../core/FactoryMaker.js';
 import EventBus from '../core/EventBus.js';
 import { HTTPRequest } from '../streaming/vo/metrics/HTTPRequest.js';
@@ -87,8 +87,8 @@ function DodgeHandler(config) {
     let logger,
         defenseRegistry,
         getStrictMode,
-        warnedNegativeScheduleRandom,
-        warnedNegativeScheduleBase,
+        warnedScheduleRandom,
+        warnedScheduleBase,
         instance;
 
     // Per-stream state, keeps track of partial segments and pending events.
@@ -99,8 +99,8 @@ function DodgeHandler(config) {
         logger = debug.getLogger(instance);
         defenseRegistry = DefenseRegistry(context).getInstance();
         getStrictMode = createStrictModeReader(settings, logger);
-        warnedNegativeScheduleRandom = false;
-        warnedNegativeScheduleBase = false;
+        warnedScheduleRandom = false;
+        warnedScheduleBase = false;
         streamState = new Map();
     }
 
@@ -228,13 +228,17 @@ function DodgeHandler(config) {
             }
         }
 
-        if ((settings.get().dodge || {}).paddingLengthBase <= 0) {
+        // Read through the resolver rather than comparing the raw setting: an
+        // unusable value disables padding exactly as 0 does, but every
+        // comparison against NaN or a string is false, so a raw `<= 0` gate
+        // would wave the misconfiguration through.
+        if (resolveNumericSetting(settings, 'paddingLengthBase').value <= 0) {
             if (strictMode === DodgeConstants.STRICT_MODE.MAX) {
-                logger.error('dodge.paddingLengthBase is not set, request wire sizes are not normalized, rejected by strict mode max');
+                logger.error('dodge.paddingLengthBase is not set to a positive number, request wire sizes are not normalized, rejected by strict mode max');
                 _triggerStrictModeError(url);
                 return false;
             } else if (strictMode !== DodgeConstants.STRICT_MODE.NONE) {
-                logger.warn('dodge.paddingLengthBase is not set, request wire sizes are not normalized, request lengths vary with the content being requested!');
+                logger.warn('dodge.paddingLengthBase is not set to a positive number, request wire sizes are not normalized, request lengths vary with the content being requested!');
             }
         }
 
@@ -491,23 +495,18 @@ function DodgeHandler(config) {
     // ************************************************************************
 
     function _getScheduleWait() {
-        const dodgeSettings = (settings.get().dodge) || {};
-
-        const rawBase = dodgeSettings.scheduleWaitBase || 0;
-        if (rawBase < 0 && !warnedNegativeScheduleBase) {
-            logger.warn('dodge.scheduleWaitBase is negative (' + rawBase + '), treating as 0');
-            warnedNegativeScheduleBase = true;
+        const base = resolveNumericSetting(settings, 'scheduleWaitBase');
+        if (!base.valid && !warnedScheduleBase) {
+            logger.warn(base.message);
+            warnedScheduleBase = true;
         }
-        const rawRandom = dodgeSettings.scheduleWaitRandom || 0;
-        if (rawRandom < 0 && !warnedNegativeScheduleRandom) {
-            logger.warn('dodge.scheduleWaitRandom is negative (' + rawRandom + '), treating as 0');
-            warnedNegativeScheduleRandom = true;
+        const random = resolveNumericSetting(settings, 'scheduleWaitRandom');
+        if (!random.valid && !warnedScheduleRandom) {
+            logger.warn(random.message);
+            warnedScheduleRandom = true;
         }
 
-        const base = Math.max(0, rawBase);
-        const random = Math.max(0, rawRandom);
-        
-        return base + Math.round(Math.random() * random);
+        return base.value + Math.round(Math.random() * random.value);
     }
 
     function _getStreamProcessor(mediaType) {

@@ -138,7 +138,7 @@ describe('DodgeScheduleControllerOverride', function () {
             // Warn once: flag is scoped to this factory instance, so exactly one
             // warning regardless of how many times _getScheduleWait is invoked.
             const negativeWarnings = loggerSpy.warn.getCalls().filter(
-                c => c.args[0] && c.args[0].indexOf('scheduleWaitRandom is negative') !== -1
+                c => c.args[0] && c.args[0].indexOf('scheduleWaitRandom is not a non-negative number') !== -1
             );
             expect(negativeWarnings.length).to.equal(1);
         });
@@ -156,9 +156,41 @@ describe('DodgeScheduleControllerOverride', function () {
                 expect(call.args[0]).to.equal(0);
             }
             const negativeWarnings = loggerSpy.warn.getCalls().filter(
-                c => c.args[0] && c.args[0].indexOf('scheduleWaitBase is negative') !== -1
+                c => c.args[0] && c.args[0].indexOf('scheduleWaitBase is not a non-negative number') !== -1
             );
             expect(negativeWarnings.length).to.equal(1);
+        });
+
+        it('defended with a non-numeric scheduleWaitBase: treats as 0 and warns exactly once', function () {
+            const { override, parentStartScheduleTimerStub, loggerSpy } = makeOverride({
+                parentResult: false, isTrailing: false, isDefended: true,
+                scheduleWaitBase: 'abc', scheduleWaitRandom: 0
+            });
+            for (let i = 0; i < 20; i++) {
+                override.startScheduleTimer(0);
+            }
+            // Without validation the delay is NaN, and setTimeout runs NaN
+            // immediately, so the random walk collapses.
+            for (const call of parentStartScheduleTimerStub.getCalls()) {
+                expect(call.args[0]).to.equal(0);
+            }
+            const warnings = loggerSpy.warn.getCalls().filter(
+                c => c.args[0] && c.args[0].indexOf('scheduleWaitBase is not a non-negative number') !== -1
+            );
+            expect(warnings.length).to.equal(1);
+        });
+
+        it('defended with a non-numeric scheduleWaitRandom: clamps to scheduleWaitBase', function () {
+            const { override, parentStartScheduleTimerStub } = makeOverride({
+                parentResult: false, isTrailing: false, isDefended: true,
+                scheduleWaitBase: 100, scheduleWaitRandom: 'abc'
+            });
+            for (let i = 0; i < 20; i++) {
+                override.startScheduleTimer(0);
+            }
+            for (const call of parentStartScheduleTimerStub.getCalls()) {
+                expect(call.args[0]).to.equal(100);
+            }
         });
 
         it('defended with undefined value: treats as 0 and enforces minimum delay', function () {
