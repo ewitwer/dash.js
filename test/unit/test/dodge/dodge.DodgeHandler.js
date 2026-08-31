@@ -3360,6 +3360,52 @@ describe('DodgeHandler', function () {
             expect(e.sender).to.not.be.null; // jshint ignore:line
             expect(mediaLoadedSpy.called).to.be.false; // jshint ignore:line
         });
+
+        // StreamProcessor._onFragmentLoadingCompleted does not read e.sender,
+        // so nulling it does not stop _handleFragmentLoadingError. That handler is
+        // gated on exactly the expression asserted below. Left open, it rebuilds
+        // a request every time the retry fails, which loops forever.
+        it('errored Dodge media request: StreamProcessor\'s error handler guard cannot fire', function () {
+            const e = triggerFragmentLoaded(
+                makeRequest({ full: true, serviceLocation: 'https://example.com/' }),
+                new Error('network'));
+            expect(Boolean(e.error && e.request.serviceLocation)).to.be.false; // jshint ignore:line
+        });
+
+        it('errored Dodge init request: StreamProcessor\'s error handler guard cannot fire', function () {
+            const e = triggerFragmentLoaded(
+                makeRequest({
+                    full: true,
+                    type: 'InitializationSegment',
+                    isInitializationRequest: () => true,
+                    serviceLocation: 'https://example.com/'
+                }),
+                new Error('network'));
+            expect(Boolean(e.error && e.request.serviceLocation)).to.be.false; // jshint ignore:line
+        });
+
+        // The error itself is deliberately left alone: FRAGMENT_LOADING_COMPLETED is
+        // a public event and an application listening for download failures must
+        // still see them.
+        it('errored Dodge request leaves e.error intact for application listeners', function () {
+            const e = triggerFragmentLoaded(
+                makeRequest({ full: true, serviceLocation: 'https://example.com/' }),
+                new Error('network'));
+            expect(e.error).to.be.an('error');
+        });
+
+        it('errored vanilla request keeps its service location', function () {
+            const e = triggerFragmentLoaded(
+                makeRequest({ full: undefined, padding: undefined, serviceLocation: 'https://example.com/' }),
+                new Error('network'));
+            expect(e.request.serviceLocation).to.equal('https://example.com/');
+        });
+
+        it('successful Dodge request keeps its service location', function () {
+            const e = triggerFragmentLoaded(
+                makeRequest({ full: true, buffer: true, serviceLocation: 'https://example.com/' }));
+            expect(e.request.serviceLocation).to.equal('https://example.com/');
+        });
     });
 
 });

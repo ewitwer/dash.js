@@ -1424,13 +1424,25 @@ The public `getStreamStats(streamId)` method returns `{ partialSegments, pending
 
 ### R12.4 - Error fragments stall without corrupting state
 
-When `_onFragmentLoadingCompleted` receives an errored Dodge request (`e.error` truthy with `full` or `padding` defined), it sets `e.sender = null` to prevent `StreamProcessor._handleFragmentLoadingError` from generating a corrupted retry. No Dodge events are fired and no partial segments are accumulated. Vanilla errored requests (no Dodge-specific fields) pass through unchanged.
+When `_onFragmentLoadingCompleted` receives an errored Dodge request (`e.error` truthy with `full`
+or `padding` defined), the download stalls permanently. `HTTPLoader` has already exhausted its
+retries, so the segment is genuinely unavailable and rescheduling would only fail again. No Dodge
+events are fired and no partial segments are accumulated. Vanilla errored requests (no
+Dodge-specific fields) pass through unchanged.
+
+`e.error` is deliberately left intact. `FRAGMENT_LOADING_COMPLETED` is a public event and an
+application listening for download failures must still see them.
 
 | File | Description | Test |
 |---|---|---|
 | `dodge.DodgeHandler.js` | Error fragment stalling, _onFragmentLoadingCompleted | errored Dodge request does not fire any Dodge events |
 | `dodge.DodgeHandler.js` | Error fragment stalling, _onFragmentLoadingCompleted | errored Dodge request does not accumulate partial segments |
 | `dodge.DodgeHandler.js` | Error fragment stalling, _onFragmentLoadingCompleted | errored vanilla request passes through without sender nulling |
+| `dodge.DodgeHandler.js` | Error fragment stalling, _onFragmentLoadingCompleted | errored Dodge media request: StreamProcessor's error handler guard cannot fire |
+| `dodge.DodgeHandler.js` | Error fragment stalling, _onFragmentLoadingCompleted | errored Dodge init request: StreamProcessor's error handler guard cannot fire |
+| `dodge.DodgeHandler.js` | Error fragment stalling, _onFragmentLoadingCompleted | errored Dodge request leaves e.error intact for application listeners |
+| `dodge.DodgeHandler.js` | Error fragment stalling, _onFragmentLoadingCompleted | errored vanilla request keeps its service location |
+| `dodge.DodgeHandler.js` | Error fragment stalling, _onFragmentLoadingCompleted | successful Dodge request keeps its service location |
 
 ### R12.5 - A response longer than its declared range stalls the stream
 
@@ -1567,6 +1579,6 @@ override stalls rather than falling back.
 | R12.1 _concatPartialSegments assembly | 10 |
 | R12.2 _createDataChunk population | 4 |
 | R12.3 getStreamStats counts | 3 |
-| R12.4 Error fragment stalling | 3 |
+| R12.4 Error fragment stalling | 8 |
 | R12.5 Range-ignoring origin detection | 15 |
-| **Total** | **649** |
+| **Total** | **654** |

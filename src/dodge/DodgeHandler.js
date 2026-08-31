@@ -785,14 +785,17 @@ function DodgeHandler(config) {
         }
 
         if (e.error) {
-            // Stop propagation to prevent StreamProcessor._handleFragmentLoadingError
-            // from generating a new request via getInitRequest() or
-            // getSegmentRequestForTime(), which would corrupt the cycle
-            // state (lastCycleIndex / lastInitIndex was already advanced).
-            // Stall permanently: HTTPLoader already exhausted its retries, so
-            // the segment is genuinely unavailable and rescheduling would just
-            // fail again. The defense runs correctly or not at all.
+            // Stall permanently: HTTPLoader already exhausted its retries, so the
+            // segment is genuinely unavailable and rescheduling would just fail
+            // again. The defense runs correctly or not at all.
+            //
+            // Nulling the sender stops FragmentController, but not everything reads
+            // that field. StreamProcessor._onFragmentLoadingCompleted does not, and
+            // it gates _handleFragmentLoadingError on
+            // `e.error && e.request.serviceLocation`.
+            // So drop the service location too.
             e.sender = null;
+            e.request.serviceLocation = null;
             logger.error(request.mediaType + ' download failed after all retries; stalling to preserve defense pattern. URL: ' + request.url);
             return;
         }
