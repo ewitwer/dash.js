@@ -674,7 +674,7 @@ The gate reads the setting through `resolveNumericSetting()` (R11.8) rather than
 
 ### R9.1 - Structural validation rejects malformed manifests
 
-`isValidExtendedManifest()` validates the top-level structure of extended manifest files: `start.mpd` and `start.base_uri` must be present and strings, `streams` must be a non-empty array where each entry has a `label` and at least one of `init` or `data`. It does **not** gate on the embedded MPD's `@type`; that check lives in R10.15, which reads the parsed value. Data cycle fields are validated: `index` must parse to a non-negative integer, `range` must be a well-formed string, `padding` must be a boolean (or a string parseable to boolean) or absent, `buffer` must be a boolean (or a string parseable to boolean), an array of non-negative integers (selective buffer), or absent, and `quality` is optional - when present, it must be either a non-empty string (representation ID, resolved lazily in the override against `adapter.getVoRepresentations(mediaInfo)`) or a non-negative JSON number (index into the same array). Numeric strings are kept as strings and treated as representation IDs; a warning is logged to flag the ambiguity. Use a JSON number if an index is intended.
+`isValidExtendedManifest()` validates the top-level structure of extended manifest files: `start.mpd` and `start.base_uri` must be present and strings, and `start.base_uri` must additionally be an **absolute http(s) URL whose path ends in `/`**, `streams` must be a non-empty array where each entry has a `label` and at least one of `init` or `data`. It does **not** gate on the embedded MPD's `@type`; that check lives in R10.15, which reads the parsed value. Data cycle fields are validated: `index` must parse to a non-negative integer, `range` must be a well-formed string, `padding` must be a boolean (or a string parseable to boolean) or absent, `buffer` must be a boolean (or a string parseable to boolean), an array of non-negative integers (selective buffer), or absent, and `quality` is optional - when present, it must be either a non-empty string (representation ID, resolved lazily in the override against `adapter.getVoRepresentations(mediaInfo)`) or a non-negative JSON number (index into the same array). Numeric strings are kept as strings and treated as representation IDs; a warning is logged to flag the ambiguity. Use a JSON number if an index is intended.
 
 | File | Description | Test |
 |---|---|---|
@@ -682,6 +682,22 @@ The gate reads the setting through `resolveNumericSetting()` (R11.8) rather than
 | `dodge.DefenseRegistry.js` | isValidExtendedManifest | missing start, false |
 | `dodge.DefenseRegistry.js` | isValidExtendedManifest | missing start.mpd, false |
 | `dodge.DefenseRegistry.js` | isValidExtendedManifest | missing start.base_uri, false |
+| `dodge.DefenseRegistry.js` | base_uri validation, rejected | empty string is rejected |
+| `dodge.DefenseRegistry.js` | base_uri validation, rejected | a bare word is rejected |
+| `dodge.DefenseRegistry.js` | base_uri validation, rejected | a phrase that is not a URL is rejected |
+| `dodge.DefenseRegistry.js` | base_uri validation, rejected | no trailing slash is rejected |
+| `dodge.DefenseRegistry.js` | base_uri validation, rejected | path absolute, no scheme or host is rejected |
+| `dodge.DefenseRegistry.js` | base_uri validation, rejected | scheme relative is rejected |
+| `dodge.DefenseRegistry.js` | base_uri validation, rejected | a non-HTTP scheme is rejected |
+| `dodge.DefenseRegistry.js` | base_uri validation, rejected | a non-string is still rejected |
+| `dodge.DefenseRegistry.js` | base_uri validation, accepted | https with a path is accepted |
+| `dodge.DefenseRegistry.js` | base_uri validation, accepted | https at the root is accepted |
+| `dodge.DefenseRegistry.js` | base_uri validation, accepted | plain http is accepted |
+| `dodge.DefenseRegistry.js` | base_uri validation, accepted | a port is accepted |
+| `dodge.DefenseRegistry.js` | base_uri validation, accepted | a query string is accepted |
+| `dodge.DefenseRegistry.js` | base_uri validation, diagnostics | a missing trailing slash says so, and does not blame the URL syntax |
+| `dodge.DefenseRegistry.js` | base_uri validation, diagnostics | a relative value is reported as not absolute |
+| `dodge.DefenseRegistry.js` | base_uri validation, diagnostics | the offending value is quoted |
 | `dodge.DefenseRegistry.js` | isValidExtendedManifest | dynamic MPD is not gated by structural validation |
 | `dodge.DefenseRegistry.js` | isValidExtendedManifest | missing streams, false |
 | `dodge.DefenseRegistry.js` | isValidExtendedManifest | empty streams array with valid start, false |
@@ -1505,7 +1521,7 @@ override stalls rather than falling back.
 | R8.3 FetchLoader applies padding | 4 |
 | R8.4 XHRLoader applies padding | 4 |
 | R8.5 Unset paddingLengthBase is reported | 10 |
-| R9.1 Structural validation rejects malformed manifests | 48 |
+| R9.1 Structural validation rejects malformed manifests | 64 |
 | R9.2 Init cycle validation | 16 |
 | R9.3 Init cycle quality validation and explicit buffer requirement | 17 |
 | R9.4 Data cycle validation, maxNoPad, and cycle.full precomputation | 22 |
@@ -1548,4 +1564,4 @@ override stalls rather than falling back.
 | R12.3 getStreamStats counts | 3 |
 | R12.4 Error fragment stalling | 3 |
 | R12.5 Range-ignoring origin detection | 15 |
-| **Total** | **628** |
+| **Total** | **644** |

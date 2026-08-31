@@ -572,9 +572,36 @@ function isValidExtendedManifest(manifest, logger) {
     }
 
     // An extended manifest MUST contain a base URI for segments.
-    if (typeof manifest['start']['base_uri'] !== 'string' && !(manifest['start']['base_uri'] instanceof String)) {
+    const baseUri = manifest['start']['base_uri'];
+    if (typeof baseUri !== 'string' && !(baseUri instanceof String)) {
         if (logger) {
             logger.error('Extended manifest rejected: incomplete start data, missing base URI');
+        }
+        return false;
+    }
+
+    // The base URI has to be absolute.
+    let parsedBaseUri;
+    try {
+        parsedBaseUri = new URL(baseUri);
+    } catch (e) {
+        if (logger) {
+            logger.error('Extended manifest rejected: base URI ' + JSON.stringify(baseUri) + ' is not an absolute URL');
+        }
+        return false;
+    }
+
+    if (parsedBaseUri.protocol !== 'http:' && parsedBaseUri.protocol !== 'https:') {
+        if (logger) {
+            logger.error('Extended manifest rejected: base URI ' + JSON.stringify(baseUri) + ' is not an absolute http(s) URL');
+        }
+        return false;
+    }
+
+    // Reject base URIs with missing final slash.
+    if (parsedBaseUri.pathname.charAt(parsedBaseUri.pathname.length - 1) !== '/') {
+        if (logger) {
+            logger.error('Extended manifest rejected: base URI ' + JSON.stringify(baseUri) + ' must end in a "/", otherwise its last path segment is dropped when segment URLs are resolved');
         }
         return false;
     }

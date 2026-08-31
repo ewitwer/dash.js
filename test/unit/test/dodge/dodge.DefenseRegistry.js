@@ -767,44 +767,44 @@ describe('DefenseRegistry', function () {
 
     describe('init cycle quality validation and explicit buffer requirement', function () {
         it('rejects init cycle with empty string quality', function () {
-            const m = { start: { mpd: '<MPD/>', base_uri: 'x' }, streams: [{ label: 'a', init: [{ quality: '' }], data: [{ index: 0, buffer: true }] }] };
+            const m = { start: { mpd: '<MPD/>', base_uri: 'https://x.com/' }, streams: [{ label: 'a', init: [{ quality: '' }], data: [{ index: 0, buffer: true }] }] };
             expect(isValidExtendedManifest(m)).to.be.false;
         });
 
         it('rejects init cycle with negative integer quality', function () {
-            const m = { start: { mpd: '<MPD/>', base_uri: 'x' }, streams: [{ label: 'a', init: [{ quality: -1 }], data: [{ index: 0, buffer: true }] }] };
+            const m = { start: { mpd: '<MPD/>', base_uri: 'https://x.com/' }, streams: [{ label: 'a', init: [{ quality: -1 }], data: [{ index: 0, buffer: true }] }] };
             expect(isValidExtendedManifest(m)).to.be.false;
         });
 
         it('rejects init cycle with non-integer number quality', function () {
-            const m = { start: { mpd: '<MPD/>', base_uri: 'x' }, streams: [{ label: 'a', init: [{ quality: 1.5 }], data: [{ index: 0, buffer: true }] }] };
+            const m = { start: { mpd: '<MPD/>', base_uri: 'https://x.com/' }, streams: [{ label: 'a', init: [{ quality: 1.5 }], data: [{ index: 0, buffer: true }] }] };
             expect(isValidExtendedManifest(m)).to.be.false;
         });
 
         it('rejects init cycle with non-string, non-number quality', function () {
-            const m = { start: { mpd: '<MPD/>', base_uri: 'x' }, streams: [{ label: 'a', init: [{ quality: true }], data: [{ index: 0, buffer: true }] }] };
+            const m = { start: { mpd: '<MPD/>', base_uri: 'https://x.com/' }, streams: [{ label: 'a', init: [{ quality: true }], data: [{ index: 0, buffer: true }] }] };
             expect(isValidExtendedManifest(m)).to.be.false;
         });
 
         it('accepts init cycle with valid string quality (with explicit buffer flags)', function () {
-            const m = { start: { mpd: '<MPD/>', base_uri: 'x' }, streams: [{ label: 'a', init: [{ buffer: true }, { quality: 'alt', buffer: true }], data: [{ index: 0, buffer: true }] }] };
+            const m = { start: { mpd: '<MPD/>', base_uri: 'https://x.com/' }, streams: [{ label: 'a', init: [{ buffer: true }, { quality: 'alt', buffer: true }], data: [{ index: 0, buffer: true }] }] };
             expect(isValidExtendedManifest(m)).to.be.true;
         });
 
         it('accepts init cycle with valid numeric quality (with explicit buffer flags)', function () {
-            const m = { start: { mpd: '<MPD/>', base_uri: 'x' }, streams: [{ label: 'a', init: [{ buffer: true }, { quality: 2, buffer: true }], data: [{ index: 0, buffer: true }] }] };
+            const m = { start: { mpd: '<MPD/>', base_uri: 'https://x.com/' }, streams: [{ label: 'a', init: [{ buffer: true }, { quality: 2, buffer: true }], data: [{ index: 0, buffer: true }] }] };
             expect(isValidExtendedManifest(m)).to.be.true;
         });
 
         it('multi-representation init without buffer flags: no default (designer-owned)', function () {
-            const m = { start: { mpd: '<MPD/>', base_uri: 'x' }, streams: [{ label: 'a', init: [{}, { quality: 'alt' }], data: [{ index: 0, buffer: true }] }] };
+            const m = { start: { mpd: '<MPD/>', base_uri: 'https://x.com/' }, streams: [{ label: 'a', init: [{}, { quality: 'alt' }], data: [{ index: 0, buffer: true }] }] };
             expect(isValidExtendedManifest(m)).to.be.true;
             expect(m.streams[0].init[0].buffer).to.be.undefined;
             expect(m.streams[0].init[1].buffer).to.be.undefined;
         });
 
         it('single primary init group without buffer: defaults buffer: true on last cycle', function () {
-            const m = { start: { mpd: '<MPD/>', base_uri: 'x' }, streams: [{ label: 'a', init: [{ range: '0-99' }, { range: '100-199' }], data: [{ index: 0, buffer: true }] }] };
+            const m = { start: { mpd: '<MPD/>', base_uri: 'https://x.com/' }, streams: [{ label: 'a', init: [{ range: '0-99' }, { range: '100-199' }], data: [{ index: 0, buffer: true }] }] };
             expect(isValidExtendedManifest(m)).to.be.true;
             expect(m.streams[0].init[0].buffer).to.be.undefined;
             expect(m.streams[0].init[1].buffer).to.be.true;
@@ -814,7 +814,7 @@ describe('DefenseRegistry', function () {
 
         it('explicit multi-representation init: each buffer-flagged cycle is full', function () {
             const m = {
-                start: { mpd: '<MPD/>', base_uri: 'x' },
+                start: { mpd: '<MPD/>', base_uri: 'https://x.com/' },
                 streams: [{
                     label: 'home',
                     init: [
@@ -840,7 +840,7 @@ describe('DefenseRegistry', function () {
 
         function init(cycles) {
             const m = {
-                start: { mpd: '<MPD/>', base_uri: 'x' },
+                start: { mpd: '<MPD/>', base_uri: 'https://x.com/' },
                 streams: [{ label: 'a', init: cycles, data: [{ index: 0, buffer: true }] }]
             };
             expect(isValidExtendedManifest(m)).to.be.true; // jshint ignore:line
@@ -919,29 +919,29 @@ describe('DefenseRegistry', function () {
         });
 
         it('stream with progressive = false, true', function () {
-            const m = { start: { mpd: '<MPD/>', base_uri: 'x' }, streams: [{ label: 'a', progressive: false, init: [{}], data: [{ index: 0, buffer: true }] }] };
+            const m = { start: { mpd: '<MPD/>', base_uri: 'https://x.com/' }, streams: [{ label: 'a', progressive: false, init: [{}], data: [{ index: 0, buffer: true }] }] };
             expect(isValidExtendedManifest(m)).to.be.true; // jshint ignore:line
         });
 
         it('stream with progressive string "true", coerced to boolean, true', function () {
-            const m = { start: { mpd: '<MPD/>', base_uri: 'x' }, streams: [{ label: 'a', progressive: 'true', init: [{}], data: [{ index: 0, buffer: true }] }] };
+            const m = { start: { mpd: '<MPD/>', base_uri: 'https://x.com/' }, streams: [{ label: 'a', progressive: 'true', init: [{}], data: [{ index: 0, buffer: true }] }] };
             expect(isValidExtendedManifest(m)).to.be.true; // jshint ignore:line
             expect(m.streams[0].progressive).to.equal(true);
         });
 
         it('stream with progressive string "false", coerced to boolean, true', function () {
-            const m = { start: { mpd: '<MPD/>', base_uri: 'x' }, streams: [{ label: 'a', progressive: 'false', init: [{}], data: [{ index: 0, buffer: true }] }] };
+            const m = { start: { mpd: '<MPD/>', base_uri: 'https://x.com/' }, streams: [{ label: 'a', progressive: 'false', init: [{}], data: [{ index: 0, buffer: true }] }] };
             expect(isValidExtendedManifest(m)).to.be.true; // jshint ignore:line
             expect(m.streams[0].progressive).to.equal(false);
         });
 
         it('stream with non-boolean progressive (number), false', function () {
-            const m = { start: { mpd: '<MPD/>', base_uri: 'x' }, streams: [{ label: 'a', progressive: 1, init: [{}], data: [{ index: 0, buffer: true }] }] };
+            const m = { start: { mpd: '<MPD/>', base_uri: 'https://x.com/' }, streams: [{ label: 'a', progressive: 1, init: [{}], data: [{ index: 0, buffer: true }] }] };
             expect(isValidExtendedManifest(m)).to.be.false; // jshint ignore:line
         });
 
         it('stream with non-parseable string progressive, false', function () {
-            const m = { start: { mpd: '<MPD/>', base_uri: 'x' }, streams: [{ label: 'a', progressive: 'yes', init: [{}], data: [{ index: 0, buffer: true }] }] };
+            const m = { start: { mpd: '<MPD/>', base_uri: 'https://x.com/' }, streams: [{ label: 'a', progressive: 'yes', init: [{}], data: [{ index: 0, buffer: true }] }] };
             expect(isValidExtendedManifest(m)).to.be.false; // jshint ignore:line
         });
 
@@ -959,8 +959,97 @@ describe('DefenseRegistry', function () {
         });
 
         it('non-progressive counterpart of the same unflushed data is valid (implicit end-of-stream flush)', function () {
-            const m = { start: { mpd: '<MPD/>', base_uri: 'x' }, streams: [{ label: 'a', init: [{}], data: [{ index: 0 }] }] };
+            const m = { start: { mpd: '<MPD/>', base_uri: 'https://x.com/' }, streams: [{ label: 'a', init: [{}], data: [{ index: 0 }] }] };
             expect(isValidExtendedManifest(m)).to.be.true; // jshint ignore:line
+        });
+    });
+
+    // base_uri validation
+
+    describe('base_uri validation', function () {
+
+        function withBaseUri(baseUri) {
+            return {
+                start: { mpd: '<MPD/>', base_uri: baseUri },
+                streams: [{ label: 'a', init: [{ range: '0-9' }], data: [{ index: 0, buffer: true }] }]
+            };
+        }
+
+        function messages(baseUri) {
+            const logged = [];
+            isValidExtendedManifest(withBaseUri(baseUri), { error: (m) => logged.push(m), warn: () => {} });
+            return logged;
+        }
+
+        // base_uri feeds two consumers with different failure modes.
+        // urlUtils.parseBaseUrl() truncates it at the last slash to produce
+        // manifest.baseUri, against which every segment resolves, and it is
+        // concatenated raw into `${base_uri}static.mpd` for manifest.url, which
+        // ExtUrlQueryInfoController hands to `new URL()` on every playback.
+
+        describe('rejected', function () {
+            const rejected = [
+                ['empty string', ''],
+                ['a bare word', 'x'],
+                ['a phrase that is not a URL', 'not a url'],
+                // parseBaseUrl drops everything after the last slash, so this
+                // silently becomes 'https://cdn.example.com/' and every segment
+                // resolves one directory too high.
+                ['no trailing slash', 'https://cdn.example.com/vid'],
+                // ManifestLoader resolves a relative MPD URL against
+                // window.location before parseBaseUrl, but the Dodge path skips
+                // that, so a relative base URI never becomes absolute.
+                ['path absolute, no scheme or host', '/dodge/vid/'],
+                ['scheme relative', '//cdn.example.com/vid/'],
+                ['a non-HTTP scheme', 'ftp://cdn.example.com/vid/']
+            ];
+
+            rejected.forEach(function (entry) {
+                it(entry[0] + ' is rejected', function () {
+                    expect(isValidExtendedManifest(withBaseUri(entry[1]))).to.be.false; // jshint ignore:line
+                });
+            });
+
+            it('a non-string is still rejected', function () {
+                expect(isValidExtendedManifest(withBaseUri(123))).to.be.false; // jshint ignore:line
+            });
+        });
+
+        describe('accepted', function () {
+            const accepted = [
+                ['https with a path', 'https://cdn.example.com/vid/'],
+                ['https at the root', 'https://cdn.example.com/'],
+                ['plain http', 'http://cdn.example.com/'],
+                ['a port', 'https://cdn.example.com:8443/vid/'],
+                // A signed CDN base carries its token in the query. new URL()
+                // keeps it, and the concatenation puts static.mpd before it, so
+                // manifest.url stays parseable.
+                ['a query string', 'https://cdn.example.com/vid/?token=abc']
+            ];
+
+            accepted.forEach(function (entry) {
+                it(entry[0] + ' is accepted', function () {
+                    expect(isValidExtendedManifest(withBaseUri(entry[1]))).to.be.true; // jshint ignore:line
+                });
+            });
+        });
+
+        describe('diagnostics', function () {
+            it('a missing trailing slash says so, and does not blame the URL syntax', function () {
+                const msg = messages('https://cdn.example.com/vid').join(' ');
+                expect(msg).to.include('base URI');
+                expect(msg).to.include('/');
+                expect(msg.toLowerCase()).to.not.include('absolute');
+            });
+
+            it('a relative value is reported as not absolute', function () {
+                const msg = messages('/dodge/vid/').join(' ');
+                expect(msg.toLowerCase()).to.include('absolute');
+            });
+
+            it('the offending value is quoted', function () {
+                expect(messages('not a url').join(' ')).to.include('"not a url"');
+            });
         });
     });
 
