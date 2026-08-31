@@ -63,7 +63,6 @@ function DodgeBufferControllerOverride(config) {
     const context = this.context;
     const parent = this.parent;
     const _parentReset = parent.reset;
-    const _parentResetInitialSettings = parent.resetInitialSettings;
     const _parentSetMockBuffer = parent.setMockBuffer;
     const _parentUpdateBufferLevel = parent.updateBufferLevel;
     const _parentOnInitFragmentLoaded = parent._onInitFragmentLoaded;
@@ -97,16 +96,11 @@ function DodgeBufferControllerOverride(config) {
     
     function reset(errored, keepBuffers) {
         eventBus.off(MediaPlayerEvents.QUALITY_CHANGE_REQUESTED, _onQualityChangeRequested, listenerScope);
-        _parentReset.call(parent, errored, keepBuffers);
-    }
-
-    function resetInitialSettings(errored, keepBuffers) {
         currentMockBuffer = 0;
         lastTimeSinceStreamEnd = 0;
         altInitCache.clear();
         appendChain = Promise.resolve();
-        // parent.resetInitialSettings resets mockBuffer
-        _parentResetInitialSettings.call(parent, errored, keepBuffers);
+        _parentReset.call(parent, errored, keepBuffers);
     }
 
     /**
@@ -306,7 +300,6 @@ function DodgeBufferControllerOverride(config) {
         _onInitFragmentLoaded,
         _onMediaFragmentLoaded,
         reset,
-        resetInitialSettings,
         onBufferCycleLoaded,
         onPaddingLoaded,
         updateBufferLevel,

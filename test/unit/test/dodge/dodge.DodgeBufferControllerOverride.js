@@ -23,7 +23,7 @@ describe('DodgeBufferControllerOverride', function () {
         mockParent = {
             setMockBuffer: sinon.stub(),
             updateBufferLevel: sinon.stub(),
-            resetInitialSettings: sinon.stub(),
+            reset: sinon.stub(),
             _onInitFragmentLoaded: sinon.stub(),
             _onMediaFragmentLoaded: sinon.stub(),
             appendToBuffer: sinon.stub(),
@@ -241,18 +241,18 @@ describe('DodgeBufferControllerOverride', function () {
         });
     });
 
-    // resetInitialSettings
+    // reset
 
-    describe('resetInitialSettings', function () {
+    describe('reset', function () {
 
-        it('resets internal state and delegates to parent.resetInitialSettings()', function () {
+        it('resets internal state and delegates to parent.reset()', function () {
             // Add some state first
             override.onPaddingLoaded({ trail: true, buffer: true, representation: { segmentDuration: 4 } });
             mockParent.setMockBuffer.reset();
 
-            override.resetInitialSettings(false, false);
+            override.reset(false, false);
 
-            expect(mockParent.resetInitialSettings.calledOnceWith(false, false)).to.be.true; // jshint ignore:line
+            expect(mockParent.reset.calledOnceWith(false, false)).to.be.true; // jshint ignore:line
             // After reset, a non-trailing updateBufferLevel should not call setMockBuffer
             dashHandler.getIsTrailing.returns(false);
             override.updateBufferLevel();
@@ -264,7 +264,7 @@ describe('DodgeBufferControllerOverride', function () {
             override.onPaddingLoaded({ trail: true, buffer: true, representation: { segmentDuration: 4 } });
             mockParent.setMockBuffer.reset();
 
-            override.resetInitialSettings(false, false);
+            override.reset(false, false);
 
             // Verify by accumulating again - value should start from zero, not from prior state
             override.onBufferCycleLoaded({ representation: { segmentDuration: 4 }, actualDuration: 3.9 });
@@ -606,13 +606,13 @@ describe('DodgeBufferControllerOverride', function () {
             expect(mockParent.appendToBuffer.callCount).to.equal(3);
         });
 
-        it('resetInitialSettings clears the local cache', async function () {
+        it('reset clears the local cache', async function () {
             const alternateInit = { representation: { id: 'video_500k' }, homeRepresentationId: 'video_1000k' };
             const homeInit = { representation: { id: 'video_1000k' } };
             mockParent.getInitChunkFromCache.withArgs('video_1000k').returns(homeInit);
 
             override._onInitFragmentLoaded({ chunk: alternateInit });
-            override.resetInitialSettings();
+            override.reset();
 
             await override._onMediaFragmentLoaded({
                 chunk: { representation: { id: 'video_500k' }, homeRepresentationId: 'video_1000k' },

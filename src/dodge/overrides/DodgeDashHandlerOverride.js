@@ -49,7 +49,7 @@ function DodgeDashHandlerOverride(config) {
     const context = this.context;
     const parent = this.parent;
     const _parentInitialize = parent.initialize;
-    const _parentResetInitialSettings = parent.resetInitialSettings;
+    const _parentReset = parent.reset;
     const _parentGetInitRequest = parent.getInitRequest;
     const _parentGetNextSegmentRequest = parent.getNextSegmentRequest;
     const _parentGetNextSegmentRequestIdempotent = parent.getNextSegmentRequestIdempotent;
@@ -101,10 +101,10 @@ function DodgeDashHandlerOverride(config) {
     function _isRepresentationStrict() {
         return getStrictMode() !== DodgeConstants.STRICT_MODE.NONE;
     }
-
-    function resetInitialSettings() {
+    
+    function reset() {
         _resetState();
-        _parentResetInitialSettings.call(parent);
+        _parentReset.call(parent);
     }
 
     function initialize(isDynamic) {
@@ -712,7 +712,7 @@ function DodgeDashHandlerOverride(config) {
 
     return {
         initialize,
-        resetInitialSettings,
+        reset,
         getInitRequest,
         getNextSegmentRequest,
         getNextSegmentRequestIdempotent,

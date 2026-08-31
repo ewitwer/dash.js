@@ -120,12 +120,12 @@ The parent DashHandler's `lastSegment` is never updated during defended playback
 
 ### R2.8 - Defense state management
 
-`updateDefendedStreamInfo()` looks up the representation's ID in the defense registry. Returns `true` when found. `resetInitialSettings()` clears override state and delegates to the parent.
+`updateDefendedStreamInfo()` looks up the representation's ID in the defense registry. Returns `true` when found. `reset()` clears override state and delegates to the parent.
 
 | File | Description | Test |
 |---|---|---|
 | `dodge.DodgeDashHandlerOverride.js` | Defended behavior with extended manifest | updateDefendedStreamInfo() returns true when stream is found |
-| `dodge.DodgeDashHandlerOverride.js` | Defended behavior with extended manifest | resetInitialSettings() clears state; with strictMode = false, subsequent getInitRequest() falls back to parent |
+| `dodge.DodgeDashHandlerOverride.js` | Defended behavior with extended manifest | reset() clears state; with strictMode = false, subsequent getInitRequest() falls back to parent |
 | `dodge.DodgeDashHandlerOverride.js` | Defended behavior with extended manifest | updateDefendedStreamInfo() returns false for unknown label |
 | `dodge.DodgeDashHandlerOverride.js` | Defended behavior with extended manifest | updateDefendedStreamInfo() with same label across multiple calls preserves defense |
 | `dodge.DodgeDashHandlerOverride.js` | Defended behavior with extended manifest | getIsDefended() returns true when defended stream info is set |
@@ -434,14 +434,14 @@ Cycles that are not trailing padding with non-zero `lastTimeSinceStreamEnd` rese
 |---|---|---|
 | `dodge.DodgeBufferControllerOverride.js` | onPaddingLoaded | e.trail = false with non-zero lastTimeSinceStreamEnd, resets mockBuffer to 0 |
 
-### R5.5 - `resetInitialSettings` clears buffer override state
+### R5.5 - `reset` clears buffer override state
 
 Resets `currentMockBuffer` and `lastTimeSinceStreamEnd` to zero and delegates to the parent.
 
 | File | Description | Test |
 |---|---|---|
-| `dodge.DodgeBufferControllerOverride.js` | resetInitialSettings | resets internal state and delegates to parent.resetInitialSettings() |
-| `dodge.DodgeBufferControllerOverride.js` | resetInitialSettings | resets mockBuffer to zero after accumulation |
+| `dodge.DodgeBufferControllerOverride.js` | reset | resets internal state and delegates to parent.reset() |
+| `dodge.DodgeBufferControllerOverride.js` | reset | resets mockBuffer to zero after accumulation |
 
 ### R5.6 - `onBufferCycleLoaded` handles negative variance and trailing reset
 
@@ -500,7 +500,7 @@ When a media chunk carries a `homeRepresentationId` (set by `DodgeDashHandlerOve
 
 The event bus does not await its handlers, so a flush that releases several segments (R2.12) starts every `_onMediaFragmentLoaded` back to back. Because the quality override sandwich (R6.1) is asynchronous, unserialized handlers interleave: both `changeType` calls run before either append, media lands under the alternate codec rather than its own, and an ordinary segment released alongside an override is appended *inside* that override's sandwich and ahead of it in the buffer, defeating R2.12.
 
-`DodgeBufferControllerOverride` therefore chains releases on a module-level promise, so each release - override sandwich or plain delegation to the parent - completes before the next begins, and the append order is the order the events were fired in. A release that throws is caught and logged so it cannot poison the chain for subsequent segments. The chain is reset in `setup()` and `resetInitialSettings`.
+`DodgeBufferControllerOverride` therefore chains releases on a module-level promise, so each release - override sandwich or plain delegation to the parent - completes before the next begins, and the append order is the order the events were fired in. A release that throws is caught and logged so it cannot poison the chain for subsequent segments. The chain is reset in `setup()` and `reset`.
 
 | File | Description | Test |
 |---|---|---|
@@ -510,7 +510,7 @@ The event bus does not await its handlers, so a flush that releases several segm
 
 ### R6.3 - Dodge-owned alternate init cache, invalidated on quality switch
 
-`DodgeBufferControllerOverride` maintains a local `Map<representationId, chunk>` for alternate-representation init segments (identified by `chunk.homeRepresentationId` being set). These are stored unconditionally - not subject to `streaming.cacheInitSegments` - and are cleared when the override receives `QUALITY_CHANGE_REQUESTED` scoped to its `mediaType`, and on `resetInitialSettings`. The sandwich looks up the alternate init from this local cache (with parent `InitCache` as a fallback) and the home init from the parent `InitCache`.
+`DodgeBufferControllerOverride` maintains a local `Map<representationId, chunk>` for alternate-representation init segments (identified by `chunk.homeRepresentationId` being set). These are stored unconditionally - not subject to `streaming.cacheInitSegments` - and are cleared when the override receives `QUALITY_CHANGE_REQUESTED` scoped to its `mediaType`, and on `reset`. The sandwich looks up the alternate init from this local cache (with parent `InitCache` as a fallback) and the home init from the parent `InitCache`.
 
 | File | Description | Test |
 |---|---|---|
@@ -521,7 +521,7 @@ The event bus does not await its handlers, so a flush that releases several segm
 | `dodge.DodgeBufferControllerOverride.js` | _onInitFragmentLoaded | local cache does not depend on streaming.cacheInitSegments - sandwich succeeds regardless |
 | `dodge.DodgeBufferControllerOverride.js` | _onInitFragmentLoaded | QUALITY_CHANGE_REQUESTED for this mediaType clears the local cache |
 | `dodge.DodgeBufferControllerOverride.js` | _onInitFragmentLoaded | QUALITY_CHANGE_REQUESTED for a different mediaType does not clear the local cache |
-| `dodge.DodgeBufferControllerOverride.js` | _onInitFragmentLoaded | resetInitialSettings clears the local cache |
+| `dodge.DodgeBufferControllerOverride.js` | _onInitFragmentLoaded | reset clears the local cache |
 
 ---
 

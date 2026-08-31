@@ -102,7 +102,7 @@ describe('DodgeDashHandlerOverride', function () {
             getNextSegmentRequestIdempotent: sinon.stub().returns({ idempotent: true }),
             getSegmentRequestForTime: sinon.stub().returns({ parentForTime: true }),
             isLastSegmentRequested: sinon.stub().returns(false),
-            resetInitialSettings: sinon.stub(),
+            reset: sinon.stub(),
             initialize: sinon.stub(),
             getStreamInfo: sinon.stub().returns({ manifestInfo: { isDynamic: false } }),
             getType: sinon.stub().returns('video'),
@@ -401,15 +401,15 @@ describe('DodgeDashHandlerOverride', function () {
             expect(override.isLastSegmentRequested(rep, NaN)).to.be.true; // jshint ignore:line
         });
 
-        it('resetInitialSettings() clears state; with strictMode = false, subsequent getInitRequest() falls back to parent', function () {
+        it('reset() clears state; with strictMode = false, subsequent getInitRequest() falls back to parent', function () {
             // Explicitly disable strict mode so fallback behavior is exercised.
             // (With the default strictMode='representation' and a loaded manifest, the
             // override would block instead of falling back.)
             const settings = Settings(context).getInstance();
             settings.update({ dodge: { strictMode: false } });
 
-            override.resetInitialSettings();
-            expect(mockParent.resetInitialSettings.calledOnce).to.be.true; // jshint ignore:line
+            override.reset();
+            expect(mockParent.reset.calledOnce).to.be.true; // jshint ignore:line
             // defendedStreamInfo = null after reset, delegates to parent
             override.getInitRequest({}, rep);
             expect(mockParent.getInitRequest.calledOnce).to.be.true; // jshint ignore:line
@@ -438,7 +438,7 @@ describe('DodgeDashHandlerOverride', function () {
         it('getIsDefended() returns false after reset with strictMode false', function () {
             const settings = Settings(context).getInstance();
             settings.update({ dodge: { strictMode: false } });
-            override.resetInitialSettings();
+            override.reset();
             expect(override.getIsDefended()).to.be.false; // jshint ignore:line
             settings.update({ dodge: { strictMode: 'representation' } });
         });
@@ -839,7 +839,8 @@ describe('DodgeDashHandlerOverride', function () {
             paddingParent = {
                 getInitRequest: sinon.stub().returns(null),
                 getNextSegmentRequest: sinon.stub().returns(null),
-                resetInitialSettings: sinon.stub(),
+                reset: sinon.stub(),
+                reset: sinon.stub(),
                 initialize: sinon.stub(),
                 getStreamInfo: sinon.stub().returns({ manifestInfo: { isDynamic: false } }),
                 getType: sinon.stub().returns('video'),
@@ -923,7 +924,8 @@ describe('DodgeDashHandlerOverride', function () {
             const localParent = {
                 getInitRequest: sinon.stub().returns(null),
                 getNextSegmentRequest: sinon.stub().returns(null),
-                resetInitialSettings: sinon.stub(),
+                reset: sinon.stub(),
+                reset: sinon.stub(),
                 initialize: sinon.stub(),
                 getStreamInfo: sinon.stub().returns({ manifestInfo: { isDynamic: false } }),
                 getType: sinon.stub().returns('video'),
@@ -991,7 +993,8 @@ describe('DodgeDashHandlerOverride', function () {
             const localParent = {
                 getInitRequest: sinon.stub().returns(null),
                 getNextSegmentRequest: sinon.stub().returns(null),
-                resetInitialSettings: sinon.stub(),
+                reset: sinon.stub(),
+                reset: sinon.stub(),
                 initialize: sinon.stub(),
                 getStreamInfo: sinon.stub().returns({ manifestInfo: { isDynamic: false } }),
                 getType: sinon.stub().returns('video'),
@@ -1045,7 +1048,8 @@ describe('DodgeDashHandlerOverride', function () {
             const localParent = {
                 getInitRequest: sinon.stub().returns(null),
                 getNextSegmentRequest: sinon.stub().returns(null),
-                resetInitialSettings: sinon.stub(),
+                reset: sinon.stub(),
+                reset: sinon.stub(),
                 initialize: sinon.stub(),
                 getStreamInfo: sinon.stub().returns({ manifestInfo: { isDynamic: false } }),
                 getType: sinon.stub().returns('video'),
@@ -1100,7 +1104,8 @@ describe('DodgeDashHandlerOverride', function () {
             const localParent = {
                 getInitRequest: sinon.stub().returns(null),
                 getNextSegmentRequest: sinon.stub().returns(null),
-                resetInitialSettings: sinon.stub(),
+                reset: sinon.stub(),
+                reset: sinon.stub(),
                 initialize: sinon.stub(),
                 getStreamInfo: sinon.stub().returns({ manifestInfo: { isDynamic: false } }),
                 getType: sinon.stub().returns('video'),
@@ -1731,7 +1736,7 @@ describe('DodgeDashHandlerOverride', function () {
             override.getNextSegmentRequest({}, rep);
             expect(override.getNextSegmentRequestIdempotent({}, rep)).to.be.null; // jshint ignore:line
 
-            override.resetInitialSettings();
+            override.reset();
             const result = override.getNextSegmentRequestIdempotent({}, rep);
             expect(mockParent.getNextSegmentRequestIdempotent.calledOnce).to.be.true; // jshint ignore:line
             expect(result).to.deep.equal({ idempotent: true });
@@ -1841,7 +1846,7 @@ describe('DodgeDashHandlerOverride', function () {
             // Period 1 representation (same label, different period).
             // In dash.js, each period gets its own DashHandler instance;
             // simulate by resetting cycle state.
-            override.resetInitialSettings();
+            override.reset();
             const repP1 = makeRepresentation();
             repP1.adaptation.period.index = 1;
             override.updateDefendedStreamInfo(repP1);
