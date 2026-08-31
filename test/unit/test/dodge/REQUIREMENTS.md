@@ -714,6 +714,9 @@ The gate reads the setting through `resolveNumericSetting()` (R11.8) rather than
 | `dodge.DefenseRegistry.js` | isValidExtendedManifest | data cycle with non-numeric string index, false |
 | `dodge.DefenseRegistry.js` | isValidExtendedManifest | data cycle with non-string range, false |
 | `dodge.DefenseRegistry.js` | isValidExtendedManifest | data cycle with range start > end, false |
+| `dodge.DefenseRegistry.js` | isValidExtendedManifest | data cycle with an omitted range start, false |
+| `dodge.DefenseRegistry.js` | isValidExtendedManifest | data cycle with an omitted range end, true |
+| `dodge.DefenseRegistry.js` | isValidExtendedManifest | the rejection names the suffix range semantics |
 | `dodge.DefenseRegistry.js` | isValidExtendedManifest | data cycle with valid range, true |
 | `dodge.DefenseRegistry.js` | isValidExtendedManifest | data cycle with padding = true, true |
 | `dodge.DefenseRegistry.js` | isValidExtendedManifest | data cycle with padding = false, true |
@@ -745,12 +748,14 @@ The gate reads the setting through `resolveNumericSetting()` (R11.8) rather than
 
 ### R9.2 - Init cycle validation enforces range, padding, and buffer flag rules
 
-`checkInitCycles()` validates that each init cycle has a valid range string (`"start-end"` where start ≤ end) or absent, that `padding` is a boolean (or a string parseable to boolean) or absent, that `buffer` is a boolean (or a string parseable to boolean) or absent (array buffer is never valid on init cycles). Buffer flags are allowed on non-last init cycles (per-run termination semantics).
+`checkInitCycles()` validates that each init cycle has a valid range string (`"start-end"` where start ≤ end) or absent, with an **explicit start**, that `padding` is a boolean (or a string parseable to boolean) or absent, that `buffer` is a boolean (or a string parseable to boolean) or absent (array buffer is never valid on init cycles). Buffer flags are allowed on non-last init cycles (per-run termination semantics).
 
 | File | Description | Test |
 |---|---|---|
 | `dodge.DefenseRegistry.js` | isValidExtendedManifest | init cycle with non-string range, false |
 | `dodge.DefenseRegistry.js` | isValidExtendedManifest | init cycle with range start > end, false |
+| `dodge.DefenseRegistry.js` | isValidExtendedManifest | init cycle with an omitted range start, false |
+| `dodge.DefenseRegistry.js` | isValidExtendedManifest | init cycle with an omitted range end, true |
 | `dodge.DefenseRegistry.js` | isValidExtendedManifest | init cycle with non-string range (number), false |
 | `dodge.DefenseRegistry.js` | isValidExtendedManifest | init cycle buffer flag on non-last cycle is allowed (per-run termination) |
 | `dodge.DefenseRegistry.js` | isValidExtendedManifest | init cycle buffer flag on last cycle only, true |
@@ -1458,7 +1463,7 @@ override stalls rather than falling back.
 | `dodge.DodgeHandler.js` | Range-ignoring origin detection, _onFragmentLoadingCompleted | a response shorter than the declared range is accepted |
 | `dodge.DodgeHandler.js` | Range-ignoring origin detection, _onFragmentLoadingCompleted | an open-ended range pins no length and is not checked |
 | `dodge.DodgeHandler.js` | Range-ignoring origin detection, _onFragmentLoadingCompleted | a request with no range at all is not checked |
-| `dodge.DodgeHandler.js` | Range-ignoring origin detection, _onFragmentLoadingCompleted | a range with only an end bound is checked from 0 |
+| `dodge.DodgeHandler.js` | Range-ignoring origin detection, _onFragmentLoadingCompleted | an explicit start of 0 is checked from 0 |
 | `dodge.DodgeHandler.js` | Range-ignoring origin detection, _onFragmentLoadingCompleted | originalRange is checked when range is absent |
 | `dodge.DodgeHandler.js` | Range-ignoring origin detection, _onFragmentLoadingCompleted | range overrides originalRange for the check |
 | `dodge.DodgeHandler.js` | Range-ignoring origin detection, _onFragmentLoadingCompleted | an init segment whose response exceeds its range is rejected |
@@ -1522,9 +1527,9 @@ override stalls rather than falling back.
 | R8.4 XHRLoader applies padding | 4 |
 | R8.5 Unset paddingLengthBase is reported | 10 |
 | R9.1 Structural validation rejects malformed manifests | 64 |
-| R9.2 Init cycle validation | 16 |
+| R9.2 Init cycle validation | 18 |
 | R9.3 Init cycle quality validation and explicit buffer requirement | 17 |
-| R9.4 Data cycle validation, maxNoPad, and cycle.full precomputation | 22 |
+| R9.4 Data cycle validation, maxNoPad, and cycle.full precomputation | 25 |
 | R9.5 Cycle index lookup | 4 |
 | R9.6 Registry stores and retrieves manifests | 5 |
 | R9.7 Period field validation | 6 |
@@ -1564,4 +1569,4 @@ override stalls rather than falling back.
 | R12.3 getStreamStats counts | 3 |
 | R12.4 Error fragment stalling | 3 |
 | R12.5 Range-ignoring origin detection | 15 |
-| **Total** | **644** |
+| **Total** | **649** |

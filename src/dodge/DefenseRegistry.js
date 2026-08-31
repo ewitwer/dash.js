@@ -41,6 +41,19 @@ import FactoryMaker from '../core/FactoryMaker.js';
  * @param {Object} cycle - The init cycle to key.
  * @returns {string} Group key.
  */
+/**
+ * True when a range string omits its start, e.g. "-855".
+ *
+ * Cycle ranges come from measured segment sizes, so an explicit start is
+ * always available and nothing needs the suffix form.
+ *
+ * @param {string} range - The range string, already known to be a string.
+ * @returns {boolean} True when the start bound is missing.
+ */
+function _omitsRangeStart(range) {
+    return range.charAt(0) === '-';
+}
+
 function _initQualityKey(cycle) {
     if (cycle.quality === undefined || cycle.quality === null) {
         return 'home';
@@ -64,12 +77,21 @@ function checkInitCycles(stream, logger) {
         const range = stream['init'][i].range;
 
         // range is optional but, when present, MUST be a string of the form
-        // "<start>-<end>". Either bound MAY be omitted (e.g. "-855" or "44-"),
-        // in which case it defaults to 0 or the end of the resource.
+        // "<start>-<end>". The end MAY be omitted ("44-"), in which case it
+        // runs to the end of the resource. The start MUST NOT be: "-855" is a
+        // suffix-byte-range-spec under RFC 7233 section 2.1, asking for the
+        // LAST 855 bytes rather than bytes 0 through 855.
         if (range !== undefined && range !== null) {
             if (typeof range !== 'string' && !(range instanceof String)) {
                 if (logger) {
                     logger.error('Extended manifest rejected: defended stream info with label ' + stream['label'] + ', init cycle at index ' + i + ', invalid range');
+                }
+                return false;
+            }
+
+            if (_omitsRangeStart(range)) {
+                if (logger) {
+                    logger.error('Extended manifest rejected: defended stream info with label ' + stream['label'] + ', init cycle at index ' + i + ', range ' + JSON.stringify(range) + ' omits its start, which HTTP reads as a suffix range');
                 }
                 return false;
             }
@@ -265,6 +287,13 @@ function checkDataCycleFields(label, cycle, i, logger) {
         if (typeof range !== 'string' && !(range instanceof String)) {
             if (logger) {
                 logger.error('Extended manifest rejected: defended stream info with label ' + label + ', data cycle at index ' + i + ', invalid range');
+            }
+            return false;
+        }
+
+        if (_omitsRangeStart(range)) {
+            if (logger) {
+                logger.error('Extended manifest rejected: defended stream info with label ' + label + ', data cycle at index ' + i + ', range ' + JSON.stringify(range) + ' omits its start, which HTTP reads as a suffix range');
             }
             return false;
         }

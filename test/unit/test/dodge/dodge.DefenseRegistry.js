@@ -11,9 +11,9 @@ function makeValidManifest() {
         start: { mpd: '<MPD/>', base_uri: 'https://example.com/' },
         streams: [{
             label: 'video_1000k',
-            init: [{ range: '-855' }],
+            init: [{ range: '0-855' }],
             data: [
-                { index: 0, range: '-43999' }, // cycle 0, partial, non-padding
+                { index: 0, range: '0-43999' }, // cycle 0, partial, non-padding
                 { index: 0, range: '44000-', buffer: true }, // cycle 1, non-padding
                 { index: 1, buffer: true }, // cycle 2, non-padding
             ]
@@ -185,6 +185,26 @@ describe('DefenseRegistry', function () {
                 streams: [{ label: 'a', init: [{ range: '100-50' }], data: [{ index: 0, buffer: true }] }]
             };
             expect(isValidExtendedManifest(m)).to.be.false; // jshint ignore:line
+        });
+
+        // "-855" is a suffix-byte-range-spec under RFC 7233 section 2.1 and asks
+        // for the LAST 855 bytes, not bytes 0 through 855.
+        it('init cycle with an omitted range start, false', function () {
+            const m = {
+                start: { mpd: '<MPD/>', base_uri: 'https://x.com/' },
+                streams: [{ label: 'a', init: [{ range: '-855' }], data: [{ index: 0, buffer: true }] }]
+            };
+            expect(isValidExtendedManifest(m)).to.be.false; // jshint ignore:line
+        });
+
+        // An omitted END is a plain byte-range-spec and stays valid; the
+        // assembler recomputes the end from the response length.
+        it('init cycle with an omitted range end, true', function () {
+            const m = {
+                start: { mpd: '<MPD/>', base_uri: 'https://x.com/' },
+                streams: [{ label: 'a', init: [{ range: '44-' }], data: [{ index: 0, buffer: true }] }]
+            };
+            expect(isValidExtendedManifest(m)).to.be.true; // jshint ignore:line
         });
 
         it('init cycle buffer flag on non-last cycle is allowed (per-run termination)', function () {
@@ -437,6 +457,33 @@ describe('DefenseRegistry', function () {
                 streams: [{ label: 'a', init: [{}], data: [{ index: 0, range: '500-100', buffer: true }] }]
             };
             expect(isValidExtendedManifest(m)).to.be.false; // jshint ignore:line
+        });
+
+        it('data cycle with an omitted range start, false', function () {
+            const m = {
+                start: { mpd: '<MPD/>', base_uri: 'https://x.com/' },
+                streams: [{ label: 'a', init: [{}], data: [{ index: 0, range: '-43999', buffer: true }] }]
+            };
+            expect(isValidExtendedManifest(m)).to.be.false; // jshint ignore:line
+        });
+
+        it('data cycle with an omitted range end, true', function () {
+            const m = {
+                start: { mpd: '<MPD/>', base_uri: 'https://x.com/' },
+                streams: [{ label: 'a', init: [{}], data: [{ index: 0, range: '44000-', buffer: true }] }]
+            };
+            expect(isValidExtendedManifest(m)).to.be.true; // jshint ignore:line
+        });
+
+        it('the rejection names the suffix range semantics', function () {
+            const logged = [];
+            isValidExtendedManifest({
+                start: { mpd: '<MPD/>', base_uri: 'https://x.com/' },
+                streams: [{ label: 'a', init: [{}], data: [{ index: 0, range: '-4', buffer: true }] }]
+            }, { error: (m) => logged.push(m), warn: () => {} });
+            const msg = logged.join(' ');
+            expect(msg).to.include('suffix');
+            expect(msg).to.include('"-4"');
         });
 
         it('data cycle with valid range, true', function () {

@@ -24,9 +24,9 @@ function makeValidManifest() {
         },
         streams: [{
             label: 'video_1000k',
-            init: [{ range: '-855' }],
+            init: [{ range: '0-855' }],
             data: [
-                { index: 0, range: '-43999' },
+                { index: 0, range: '0-43999' },
                 { index: 0, range: '44000-', buffer: true }
             ]
         }]
@@ -87,7 +87,7 @@ describe('DodgeHandler', function () {
                 start: { mpd: '<MPD1/>', base_uri: 'https://server1.example.com/' },
                 streams: [{
                     label: 'video_1000k',
-                    init: [{ range: '-855' }],
+                    init: [{ range: '0-855' }],
                     data: [{ index: 0, buffer: true }]
                 }]
             };
@@ -95,7 +95,7 @@ describe('DodgeHandler', function () {
                 start: { mpd: '<MPD2/>', base_uri: 'https://server2.example.com/' },
                 streams: [{
                     label: 'video_2000k',
-                    init: [{ range: '-855' }],
+                    init: [{ range: '0-855' }],
                     data: [{ index: 0, buffer: true }]
                 }]
             };
@@ -1428,7 +1428,7 @@ describe('DodgeHandler', function () {
                 streams: [{
                     label: 'video_1000k',
                     progressive: true,
-                    init: [{ range: '-855' }],
+                    init: [{ range: '0-855' }],
                     data: data
                 }]
             };
@@ -2169,7 +2169,7 @@ describe('DodgeHandler', function () {
 
         function makeManifest(mpd) {
             return { start: { mpd, base_uri: 'https://example.com/' },
-                streams: [{ label: 'video_1000k', init: [{ range: '-855' }], data: [{ index: 0, buffer: true }] }] };
+                streams: [{ label: 'video_1000k', init: [{ range: '0-855' }], data: [{ index: 0, buffer: true }] }] };
         }
 
         let eventBus, settings, logMessages, testListener;
@@ -2237,7 +2237,7 @@ describe('DodgeHandler', function () {
 
         function makeManifest() {
             return { start: { mpd: MPD, base_uri: 'https://example.com/' },
-                streams: [{ label: 'video_1000k', init: [{ range: '-855' }], data: [{ index: 0, buffer: true }] }] };
+                streams: [{ label: 'video_1000k', init: [{ range: '0-855' }], data: [{ index: 0, buffer: true }] }] };
         }
 
         let eventBus, settings, logMessages, testListener;
@@ -2706,10 +2706,12 @@ describe('DodgeHandler', function () {
             expect(rangeErrors().length).to.equal(0);
         });
 
-        // An omitted start bound means 0, matching the range semantics
-        // DefenseRegistry documents and _concatPartialSegments implements.
-        it('a range with only an end bound is checked from 0', function () {
-            triggerFragmentLoaded(makeRequest({ full: true, buffer: true, range: '-3' }), 5000);
+        // A cycle range always pins its start: DefenseRegistry rejects an
+        // omitted one, because "-3" is a suffix range under RFC 7233 and means
+        // the last three bytes, which the assembler cannot place without
+        // knowing the resource length.
+        it('an explicit start of 0 is checked from 0', function () {
+            triggerFragmentLoaded(makeRequest({ full: true, buffer: true, range: '0-3' }), 5000);
             expect(rangeErrors().length).to.equal(1);
             expect(loadedSpy.called).to.be.false; // jshint ignore:line
         });
