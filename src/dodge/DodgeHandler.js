@@ -179,6 +179,11 @@ function DodgeHandler(config) {
             return null; // not valid JSON
         }
 
+        // An extended manifest arriving is the start of a new source, so drop what
+        // the previous one left behind.
+        defenseRegistry.reset();
+        streamState.clear();
+
         if (!defenseRegistry.addExtendedManifest(extended)) {
             logger.debug('Extended manifest rejected by DefenseRegistry');
             if (strict) {

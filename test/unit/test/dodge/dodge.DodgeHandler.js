@@ -73,6 +73,55 @@ describe('DodgeHandler', function () {
             expect(dodgeHandler.tryProcessExtendedManifest(bad)).to.be.null; // jshint ignore:line
         });
 
+        describe('a new source replaces the defense set', function () {
+            function registryFor() {
+                return DefenseRegistry(context).getInstance();
+            }
+
+            function manifestWithStream(label, range) {
+                return JSON.stringify({
+                    start: { mpd: '<MPD/>', base_uri: 'https://example.com/' },
+                    streams: [{ label: label, init: [{ range: '0-99' }], data: [{ index: 0, range: range, buffer: true }] }]
+                });
+            }
+
+            it('a label from the previous source no longer resolves', function () {
+                dodgeHandler.tryProcessExtendedManifest(manifestWithStream('video_A', '0-499'));
+                dodgeHandler.tryProcessExtendedManifest(manifestWithStream('video_B', '0-499'));
+
+                expect(registryFor().getDefendedStreamInfo('video_A')).to.be.null; // jshint ignore:line
+            });
+
+            it('a colliding label resolves to the new source, not the old one', function () {
+                dodgeHandler.tryProcessExtendedManifest(manifestWithStream('video_1000k', '0-499'));
+                dodgeHandler.tryProcessExtendedManifest(manifestWithStream('video_1000k', '5000-5999'));
+
+                expect(registryFor().getDefendedStreamInfo('video_1000k').data[0].range).to.equal('5000-5999');
+            });
+
+            it('the new source\'s own streams still resolve', function () {
+                dodgeHandler.tryProcessExtendedManifest(manifestWithStream('video_A', '0-499'));
+                dodgeHandler.tryProcessExtendedManifest(manifestWithStream('video_B', '0-499'));
+
+                expect(registryFor().getDefendedStreamInfo('video_B')).to.exist; // jshint ignore:line
+            });
+
+            it('an invalid extended manifest does not leave the previous defense in place', function () {
+                dodgeHandler.tryProcessExtendedManifest(manifestWithStream('video_A', '0-499'));
+                // Valid JSON, no streams array: rejected by the registry.
+                dodgeHandler.tryProcessExtendedManifest(JSON.stringify({ start: { mpd: '<MPD/>', base_uri: 'https://example.com/' } }));
+
+                expect(registryFor().getDefendedStreamInfo('video_A')).to.be.null; // jshint ignore:line
+            });
+            
+            it('a payload that is not an extended manifest leaves the defense intact', function () {
+                dodgeHandler.tryProcessExtendedManifest(manifestWithStream('video_A', '0-499'));
+                dodgeHandler.tryProcessExtendedManifest('<MPD/>');
+
+                expect(registryFor().getDefendedStreamInfo('video_A')).to.exist; // jshint ignore:line
+            });
+        });
+
         it('valid extended manifest JSON returns { mpd, baseUri } matching embedded values', function () {
             const manifest = makeValidManifest();
             const result = dodgeHandler.tryProcessExtendedManifest(JSON.stringify(manifest));

@@ -970,6 +970,24 @@ Without strict mode, invalid JSON or invalid extended manifests return `null` (g
 | `dodge.DodgeHandler.js` | tryProcessExtendedManifest | valid extended manifest JSON returns { mpd, baseUri } matching embedded values |
 | `dodge.DodgeHandler.js` | tryProcessExtendedManifest | two successive valid manifests: each returns its own mpd and baseUri independently |
 
+### R10.18 - A new source replaces the defense set
+
+`MediaPlayer.attachSource()` on an already-initialized player calls
+`_resetPlaybackControllers()`, which resets fifteen controllers and not this module.
+`DefenseRegistry.reset()` otherwise runs only from `MediaPlayer.reset()`.
+
+`tryProcessExtendedManifest` resets the registry and clears `streamState` once the payload has
+parsed as JSON, before the manifest is stored. *After* the parse, so it only fires for something
+that is actually an extended manifest.
+
+| File | Description | Test |
+|---|---|---|
+| `dodge.DodgeHandler.js` | a new source replaces the defense set | a label from the previous source no longer resolves |
+| `dodge.DodgeHandler.js` | a new source replaces the defense set | a colliding label resolves to the new source, not the old one |
+| `dodge.DodgeHandler.js` | a new source replaces the defense set | the new source's own streams still resolve |
+| `dodge.DodgeHandler.js` | a new source replaces the defense set | an invalid extended manifest does not leave the previous defense in place |
+| `dodge.DodgeHandler.js` | a new source replaces the defense set | a payload that is not an extended manifest leaves the defense intact |
+
 ### R10.2 - `tryProcessExtendedManifest` with `strictMode = manifest` or `'max'` fires an error for non-extended manifest sources
 
 When `strictMode` is `'manifest'` or `'max'`, non-JSON or invalid extended manifest input causes `tryProcessExtendedManifest` to return `false` and fire `INTERNAL_MANIFEST_LOADED` with `DODGE_STRICT_MODE_ERROR_CODE`. The error message includes the source URL. Valid extended manifests still succeed normally. `'max'` inherits `'manifest'`'s abort behavior — it must not silently degrade to vanilla DASH on an undefendable source.
@@ -1568,6 +1586,7 @@ override stalls rather than falling back.
 | R10.15 Dynamic MPD rejected after parsing, every strict mode | 18 |
 | R10.16 Byte-range discovery representations reported | 16 |
 | R10.17 Single post-parse gate exposed to the core | 5 |
+| R10.18 A new source replaces the defense set | 5 |
 | R11.1 strictMode = representation enforcement | 8 |
 | R11.2 strictMode = manifest enforcement | 6 |
 | R11.3 strictMode = max enforcement | 5 |
@@ -1581,4 +1600,4 @@ override stalls rather than falling back.
 | R12.3 getStreamStats counts | 3 |
 | R12.4 Error fragment stalling | 8 |
 | R12.5 Range-ignoring origin detection | 15 |
-| **Total** | **654** |
+| **Total** | **659** |
