@@ -90,8 +90,6 @@ function DodgeHandler(config) {
         defenseRegistry,
         dashManifestModel,
         getStrictMode,
-        warnedScheduleRandom,
-        warnedScheduleBase,
         instance;
 
     // Per-stream state, keeps track of partial segments and pending events.
@@ -103,8 +101,6 @@ function DodgeHandler(config) {
         defenseRegistry = DefenseRegistry(context).getInstance();
         dashManifestModel = DashManifestModel(context).getInstance();
         getStrictMode = createStrictModeReader(settings, logger);
-        warnedScheduleRandom = false;
-        warnedScheduleBase = false;
         streamState = new Map();
     }
 
@@ -939,21 +935,6 @@ function DodgeHandler(config) {
     // SCHEDULING AND DODGE EVENTS
     // ************************************************************************
 
-    function _getScheduleWait() {
-        const base = resolveNumericSetting(settings, 'scheduleWaitBase');
-        if (!base.valid && !warnedScheduleBase) {
-            logger.warn(base.message);
-            warnedScheduleBase = true;
-        }
-        const random = resolveNumericSetting(settings, 'scheduleWaitRandom');
-        if (!random.valid && !warnedScheduleRandom) {
-            logger.warn(random.message);
-            warnedScheduleRandom = true;
-        }
-
-        return base.value + Math.round(Math.random() * random.value);
-    }
-
     function _getStreamProcessor(mediaType) {
         if (!streamController) {
             return null;
@@ -974,13 +955,16 @@ function DodgeHandler(config) {
         }
     }
 
-    function _schedule(checkQuality, delay, mediaType) {
+    /**
+     * Re-arm the schedule timer for a media type.
+     */
+    function _schedule(checkQuality, mediaType) {
         const sp = _getStreamProcessor(mediaType);
         if (sp) {
             const sc = sp.getScheduleController();
             if (sc) {
                 sc.setShouldCheckPlaybackQuality(checkQuality);
-                sc.startScheduleTimer(delay);
+                sc.startScheduleTimer(0);
             }
         }
     }
@@ -989,14 +973,14 @@ function DodgeHandler(config) {
     function _onPartialSegment(e) {
         if (!e.suppress) {
             // No quality switches after partial segment downloads
-            _schedule(false, _getScheduleWait(), e.mediaType);
+            _schedule(false, e.mediaType);
         }
     }
 
     // Padding loaded: schedule and update mock buffers
     function _onPaddingLoaded(e) {
         if (!e.suppress) {
-            _schedule(e.bufferFlag || false, _getScheduleWait(), e.mediaType);
+            _schedule(e.bufferFlag || false, e.mediaType);
         }
 
         // Route to buffer controllers for mock buffer management
@@ -1298,7 +1282,7 @@ function DodgeHandler(config) {
             // re-arms its timer. Kick the schedule explicitly here so the
             // next init/media cycle is requested.
             if (primaryEvent.event === events.INIT_FRAGMENT_LOADED && request.homeRepresentationId) {
-                _schedule(false, _getScheduleWait(), request.mediaType);
+                _schedule(false, request.mediaType);
             }
 
         } else {

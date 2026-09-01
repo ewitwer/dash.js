@@ -9,6 +9,7 @@ import Events from '../../../../src/core/events/Events.js';
 import MediaPlayerEvents from '../../../../src/streaming/MediaPlayerEvents.js';
 import Settings from '../../../../src/core/Settings.js';
 import Debug from '../../../../src/core/Debug.js';
+import DodgeScheduleControllerOverride from '../../../../src/dodge/overrides/DodgeScheduleControllerOverride.js';
 
 import sinon from 'sinon';
 import { expect } from 'chai';
@@ -1173,6 +1174,39 @@ describe('DodgeHandler', function () {
     describe('Random walk scheduling, _getScheduleWait and _scheduleAll', function () {
         let handler, eventBus, settings;
 
+        // The real ScheduleController override, wired between the handler and
+        // the timer spy exactly as registerExtensions() wires it at runtime.
+        // Stubbing it out hides the delay the player actually applies: the
+        // override enforces its own random-walk floor on every call, so a delay
+        // measured at the handler's own call site is not the delay the request
+        // waits for.
+        function scheduleControllerWithOverride(timerSpy) {
+            const parent = {
+                _shouldClearScheduleTimer: sinon.stub().returns(false),
+                startScheduleTimer: timerSpy,
+            };
+            const override = DodgeScheduleControllerOverride.call(
+                { context, parent, factory: {} },
+                {
+                    dashHandler: { getIsTrailing: () => false, getIsDefended: () => true },
+                    settings: Settings(context).getInstance(),
+                }
+            );
+            return {
+                startScheduleTimer: override.startScheduleTimer,
+                setShouldCheckPlaybackQuality: sinon.spy(),
+            };
+        }
+
+        function videoProcessor(timerSpy) {
+            const sc = scheduleControllerWithOverride(timerSpy);
+            return {
+                getScheduleController: () => sc,
+                getType: () => 'video',
+                getBufferController: () => ({ onPaddingLoaded: sinon.spy() }),
+            };
+        }
+
         function makeHandler(streamProcessors) {
             eventBus = EventBus(context).getInstance();
             settings = Settings(context).getInstance();
@@ -1193,11 +1227,7 @@ describe('DodgeHandler', function () {
 
         it('delay passed to startScheduleTimer is within [scheduleWaitBase, scheduleWaitBase + scheduleWaitRandom]', function () {
             const timerSpy = sinon.spy();
-            makeHandler([{
-                getScheduleController: () => ({ startScheduleTimer: timerSpy, setShouldCheckPlaybackQuality: sinon.spy() }),
-                getType: () => 'video',
-                getBufferController: () => ({ onPaddingLoaded: sinon.spy() }),
-            }]);
+            makeHandler([videoProcessor(timerSpy)]);
 
             settings.update({ dodge: { scheduleWaitBase: 100, scheduleWaitRandom: 50 } });
             eventBus.trigger(Events.MEDIA_FRAGMENT_PARTIAL,
@@ -1212,11 +1242,7 @@ describe('DodgeHandler', function () {
 
         it('with scheduleWaitRandom = 0, delay is always exactly scheduleWaitBase', function () {
             const timerSpy = sinon.spy();
-            makeHandler([{
-                getScheduleController: () => ({ startScheduleTimer: timerSpy, setShouldCheckPlaybackQuality: sinon.spy() }),
-                getType: () => 'video',
-                getBufferController: () => ({ onPaddingLoaded: sinon.spy() }),
-            }]);
+            makeHandler([videoProcessor(timerSpy)]);
 
             settings.update({ dodge: { scheduleWaitBase: 200, scheduleWaitRandom: 0 } });
             for (let i = 0; i < 5; i++) {
@@ -1234,11 +1260,7 @@ describe('DodgeHandler', function () {
             sinon.stub(Debug(context).getInstance(), 'getLogger').returns(loggerSpy);
 
             const timerSpy = sinon.spy();
-            makeHandler([{
-                getScheduleController: () => ({ startScheduleTimer: timerSpy, setShouldCheckPlaybackQuality: sinon.spy() }),
-                getType: () => 'video',
-                getBufferController: () => ({ onPaddingLoaded: sinon.spy() }),
-            }]);
+            makeHandler([videoProcessor(timerSpy)]);
 
             settings.update({ dodge: { scheduleWaitBase: 200, scheduleWaitRandom: -100 } });
             for (let i = 0; i < 10; i++) {
@@ -1262,11 +1284,7 @@ describe('DodgeHandler', function () {
             sinon.stub(Debug(context).getInstance(), 'getLogger').returns(loggerSpy);
 
             const timerSpy = sinon.spy();
-            makeHandler([{
-                getScheduleController: () => ({ startScheduleTimer: timerSpy, setShouldCheckPlaybackQuality: sinon.spy() }),
-                getType: () => 'video',
-                getBufferController: () => ({ onPaddingLoaded: sinon.spy() }),
-            }]);
+            makeHandler([videoProcessor(timerSpy)]);
 
             settings.update({ dodge: { scheduleWaitBase: -100, scheduleWaitRandom: 50 } });
             for (let i = 0; i < 20; i++) {
@@ -1292,11 +1310,7 @@ describe('DodgeHandler', function () {
             sinon.stub(Debug(context).getInstance(), 'getLogger').returns(loggerSpy);
 
             const timerSpy = sinon.spy();
-            makeHandler([{
-                getScheduleController: () => ({ startScheduleTimer: timerSpy, setShouldCheckPlaybackQuality: sinon.spy() }),
-                getType: () => 'video',
-                getBufferController: () => ({ onPaddingLoaded: sinon.spy() }),
-            }]);
+            makeHandler([videoProcessor(timerSpy)]);
 
             settings.update({ dodge: { scheduleWaitBase: 'abc', scheduleWaitRandom: 50 } });
             for (let i = 0; i < 10; i++) {
@@ -1319,13 +1333,51 @@ describe('DodgeHandler', function () {
             expect(warnings.length).to.equal(1);
         });
 
+        // The delay must come from one draw.
+        it('a scheduled Dodge event consumes exactly one random draw', function () {
+            const timerSpy = sinon.spy();
+            makeHandler([videoProcessor(timerSpy)]);
+            settings.update({ dodge: { scheduleWaitBase: 100, scheduleWaitRandom: 50 } });
+
+            const randomStub = sinon.stub(Math, 'random').returns(0.5);
+            try {
+                eventBus.trigger(Events.MEDIA_FRAGMENT_PARTIAL,
+                    { index: 0, suppress: false, representation: {}, quality: 0, byteLength: 100, trail: false, buffer: false },
+                    { streamId: 'stream-1', mediaType: 'video' }
+                );
+            } finally {
+                randomStub.restore();
+            }
+
+            expect(randomStub.callCount).to.equal(1);
+        });
+
+        it('the delay is the draw itself, not the larger of two draws', function () {
+            const timerSpy = sinon.spy();
+            makeHandler([videoProcessor(timerSpy)]);
+            settings.update({ dodge: { scheduleWaitBase: 100, scheduleWaitRandom: 50 } });
+
+            // First draw the bottom of the range, then the top. One draw lands
+            // at the base; max-of-two lands at the ceiling.
+            const randomStub = sinon.stub(Math, 'random');
+            randomStub.onCall(0).returns(0);
+            randomStub.onCall(1).returns(1);
+            randomStub.returns(1);
+            try {
+                eventBus.trigger(Events.MEDIA_FRAGMENT_PARTIAL,
+                    { index: 0, suppress: false, representation: {}, quality: 0, byteLength: 100, trail: false, buffer: false },
+                    { streamId: 'stream-1', mediaType: 'video' }
+                );
+            } finally {
+                randomStub.restore();
+            }
+
+            expect(timerSpy.firstCall.args[0]).to.equal(100);
+        });
+
         it('with a non-numeric scheduleWaitRandom, delay is exactly scheduleWaitBase', function () {
             const timerSpy = sinon.spy();
-            makeHandler([{
-                getScheduleController: () => ({ startScheduleTimer: timerSpy, setShouldCheckPlaybackQuality: sinon.spy() }),
-                getType: () => 'video',
-                getBufferController: () => ({ onPaddingLoaded: sinon.spy() }),
-            }]);
+            makeHandler([videoProcessor(timerSpy)]);
 
             settings.update({ dodge: { scheduleWaitBase: 200, scheduleWaitRandom: 'abc' } });
             for (let i = 0; i < 10; i++) {

@@ -554,7 +554,7 @@ The event bus does not await its handlers, so a flush that releases several segm
 
 ### R7.1 - Schedule delay is bounded to `[scheduleWaitBase, scheduleWaitBase + scheduleWaitRandom]`
 
-`_getScheduleWait()` returns `scheduleWaitBase + Math.round(Math.random() * scheduleWaitRandom)`. With `scheduleWaitRandom = 0`, the delay is deterministically equal to `scheduleWaitBase`. Both settings are read through `resolveNumericSetting()` (R11.8), so an unusable value - negative, NaN, or a quoted number - resolves to 0 and is logged once per DodgeHandler / DodgeScheduleControllerOverride instance. The delay is therefore always a finite number: an unvalidated NaN would reach `setTimeout`, which runs it immediately and collapses the random walk into back-to-back requests.
+`_getScheduleWait()` returns `scheduleWaitBase + Math.round(Math.random() * scheduleWaitRandom)`. With `scheduleWaitRandom = 0`, the delay is deterministically equal to `scheduleWaitBase`. Both settings are read through `resolveNumericSetting()` (R11.8), so an unusable value - negative, NaN, or a quoted number - resolves to 0 and is logged once per `DodgeScheduleControllerOverride` instance.
 
 | File | Description | Test |
 |---|---|---|
@@ -564,6 +564,8 @@ The event bus does not await its handlers, so a flush that releases several segm
 | `dodge.DodgeHandler.js` | Random walk scheduling, _getScheduleWait and _scheduleAll | with scheduleWaitBase < 0, delay is clamped to 0 + random and warns exactly once |
 | `dodge.DodgeHandler.js` | Random walk scheduling, _getScheduleWait and _scheduleAll | with a non-numeric scheduleWaitBase, delay is a finite number and warns exactly once |
 | `dodge.DodgeHandler.js` | Random walk scheduling, _getScheduleWait and _scheduleAll | with a non-numeric scheduleWaitRandom, delay is exactly scheduleWaitBase |
+| `dodge.DodgeHandler.js` | Random walk scheduling, _getScheduleWait and _scheduleAll | a scheduled Dodge event consumes exactly one random draw |
+| `dodge.DodgeHandler.js` | Random walk scheduling, _getScheduleWait and _scheduleAll | the delay is the draw itself, not the larger of two draws |
 
 ### R7.2 - Scheduling is scoped to the event's media type
 
