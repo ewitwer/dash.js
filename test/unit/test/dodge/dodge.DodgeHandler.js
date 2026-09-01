@@ -301,20 +301,6 @@ describe('DodgeHandler', function () {
             });
         }
 
-        function makeThumbnailManifest() {
-            return {
-                start: {
-                    mpd: '<MPD><Period><AdaptationSet mimeType="image/jpeg"><EssentialProperty schemeIdUri="http://dashif.org/guidelines/thumbnail_tile" value="10x1"/><Representation id="thumb" bandwidth="2000" width="3200" height="180"/></AdaptationSet></Period></MPD>',
-                    base_uri: 'https://example.com/'
-                },
-                streams: [{
-                    label: 'thumb',
-                    init: [{}],
-                    data: [{ index: 0, buffer: true }]
-                }]
-            };
-        }
-
         // Matches on the setting name, which is the stable part of the
         // contract. 'Dodge strictMode is disabled' does not match, so the
         // not-warned assertions stay honest for strictMode = false.
@@ -350,8 +336,14 @@ describe('DodgeHandler', function () {
         // Distinguishes max from manifest: only max rejects side channels.
         it('an invalid value gets max side-channel rejection, not just manifest abort', function () {
             const handler = createDodgeHandler('strict');
-            const result = handler.tryProcessExtendedManifest(JSON.stringify(makeThumbnailManifest()), 'test.exmfst.json');
-            expect(result).to.be.false; // jshint ignore:line
+            const parser = DashParser({}).create({ debug: new DebugMock() });
+            const xml = '<MPD xmlns="urn:mpeg:dash:schema:mpd:2011" type="static" minBufferTime="PT1S">'
+                + '<Period id="p0" duration="PT10S"><AdaptationSet mimeType="image/jpeg">'
+                + '<SegmentTemplate initialization="init.jpg" media="$Number$.jpg"/>'
+                + '<Representation id="th0" bandwidth="10">'
+                + '<EssentialProperty schemeIdUri="http://dashif.org/thumbnail_tile" value="10x1"/>'
+                + '</Representation></AdaptationSet></Period></MPD>';
+            expect(handler.rejectIfUnshapedTracks(parser.parse(xml), 'u')).to.be.true; // jshint ignore:line
             handler.reset();
         });
 
@@ -1671,485 +1663,21 @@ describe('DodgeHandler', function () {
 
     // DRM content detection in extended manifest
 
-    describe('DRM content detection in tryProcessExtendedManifest', function () {
-
-        let eventBus, settings, logMessages, testListener;
-
-        beforeEach(function () {
-            context = {};
-            eventBus = EventBus(context).getInstance();
-            settings = Settings(context).getInstance();
-            settings.update({ debug: { dispatchEvent: true, logLevel: Debug.LOG_LEVEL_WARNING } });
-            Debug(context).getInstance({ settings: settings });
-            testListener = {};
-            logMessages = [];
-            eventBus.on(Events.LOG, (e) => { logMessages.push(e); }, testListener);
-        });
-
-        function createDodgeHandler(strictMode) {
-            if (strictMode !== undefined) {
-                settings.update({ dodge: { strictMode: strictMode } });
-            }
-            return DodgeHandler(context).create({
-                eventBus,
-                events: Events,
-                settings,
-                streamController: null,
-                mediaPlayer: { extend: () => {}, updateSettings: () => {} }
-            });
-        }
-
-        function makeDrmManifest() {
-            return {
-                start: {
-                    mpd: '<MPD><Period><AdaptationSet><ContentProtection schemeIdUri="urn:uuid:edef8ba9-79d6-4ace-a3c8-27dcd51d21ed"/><Representation id="v" bandwidth="1000000"/></AdaptationSet></Period></MPD>',
-                    base_uri: 'https://example.com/'
-                },
-                streams: [{
-                    label: 'v',
-                    init: [{}],
-                    data: [{ index: 0, buffer: true }]
-                }]
-            };
-        }
-
-        it('accepts manifest containing DRM in all strict modes', function () {
-            const handler = createDodgeHandler('representation');
-            const result = handler.tryProcessExtendedManifest(JSON.stringify(makeDrmManifest()), 'test.exmfst.json');
-            expect(result).to.exist; // jshint ignore:line
-            expect(result.mpd).to.include('ContentProtection');
-            expect(logMessages.some(m => m.level === Debug.LOG_LEVEL_WARNING && m.message.includes('DRM'))).to.be.true; // jshint ignore:line
-            handler.reset();
-        });
-
-        it('strict mode off: no DRM warning', function () {
-            const handler = createDodgeHandler(false);
-            handler.tryProcessExtendedManifest(JSON.stringify(makeDrmManifest()), 'test.exmfst.json');
-            expect(logMessages.filter(m => m.level === Debug.LOG_LEVEL_WARNING && m.message.includes('DRM')).length).to.equal(0);
-            handler.reset();
-        });
-
-        it('manifest without DRM: accepted in all modes', function () {
-            const handler = createDodgeHandler('representation');
-            const result = handler.tryProcessExtendedManifest(JSON.stringify(makeValidManifest()), 'test.exmfst.json');
-            expect(result).to.exist; // jshint ignore:line
-            expect(result.mpd).to.equal('<MPD/>');
-            handler.reset();
-        });
-    });
 
     // Thumbnail track detection in extended manifest
 
-    describe('Thumbnail track detection in tryProcessExtendedManifest', function () {
-
-        let eventBus, settings, logMessages, testListener;
-
-        beforeEach(function () {
-            context = {};
-            eventBus = EventBus(context).getInstance();
-            settings = Settings(context).getInstance();
-            settings.update({ debug: { dispatchEvent: true, logLevel: Debug.LOG_LEVEL_WARNING } });
-            Debug(context).getInstance({ settings: settings });
-            testListener = {};
-            logMessages = [];
-            eventBus.on(Events.LOG, (e) => { logMessages.push(e); }, testListener);
-        });
-
-        function createDodgeHandler(strictMode) {
-            if (strictMode !== undefined) {
-                settings.update({ dodge: { strictMode: strictMode } });
-            }
-            return DodgeHandler(context).create({
-                eventBus,
-                events: Events,
-                settings,
-                streamController: null,
-                mediaPlayer: { extend: () => {}, updateSettings: () => {} }
-            });
-        }
-
-        function makeThumbnailManifest() {
-            return {
-                start: {
-                    mpd: '<MPD><Period><AdaptationSet mimeType="image/jpeg"><EssentialProperty schemeIdUri="http://dashif.org/guidelines/thumbnail_tile" value="10x1"/><Representation id="thumb" bandwidth="2000" width="3200" height="180"/></AdaptationSet></Period></MPD>',
-                    base_uri: 'https://example.com/'
-                },
-                streams: [{
-                    label: 'thumb',
-                    init: [{}],
-                    data: [{ index: 0, buffer: true }]
-                }]
-            };
-        }
-
-        it('strict mode representation: accepts manifest containing thumbnail tracks with warning', function () {
-            const handler = createDodgeHandler('representation');
-            const result = handler.tryProcessExtendedManifest(JSON.stringify(makeThumbnailManifest()), 'test.exmfst.json');
-            expect(result).to.exist; // jshint ignore:line
-            expect(result.mpd).to.include('thumbnail_tile');
-            expect(logMessages.some(m => m.level === Debug.LOG_LEVEL_WARNING && m.message.includes('thumbnail'))).to.be.true; // jshint ignore:line
-            handler.reset();
-        });
-
-        it('strict mode manifest: accepts manifest containing thumbnail tracks with warning', function () {
-            const handler = createDodgeHandler('manifest');
-            const result = handler.tryProcessExtendedManifest(JSON.stringify(makeThumbnailManifest()), 'test.exmfst.json');
-            expect(result).to.exist; // jshint ignore:line
-            expect(result.mpd).to.include('thumbnail_tile');
-            expect(logMessages.some(m => m.level === Debug.LOG_LEVEL_WARNING && m.message.includes('thumbnail'))).to.be.true; // jshint ignore:line
-            handler.reset();
-        });
-
-        it('strict mode max: rejects manifest containing thumbnail tracks', function () {
-            const handler = createDodgeHandler('max');
-            const result = handler.tryProcessExtendedManifest(JSON.stringify(makeThumbnailManifest()), 'test.exmfst.json');
-            expect(result).to.be.false; // jshint ignore:line
-            handler.reset();
-        });
-
-        it('strict mode off: accepts manifest containing thumbnail tracks without warning', function () {
-            const handler = createDodgeHandler(false);
-            const result = handler.tryProcessExtendedManifest(JSON.stringify(makeThumbnailManifest()), 'test.exmfst.json');
-            expect(result).to.exist; // jshint ignore:line
-            expect(result.mpd).to.include('thumbnail_tile');
-            expect(logMessages.filter(m => m.level === Debug.LOG_LEVEL_WARNING && m.message.includes('thumbnail')).length).to.equal(0);
-            handler.reset();
-        });
-
-        it('manifest without thumbnails: accepted in all modes', function () {
-            const handler = createDodgeHandler('representation');
-            const result = handler.tryProcessExtendedManifest(JSON.stringify(makeValidManifest()), 'test.exmfst.json');
-            expect(result).to.exist; // jshint ignore:line
-            handler.reset();
-        });
-    });
 
     // Content Steering detection in extended manifest
 
-    describe('Content Steering detection in tryProcessExtendedManifest', function () {
-
-        let eventBus, settings, logMessages, testListener;
-
-        beforeEach(function () {
-            context = {};
-            eventBus = EventBus(context).getInstance();
-            settings = Settings(context).getInstance();
-            settings.update({ debug: { dispatchEvent: true, logLevel: Debug.LOG_LEVEL_WARNING } });
-            Debug(context).getInstance({ settings: settings });
-            testListener = {};
-            logMessages = [];
-            eventBus.on(Events.LOG, (e) => { logMessages.push(e); }, testListener);
-        });
-
-        function createDodgeHandler(strictMode) {
-            if (strictMode !== undefined) {
-                settings.update({ dodge: { strictMode: strictMode } });
-            }
-            return DodgeHandler(context).create({
-                eventBus,
-                events: Events,
-                settings,
-                streamController: null,
-                mediaPlayer: { extend: () => {}, updateSettings: () => {} }
-            });
-        }
-
-        function makeContentSteeringManifest() {
-            return {
-                start: {
-                    mpd: '<MPD><ContentSteering defaultServiceLocation="cdn1" queryBeforeStart="true">https://steering.example.com/dash</ContentSteering><Period><AdaptationSet><Representation id="v" bandwidth="1000000"/></AdaptationSet></Period></MPD>',
-                    base_uri: 'https://example.com/'
-                },
-                streams: [{
-                    label: 'v',
-                    init: [{}],
-                    data: [{ index: 0, buffer: true }]
-                }]
-            };
-        }
-
-        it('accepts manifest containing ContentSteering in all strict modes', function () {
-            const handler = createDodgeHandler('representation');
-            const result = handler.tryProcessExtendedManifest(JSON.stringify(makeContentSteeringManifest()), 'test.exmfst.json');
-            expect(result).to.exist; // jshint ignore:line
-            expect(result.mpd).to.include('ContentSteering');
-            expect(logMessages.some(m => m.level === Debug.LOG_LEVEL_WARNING && m.message.includes('ContentSteering'))).to.be.true; // jshint ignore:line
-            handler.reset();
-        });
-
-        it('strict mode off: no ContentSteering warning', function () {
-            const handler = createDodgeHandler(false);
-            handler.tryProcessExtendedManifest(JSON.stringify(makeContentSteeringManifest()), 'test.exmfst.json');
-            expect(logMessages.filter(m => m.level === Debug.LOG_LEVEL_WARNING && m.message.includes('ContentSteering')).length).to.equal(0);
-            handler.reset();
-        });
-
-        it('manifest without ContentSteering: accepted in all modes', function () {
-            const handler = createDodgeHandler('representation');
-            const result = handler.tryProcessExtendedManifest(JSON.stringify(makeValidManifest()), 'test.exmfst.json');
-            expect(result).to.exist; // jshint ignore:line
-            handler.reset();
-        });
-    });
 
     // XLink detection in extended manifest
 
-    describe('XLink detection in tryProcessExtendedManifest', function () {
-
-        let eventBus, settings, logMessages, testListener;
-
-        beforeEach(function () {
-            context = {};
-            eventBus = EventBus(context).getInstance();
-            settings = Settings(context).getInstance();
-            settings.update({ debug: { dispatchEvent: true, logLevel: Debug.LOG_LEVEL_WARNING } });
-            Debug(context).getInstance({ settings: settings });
-            testListener = {};
-            logMessages = [];
-            eventBus.on(Events.LOG, (e) => { logMessages.push(e); }, testListener);
-        });
-
-        function createDodgeHandler(strictMode) {
-            if (strictMode !== undefined) {
-                settings.update({ dodge: { strictMode: strictMode } });
-            }
-            return DodgeHandler(context).create({
-                eventBus,
-                events: Events,
-                settings,
-                streamController: null,
-                mediaPlayer: { extend: () => {}, updateSettings: () => {} }
-            });
-        }
-
-        function makeXLinkManifest() {
-            return {
-                start: {
-                    mpd: '<MPD><Period xlink:href="https://example.com/period.xml" xlink:actuate="onLoad"><AdaptationSet><Representation id="v" bandwidth="1000000"/></AdaptationSet></Period></MPD>',
-                    base_uri: 'https://example.com/'
-                },
-                streams: [{
-                    label: 'v',
-                    init: [{}],
-                    data: [{ index: 0, buffer: true }]
-                }]
-            };
-        }
-
-        it('strict mode representation: accepts manifest containing XLink with warning', function () {
-            const handler = createDodgeHandler('representation');
-            const result = handler.tryProcessExtendedManifest(JSON.stringify(makeXLinkManifest()), 'test.exmfst.json');
-            expect(result).to.exist; // jshint ignore:line
-            expect(result.mpd).to.include('xlink:href');
-            expect(logMessages.some(m => m.level === Debug.LOG_LEVEL_WARNING && m.message.includes('XLink'))).to.be.true; // jshint ignore:line
-            handler.reset();
-        });
-
-        it('strict mode manifest: accepts manifest containing XLink with warning', function () {
-            const handler = createDodgeHandler('manifest');
-            const result = handler.tryProcessExtendedManifest(JSON.stringify(makeXLinkManifest()), 'test.exmfst.json');
-            expect(result).to.exist; // jshint ignore:line
-            expect(result.mpd).to.include('xlink:href');
-            expect(logMessages.some(m => m.level === Debug.LOG_LEVEL_WARNING && m.message.includes('XLink'))).to.be.true; // jshint ignore:line
-            handler.reset();
-        });
-
-        it('strict mode max: rejects manifest containing XLink', function () {
-            const handler = createDodgeHandler('max');
-            const result = handler.tryProcessExtendedManifest(JSON.stringify(makeXLinkManifest()), 'test.exmfst.json');
-            expect(result).to.be.false; // jshint ignore:line
-            handler.reset();
-        });
-
-        it('strict mode off: accepts manifest containing XLink without warning', function () {
-            const handler = createDodgeHandler(false);
-            const result = handler.tryProcessExtendedManifest(JSON.stringify(makeXLinkManifest()), 'test.exmfst.json');
-            expect(result).to.exist; // jshint ignore:line
-            expect(result.mpd).to.include('xlink:href');
-            expect(logMessages.filter(m => m.level === Debug.LOG_LEVEL_WARNING && m.message.includes('XLink')).length).to.equal(0);
-            handler.reset();
-        });
-
-        it('manifest without XLink: accepted in all modes', function () {
-            const handler = createDodgeHandler('representation');
-            const result = handler.tryProcessExtendedManifest(JSON.stringify(makeValidManifest()), 'test.exmfst.json');
-            expect(result).to.exist; // jshint ignore:line
-            handler.reset();
-        });
-    });
 
     // DVB Reporting detection in extended manifest
 
-    describe('DVB Reporting detection in tryProcessExtendedManifest', function () {
-
-        let eventBus, settings, logMessages, testListener;
-
-        beforeEach(function () {
-            context = {};
-            eventBus = EventBus(context).getInstance();
-            settings = Settings(context).getInstance();
-            settings.update({ debug: { dispatchEvent: true, logLevel: Debug.LOG_LEVEL_WARNING } });
-            Debug(context).getInstance({ settings: settings });
-            testListener = {};
-            logMessages = [];
-            eventBus.on(Events.LOG, (e) => { logMessages.push(e); }, testListener);
-        });
-
-        function createDodgeHandler(strictMode) {
-            if (strictMode !== undefined) {
-                settings.update({ dodge: { strictMode: strictMode } });
-            }
-            return DodgeHandler(context).create({
-                eventBus,
-                events: Events,
-                settings,
-                streamController: null,
-                mediaPlayer: { extend: () => {}, updateSettings: () => {} }
-            });
-        }
-
-        function makeDvbReportingManifest() {
-            return {
-                start: {
-                    mpd: '<MPD><Period><AdaptationSet><Representation id="v" bandwidth="1000000"/></AdaptationSet></Period><Metrics metrics="DVBErrors"><Reporting schemeIdUri="urn:dvb:dash:reporting:2014" value="1" dvb:reportingUrl="https://report.example.com/"/></Metrics></MPD>',
-                    base_uri: 'https://example.com/'
-                },
-                streams: [{
-                    label: 'v',
-                    init: [{}],
-                    data: [{ index: 0, buffer: true }]
-                }]
-            };
-        }
-
-        it('accepts manifest containing DVB Reporting in all strict modes', function () {
-            const handler = createDodgeHandler('representation');
-            const result = handler.tryProcessExtendedManifest(JSON.stringify(makeDvbReportingManifest()), 'test.exmfst.json');
-            expect(result).to.exist; // jshint ignore:line
-            expect(result.mpd).to.include('<Reporting');
-            expect(logMessages.some(m => m.level === Debug.LOG_LEVEL_WARNING && m.message.includes('Reporting'))).to.be.true; // jshint ignore:line
-            handler.reset();
-        });
-
-        it('strict mode off: no DVB Reporting warning', function () {
-            const handler = createDodgeHandler(false);
-            handler.tryProcessExtendedManifest(JSON.stringify(makeDvbReportingManifest()), 'test.exmfst.json');
-            expect(logMessages.filter(m => m.level === Debug.LOG_LEVEL_WARNING && m.message.includes('Reporting')).length).to.equal(0);
-            handler.reset();
-        });
-
-        it('manifest without DVB Reporting: accepted in all modes', function () {
-            const handler = createDodgeHandler('representation');
-            const result = handler.tryProcessExtendedManifest(JSON.stringify(makeValidManifest()), 'test.exmfst.json');
-            expect(result).to.exist; // jshint ignore:line
-            handler.reset();
-        });
-    });
 
     // Non-fragmented text detection in extended manifest
 
-    describe('Non-fragmented text detection in tryProcessExtendedManifest', function () {
-
-        let eventBus, settings, logMessages, testListener;
-
-        beforeEach(function () {
-            context = {};
-            eventBus = EventBus(context).getInstance();
-            settings = Settings(context).getInstance();
-            settings.update({ debug: { dispatchEvent: true, logLevel: Debug.LOG_LEVEL_WARNING } });
-            Debug(context).getInstance({ settings: settings });
-            testListener = {};
-            logMessages = [];
-            eventBus.on(Events.LOG, (e) => { logMessages.push(e); }, testListener);
-        });
-
-        function createDodgeHandler(strictMode) {
-            if (strictMode !== undefined) {
-                settings.update({ dodge: { strictMode: strictMode } });
-            }
-            return DodgeHandler(context).create({
-                eventBus,
-                events: Events,
-                settings,
-                streamController: null,
-                mediaPlayer: { extend: () => {}, updateSettings: () => {} }
-            });
-        }
-
-        function makeNonFragmentedTextManifest() {
-            return {
-                start: {
-                    mpd: '<MPD><Period><AdaptationSet mimeType="application/ttml+xml"><Representation id="sub" bandwidth="1000"/></AdaptationSet><AdaptationSet><Representation id="v" bandwidth="1000000"/></AdaptationSet></Period></MPD>',
-                    base_uri: 'https://example.com/'
-                },
-                streams: [{
-                    label: 'v',
-                    init: [{}],
-                    data: [{ index: 0, buffer: true }]
-                }]
-            };
-        }
-
-        it('strict mode representation: accepts manifest containing non-fragmented text with warning', function () {
-            const handler = createDodgeHandler('representation');
-            const result = handler.tryProcessExtendedManifest(JSON.stringify(makeNonFragmentedTextManifest()), 'test.exmfst.json');
-            expect(result).to.exist; // jshint ignore:line
-            expect(result.mpd).to.include('application/ttml+xml');
-            expect(logMessages.some(m => m.level === Debug.LOG_LEVEL_WARNING && m.message.includes('non-fragmented text'))).to.be.true; // jshint ignore:line
-            handler.reset();
-        });
-
-        it('strict mode manifest: accepts manifest containing non-fragmented text with warning', function () {
-            const handler = createDodgeHandler('manifest');
-            const result = handler.tryProcessExtendedManifest(JSON.stringify(makeNonFragmentedTextManifest()), 'test.exmfst.json');
-            expect(result).to.exist; // jshint ignore:line
-            expect(result.mpd).to.include('application/ttml+xml');
-            expect(logMessages.some(m => m.level === Debug.LOG_LEVEL_WARNING && m.message.includes('non-fragmented text'))).to.be.true; // jshint ignore:line
-            handler.reset();
-        });
-
-        it('strict mode max: rejects manifest containing non-fragmented text', function () {
-            const handler = createDodgeHandler('max');
-            const result = handler.tryProcessExtendedManifest(JSON.stringify(makeNonFragmentedTextManifest()), 'test.exmfst.json');
-            expect(result).to.be.false; // jshint ignore:line
-            handler.reset();
-        });
-
-        it('strict mode off: accepts manifest containing non-fragmented text without warning', function () {
-            const handler = createDodgeHandler(false);
-            const result = handler.tryProcessExtendedManifest(JSON.stringify(makeNonFragmentedTextManifest()), 'test.exmfst.json');
-            expect(result).to.exist; // jshint ignore:line
-            expect(result.mpd).to.include('application/ttml+xml');
-            expect(logMessages.filter(m => m.level === Debug.LOG_LEVEL_WARNING && m.message.includes('non-fragmented text')).length).to.equal(0);
-            handler.reset();
-        });
-
-        it('manifest without non-fragmented text: accepted in all modes', function () {
-            const handler = createDodgeHandler('max');
-            const result = handler.tryProcessExtendedManifest(JSON.stringify(makeValidManifest()), 'test.exmfst.json');
-            expect(result).to.exist; // jshint ignore:line
-            handler.reset();
-        });
-
-        it('strict mode max: rejects single-quote non-fragmented text (quote-agnostic scan)', function () {
-            // A valid MPD serialized with single quotes must not bypass the scan.
-            const manifest = makeNonFragmentedTextManifest();
-            manifest.start.mpd = manifest.start.mpd.replace('mimeType="application/ttml+xml"', 'mimeType=\'application/ttml+xml\'');
-            const handler = createDodgeHandler('max');
-            const result = handler.tryProcessExtendedManifest(JSON.stringify(manifest), 'test.exmfst.json');
-            expect(result).to.be.false; // jshint ignore:line
-            handler.reset();
-        });
-
-        it('strict mode max: rejects WebVTT text with extra attribute spacing (quote-agnostic scan)', function () {
-            const manifest = makeNonFragmentedTextManifest();
-            manifest.start.mpd = manifest.start.mpd.replace('mimeType="application/ttml+xml"', 'mimeType = "text/vtt"');
-            const handler = createDodgeHandler('max');
-            const result = handler.tryProcessExtendedManifest(JSON.stringify(manifest), 'test.exmfst.json');
-            expect(result).to.be.false; // jshint ignore:line
-            handler.reset();
-        });
-    });
 
     // CMCD warning in tryProcessExtendedManifest
 
@@ -3067,6 +2595,238 @@ describe('DodgeHandler', function () {
                 const msg = warnings()[0].args[0];
                 expect(msg).to.include('v0');
                 expect(msg).to.include('v1');
+            });
+        });
+    });
+
+    describe('tryProcessExtendedManifest leaves MPD structure to the post-parse gate', function () {
+
+        it('a thumbnail manifest is accepted under max and judged after parsing', function () {
+            const settings = Settings(context).getInstance();
+            settings.update({ dodge: { strictMode: 'max' } });
+
+            const extended = {
+                start: {
+                    mpd: '<MPD><Period><AdaptationSet><EssentialProperty schemeIdUri="http://dashif.org/thumbnail_tile" value="10x1"/></AdaptationSet></Period></MPD>',
+                    base_uri: 'https://example.com/'
+                },
+                streams: [{ label: 'v', init: [{}], data: [{ index: 0, buffer: true }] }]
+            };
+            const result = dodgeHandler.tryProcessExtendedManifest(JSON.stringify(extended), 'u');
+
+            expect(result).to.exist; // jshint ignore:line
+            expect(result.mpd).to.include('thumbnail_tile');
+            settings.update({ dodge: { strictMode: false } });
+        });
+    });
+
+    // Post-parse detection of channels the cycle plan does not shape
+
+    describe('rejectIfUnshapedTracks and side-channel warnings, post-parse', function () {
+        let eventBus, settings, handler, loggerSpy, errorSpy, listener;
+        const dashParser = DashParser({}).create({ debug: new DebugMock() });
+
+        function mpd(body, mpdAttrs) {
+            return '<MPD xmlns="urn:mpeg:dash:schema:mpd:2011" xmlns:xlink="http://www.w3.org/1999/xlink" '
+                + 'type="static" minBufferTime="PT1S"' + (mpdAttrs || '') + '>' + body + '</MPD>';
+        }
+
+        function period(body, attrs) {
+            return '<Period id="p0" duration="PT10S"' + (attrs || '') + '>' + body + '</Period>';
+        }
+
+        const VIDEO = '<AdaptationSet mimeType="video/mp4"><SegmentTemplate initialization="init.m4s" media="$Number$.m4s"/>'
+            + '<Representation id="v0" bandwidth="1000"/></AdaptationSet>';
+
+        function check(strictMode, xml) {
+            settings.update({ dodge: { strictMode } });
+            return handler.rejectIfUnshapedTracks(dashParser.parse(xml), 'http://example.com/v.json');
+        }
+
+        function warnedAbout(term) {
+            settings.update({ dodge: { strictMode: 'representation' } });
+            return loggerSpy.warn.getCalls().some(c => c.args[0] && c.args[0].indexOf(term) !== -1);
+        }
+
+        beforeEach(function () {
+            eventBus = EventBus(context).getInstance();
+            settings = Settings(context).getInstance();
+
+            loggerSpy = { fatal: sinon.spy(), error: sinon.spy(), warn: sinon.spy(), info: sinon.spy(), debug: sinon.spy() };
+            sinon.stub(Debug(context).getInstance(), 'getLogger').returns(loggerSpy);
+
+            handler = DodgeHandler(context).create({
+                eventBus, events: Events, settings,
+                streamController: null,
+                mediaPlayer: { extend: () => {}, updateSettings: () => {} }
+            });
+
+            listener = {};
+            errorSpy = sinon.spy();
+            eventBus.on(Events.INTERNAL_MANIFEST_LOADED, errorSpy, listener);
+        });
+
+        afterEach(function () {
+            eventBus.off(Events.INTERNAL_MANIFEST_LOADED, errorSpy, listener);
+            settings.update({ dodge: { strictMode: false } });
+            handler.reset();
+        });
+        
+        describe('text tracks', function () {
+            const FRAGMENTED_TTML = '<AdaptationSet mimeType="application/ttml+xml">'
+                + '<SegmentTemplate initialization="init.m4s" media="$Number$.ttml"/>'
+                + '<Representation id="t0" bandwidth="100"/></AdaptationSet>';
+            const SIDECAR_VTT = '<AdaptationSet mimeType="text/vtt">'
+                + '<Representation id="t0" bandwidth="100"><BaseURL>subs.vtt</BaseURL></Representation>'
+                + '</AdaptationSet>';
+
+            it('a fragmented text track is not flagged', function () {
+                expect(check('max', mpd(period(VIDEO + FRAGMENTED_TTML)))).to.be.false; // jshint ignore:line
+            });
+
+            it('a sidecar text track is flagged', function () {
+                expect(check('max', mpd(period(VIDEO + SIDECAR_VTT)))).to.be.true; // jshint ignore:line
+            });
+
+            it('a sidecar text track warns rather than rejects below max', function () {
+                expect(check('representation', mpd(period(VIDEO + SIDECAR_VTT)))).to.be.false; // jshint ignore:line
+                expect(warnedAbout('text')).to.be.true; // jshint ignore:line
+            });
+        });
+
+        describe('thumbnail tracks', function () {
+            const THUMBS = '<AdaptationSet mimeType="image/jpeg">'
+                + '<SegmentTemplate initialization="init.m4s" media="$Number$.jpg"/>'
+                + '<Representation id="th0" bandwidth="10">'
+                + '<EssentialProperty schemeIdUri="http://dashif.org/thumbnail_tile" value="10x1"/>'
+                + '</Representation></AdaptationSet>';
+
+            it('a thumbnail track is flagged', function () {
+                expect(check('max', mpd(period(VIDEO + THUMBS)))).to.be.true; // jshint ignore:line
+            });
+
+            it('a plain video track is not flagged', function () {
+                expect(check('max', mpd(period(VIDEO)))).to.be.false; // jshint ignore:line
+            });
+        });
+
+        describe('XLink', function () {
+            it('an xlink:href on a Period is flagged', function () {
+                const xml = mpd('<Period id="p0" duration="PT10S" xlink:href="https://example.com/p.xml" '
+                    + 'xlink:actuate="onLoad">' + VIDEO + '</Period>');
+                expect(check('max', xml)).to.be.true; // jshint ignore:line
+            });
+
+            // The characters appear in the document but not as an attribute the
+            // parser records, so dash.js would never resolve anything.
+            it('the literal text "xlink:href" inside an element is not flagged', function () {
+                const xml = mpd(period('<AdaptationSet mimeType="video/mp4">'
+                    + '<Label>see xlink:href in the spec</Label>'
+                    + '<SegmentTemplate initialization="init.m4s" media="$Number$.m4s"/>'
+                    + '<Representation id="v0" bandwidth="1000"/></AdaptationSet>'));
+                expect(check('max', xml)).to.be.false; // jshint ignore:line
+            });
+        });
+
+        describe('warn rather than reject below max', function () {
+            const THUMBS = '<AdaptationSet mimeType="image/jpeg">'
+                + '<SegmentTemplate initialization="init.jpg" media="$Number$.jpg"/>'
+                + '<Representation id="th0" bandwidth="10">'
+                + '<EssentialProperty schemeIdUri="http://dashif.org/thumbnail_tile" value="10x1"/>'
+                + '</Representation></AdaptationSet>';
+
+            it('thumbnails warn under representation', function () {
+                expect(check('representation', mpd(period(VIDEO + THUMBS)))).to.be.false; // jshint ignore:line
+                expect(warnedAbout('thumbnail')).to.be.true; // jshint ignore:line
+            });
+
+            it('thumbnails warn under manifest', function () {
+                expect(check('manifest', mpd(period(VIDEO + THUMBS)))).to.be.false; // jshint ignore:line
+                expect(warnedAbout('thumbnail')).to.be.true; // jshint ignore:line
+            });
+
+            it('XLink warns under representation', function () {
+                const xml = mpd('<Period id="p0" duration="PT10S" xlink:href="https://example.com/p.xml">'
+                    + VIDEO + '</Period>');
+                expect(check('representation', xml)).to.be.false; // jshint ignore:line
+                expect(warnedAbout('XLink')).to.be.true; // jshint ignore:line
+            });
+
+            it('several findings are reported in one message', function () {
+                const xml = mpd('<Period id="p0" duration="PT10S" xlink:href="https://example.com/p.xml">'
+                    + VIDEO + THUMBS + '</Period>');
+                expect(check('max', xml)).to.be.true; // jshint ignore:line
+                const errors = loggerSpy.error.getCalls().filter(c => c.args[0] && c.args[0].indexOf('bypass Dodge defense') !== -1);
+                expect(errors.length).to.equal(1);
+                expect(errors[0].args[0]).to.include('thumbnail');
+                expect(errors[0].args[0]).to.include('XLink');
+            });
+        });
+
+        describe('side channels warn but never reject', function () {
+            it('ContentProtection warns about DRM', function () {
+                const xml = mpd(period('<AdaptationSet mimeType="video/mp4">'
+                    + '<ContentProtection schemeIdUri="urn:uuid:edef8ba9-79d6-4ace-a3c8-27dcd51d21ed"/>'
+                    + '<SegmentTemplate initialization="init.m4s" media="$Number$.m4s"/>'
+                    + '<Representation id="v0" bandwidth="1000"/></AdaptationSet>'));
+                settings.update({ dodge: { strictMode: 'max' } });
+                expect(handler.rejectParsedManifest(dashParser.parse(xml), 'u')).to.be.false; // jshint ignore:line
+                expect(warnedAbout('DRM')).to.be.true; // jshint ignore:line
+            });
+
+            // 'urn:uuid:' in an unrelated value used to be read as DRM.
+            it('a urn:uuid: value outside ContentProtection does not warn about DRM', function () {
+                const xml = mpd(period('<AdaptationSet mimeType="video/mp4">'
+                    + '<SupplementalProperty schemeIdUri="urn:example:x" value="urn:uuid:1234"/>'
+                    + '<SegmentTemplate initialization="init.m4s" media="$Number$.m4s"/>'
+                    + '<Representation id="v0" bandwidth="1000"/></AdaptationSet>'));
+                settings.update({ dodge: { strictMode: 'max' } });
+                handler.rejectParsedManifest(dashParser.parse(xml), 'u');
+                expect(warnedAbout('DRM')).to.be.false; // jshint ignore:line
+            });
+
+            it('ContentSteering warns', function () {
+                const xml = mpd('<ContentSteering defaultServiceLocation="a">https://example.com/steer</ContentSteering>'
+                    + period(VIDEO));
+                settings.update({ dodge: { strictMode: 'max' } });
+                expect(handler.rejectParsedManifest(dashParser.parse(xml), 'u')).to.be.false; // jshint ignore:line
+                expect(warnedAbout('ContentSteering')).to.be.true; // jshint ignore:line
+            });
+
+            it('nothing warns when strictMode is false', function () {
+                const xml = mpd('<ContentSteering defaultServiceLocation="a">https://example.com/steer</ContentSteering>'
+                    + period('<AdaptationSet mimeType="video/mp4">'
+                        + '<ContentProtection schemeIdUri="urn:uuid:edef8ba9-79d6-4ace-a3c8-27dcd51d21ed"/>'
+                        + '<SegmentTemplate initialization="init.m4s" media="$Number$.m4s"/>'
+                        + '<Representation id="v0" bandwidth="1000"/></AdaptationSet>'));
+                settings.update({ dodge: { strictMode: false } });
+                handler.rejectParsedManifest(dashParser.parse(xml), 'u');
+                expect(loggerSpy.warn.called).to.be.false; // jshint ignore:line
+            });
+
+            it('DVB Reporting warns', function () {
+                const xml = mpd(period(VIDEO)
+                    + '<Metrics metrics="HttpList"><Reporting schemeIdUri="urn:dvb:dash:reporting:2014" value="1"/></Metrics>');
+                settings.update({ dodge: { strictMode: 'max' } });
+                expect(handler.rejectParsedManifest(dashParser.parse(xml), 'u')).to.be.false; // jshint ignore:line
+                expect(warnedAbout('Reporting')).to.be.true; // jshint ignore:line
+            });
+        });
+
+        describe('strict mode gradation', function () {
+            const SIDECAR = '<AdaptationSet mimeType="text/vtt">'
+                + '<Representation id="t0" bandwidth="100"><BaseURL>subs.vtt</BaseURL></Representation>'
+                + '</AdaptationSet>';
+
+            it('max rejects and fires the strict mode error', function () {
+                expect(check('max', mpd(period(VIDEO + SIDECAR)))).to.be.true; // jshint ignore:line
+                expect(errorSpy.calledOnce).to.be.true; // jshint ignore:line
+            });
+
+            it('strictMode false neither warns nor rejects', function () {
+                expect(check(false, mpd(period(VIDEO + SIDECAR)))).to.be.false; // jshint ignore:line
+                expect(loggerSpy.warn.called).to.be.false; // jshint ignore:line
+                expect(errorSpy.called).to.be.false; // jshint ignore:line
             });
         });
     });

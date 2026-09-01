@@ -44,6 +44,7 @@ import DodgeXHRLoaderOverride from './overrides/DodgeXHRLoaderOverride.js';
 import Constants from '../streaming/constants/Constants.js';
 import DodgeConstants from './constants/DodgeConstants.js';
 import DashConstants from '../dash/constants/DashConstants.js';
+import DashManifestModel from '../dash/models/DashManifestModel.js';
 import { createStrictModeReader, resolveNumericSetting } from './utils/StrictMode.js';
 import FactoryMaker from '../core/FactoryMaker.js';
 import EventBus from '../core/EventBus.js';
@@ -87,6 +88,7 @@ function DodgeHandler(config) {
     const debug = Debug(context).getInstance();
     let logger,
         defenseRegistry,
+        dashManifestModel,
         getStrictMode,
         warnedScheduleRandom,
         warnedScheduleBase,
@@ -99,6 +101,7 @@ function DodgeHandler(config) {
     function setup() {
         logger = debug.getLogger(instance);
         defenseRegistry = DefenseRegistry(context).getInstance();
+        dashManifestModel = DashManifestModel(context).getInstance();
         getStrictMode = createStrictModeReader(settings, logger);
         warnedScheduleRandom = false;
         warnedScheduleBase = false;
@@ -193,51 +196,18 @@ function DodgeHandler(config) {
             return null;
         }
 
-        // The checks below scan the embedded MPD for features that have
-        // not been tested with traffic analysis defenses. In 'max' mode,
-        // the manifest may be rejected; in other strict modes, a warning is
-        // logged so the defense designer can make an informed decision.
-        const mpd = extended['start']['mpd'];
-
+        // Everything that depends on the MPD's own structure - thumbnail tracks,
+        // sidecar text, XLink, DRM, content steering, DVB reporting - is checked
+        // after DashParser has run, by rejectIfUnshapedTracks() and
+        // _warnAboutSideChannels(). The checks below need only the settings.
         if (strictMode === DodgeConstants.STRICT_MODE.NONE) {
             logger.warn('Dodge strictMode is disabled, undefended representations will fall back to vanilla dash.js without any defense!');
         }
 
-        // Thumbnail tracks, non-fragmented text, XLink: reject in max mode
-        if (_mpdContainsThumbnails(mpd)) {
-            if (strictMode === DodgeConstants.STRICT_MODE.MAX) {
-                logger.error('Extended manifest contains thumbnail tracks that bypass Dodge defense, rejected by strict mode max');
-                _triggerStrictModeError(url);
-                return false;
-            } else if (strictMode !== DodgeConstants.STRICT_MODE.NONE) {
-                logger.warn('Extended manifest contains thumbnail tracks that bypass Dodge defense, verify that thumbnail image sizes do not create a distinguishing traffic pattern!');
-            }
-        }
-
-        if (_mpdContainsNonFragmentedText(mpd)) {
-            if (strictMode === DodgeConstants.STRICT_MODE.MAX) {
-                logger.error('Extended manifest contains non-fragmented text tracks that bypass Dodge defense, rejected by strict mode max');
-                _triggerStrictModeError(url);
-                return false;
-            } else if (strictMode !== DodgeConstants.STRICT_MODE.NONE) {
-                logger.warn('Extended manifest contains non-fragmented text tracks that bypass Dodge defense, verify that text file sizes do not create a distinguishing traffic pattern!');
-            }
-        }
-
-        if (_mpdContainsXLink(mpd)) {
-            if (strictMode === DodgeConstants.STRICT_MODE.MAX) {
-                logger.error('Extended manifest contains XLink references that bypass Dodge defense, rejected by strict mode max');
-                _triggerStrictModeError(url);
-                return false;
-            } else if (strictMode !== DodgeConstants.STRICT_MODE.NONE) {
-                logger.warn('Extended manifest contains XLink references that bypass Dodge defense, verify that external XML sizes do not create a distinguishing traffic pattern!');
-            }
-        }
-
         // Read through the resolver rather than comparing the raw setting: an
         // unusable value disables padding exactly as 0 does, but every
-        // comparison against NaN or a string is false, so a raw `<= 0` gate
-        // would wave the misconfiguration through.
+        // comparison against NaN or a string is false, so a raw `<= 0` 
+        // gate would wave the misconfiguration through.
         if (resolveNumericSetting(settings, 'paddingLengthBase').value <= 0) {
             if (strictMode === DodgeConstants.STRICT_MODE.MAX) {
                 logger.error('dodge.paddingLengthBase is not set to a positive number, request wire sizes are not normalized, rejected by strict mode max');
@@ -246,19 +216,6 @@ function DodgeHandler(config) {
             } else if (strictMode !== DodgeConstants.STRICT_MODE.NONE) {
                 logger.warn('dodge.paddingLengthBase is not set to a positive number, request wire sizes are not normalized, request lengths vary with the content being requested!');
             }
-        }
-
-        // DRM, CMCD, DVB reporting, content steering: likely a non-issue, warn
-        if (strictMode !== DodgeConstants.STRICT_MODE.NONE && _mpdContainsDrm(mpd)) {
-            logger.warn('Extended manifest contains DRM-protected content, which has not been tested with defenses, verify that license request patterns do not undermine the defense!');
-        }
-
-        if (strictMode !== DodgeConstants.STRICT_MODE.NONE && _mpdContainsContentSteering(mpd)) {
-            logger.warn('Extended manifest contains ContentSteering - steering requests go to a platform-wide endpoint and are unlikely to aid passive fingerprinting, but verify');
-        }
-
-        if (strictMode !== DodgeConstants.STRICT_MODE.NONE && _mpdContainsDvbReporting(mpd)) {
-            logger.warn('Extended manifest contains DVB Reporting - reporting requests go to a platform-wide endpoint and are unlikely to aid passive fingerprinting, but verify');
         }
 
         if (strictMode !== DodgeConstants.STRICT_MODE.NONE && settings.get().streaming.cmcd.enabled) {
@@ -295,7 +252,7 @@ function DodgeHandler(config) {
         }
 
         return {
-            mpd: mpd,
+            mpd: extended['start']['mpd'],
             baseUri: extended['start']['base_uri'],
         };
     }
@@ -463,8 +420,13 @@ function DodgeHandler(config) {
      * @returns {boolean} True when a gate rejected it and loading must stop.
      */
     function rejectParsedManifest(manifest, url) {
+        // Warn-only inspections run first so they are reported even when a gate
+        // below rejects the manifest.
+        _warnAboutSideChannels(manifest);
+
         return rejectIfDynamic(manifest, url) ||
-            rejectIfRangeDiscovery(manifest, url);
+            rejectIfRangeDiscovery(manifest, url) ||
+            rejectIfUnshapedTracks(manifest, url);
     }
 
     function _triggerStrictModeError(url) {
@@ -478,79 +440,213 @@ function DodgeHandler(config) {
         });
     }
 
+    // Elements DASH allows an xlink:href on that dash.js actually resolves.
+    // XlinkController walks exactly these three; anything else in the document
+    // is never fetched, so flagging it would be a false positive.
+    const XLINK_HOSTS = [DashConstants.PERIOD, DashConstants.ADAPTATION_SET, DashConstants.EVENT_STREAM];
+    const XLINK_HREF = 'xlink:href';
+
     /**
-     * Heuristic check whether an MPD XML string contains DRM content
-     * protection elements.
+     * Walk every AdaptationSet of a parsed manifest.
+     *
+     * @param {Object} manifest - Manifest as parsed by DashParser.
+     * @param {function(Object, Object, number): void} fn - Receives the
+     *        adaptation, its period, and the period index.
      */
-    function _mpdContainsDrm(mpd) {
-        if (!mpd || typeof mpd !== 'string') {
-            return false;
+    function _forEachAdaptation(manifest, fn) {
+        const periods = (manifest && manifest[DashConstants.PERIOD]) || [];
+        for (let p = 0; p < periods.length; p++) {
+            const adaptations = periods[p][DashConstants.ADAPTATION_SET] || [];
+            for (let a = 0; a < adaptations.length; a++) {
+                fn(adaptations[a], periods[p], p);
+            }
         }
-        return mpd.includes('<ContentProtection') ||
-            mpd.includes('cenc:') ||
-            mpd.includes('urn:mpeg:dash:mp4protection') ||
-            mpd.includes('urn:uuid:'); // PSSH system ID URNs
+    }
+
+    function _describeAdaptation(adaptation, periodIndex) {
+        const reps = adaptation[DashConstants.REPRESENTATION] || [];
+        const ids = reps.map(r => r.id || '(no id)').join('/');
+        return 'period ' + periodIndex + (ids ? ' representation ' + ids : '');
     }
 
     /**
-     * Heuristic check whether an MPD XML string contains thumbnail
-     * tracks. Thumbnails bypass DashHandler and are fetched directly
-     * by ThumbnailTracks via its own XHRLoader.
+     * Thumbnail tracks, which ThumbnailTracks fetches through its own loader,
+     * outside DashHandler and outside the cycle plan.
+     *
+     * Uses dash.js's own image classification rather than scanning for the
+     * scheme URI, so what is flagged is exactly what the player would treat as
+     * a thumbnail track.
      */
-    function _mpdContainsThumbnails(mpd) {
-        if (!mpd || typeof mpd !== 'string') {
-            return false;
-        }
-        return Constants.THUMBNAILS_SCHEME_ID_URIS.some(uri => mpd.includes(uri));
+    function _findThumbnailTracks(manifest) {
+        const found = [];
+        _forEachAdaptation(manifest, (adaptation, period, index) => {
+            if (dashManifestModel.getIsTypeOf(adaptation, Constants.IMAGE)) {
+                found.push(_describeAdaptation(adaptation, index));
+            }
+        });
+        return found;
     }
 
     /**
-     * Heuristic check whether an MPD XML string contains non-fragmented
-     * text tracks (e.g., TTML or WebVTT sidecar files). These are
-     * identified by text-related mimeTypes that typically use
-     * BaseURL rather than SegmentTemplate.
+     * Sidecar text tracks: a whole subtitle file fetched in one request that no
+     * cycle describes.
+     *
+     * `getIsFragmented` is the same call dash.js uses to set
+     * `mediaInfo.isFragmented`, so a fragmented TTML or WebVTT track - which is
+     * segmented and therefore shaped like any other track - is not flagged.
      */
-    function _mpdContainsNonFragmentedText(mpd) {
-        if (!mpd || typeof mpd !== 'string') {
-            return false;
-        }
-        return mpd.includes('application/ttml+xml') ||
-            mpd.includes('text/vtt');
+    function _findSidecarTextTracks(manifest) {
+        const found = [];
+        _forEachAdaptation(manifest, (adaptation, period, index) => {
+            if (dashManifestModel.getIsText(adaptation) && !dashManifestModel.getIsFragmented(adaptation)) {
+                found.push(_describeAdaptation(adaptation, index));
+            }
+        });
+        return found;
     }
 
     /**
-     * Heuristic check whether an MPD XML string contains XLink references.
-     * XLink expansion fetches external XML from referenced URLs, which could
-     * leak content-identifying information.
+     * XLink references, which are resolved by fetching external XML before
+     * playback starts.
      */
-    function _mpdContainsXLink(mpd) {
-        if (!mpd || typeof mpd !== 'string') {
-            return false;
+    function _findXlinkReferences(manifest) {
+        const found = [];
+        const periods = (manifest && manifest[DashConstants.PERIOD]) || [];
+        for (let p = 0; p < periods.length; p++) {
+            if (periods[p].hasOwnProperty(XLINK_HREF)) {
+                found.push('period ' + p);
+            }
+            for (let h = 1; h < XLINK_HOSTS.length; h++) {
+                const children = periods[p][XLINK_HOSTS[h]] || [];
+                for (let c = 0; c < children.length; c++) {
+                    if (children[c].hasOwnProperty(XLINK_HREF)) {
+                        found.push('period ' + p + ' ' + XLINK_HOSTS[h]);
+                    }
+                }
+            }
         }
-        return mpd.includes('xlink:href');
+        return found;
     }
 
     /**
-     * Heuristic check whether an MPD XML string contains a ContentSteering
-     * element. Steering requests send CDN pathway and throughput data to
-     * a steering server.
+     * ContentProtection anywhere in the manifest. DRM is allowed in every mode;
+     * license traffic is simply not something the cycle plan covers.
      */
-    function _mpdContainsContentSteering(mpd) {
-        if (!mpd || typeof mpd !== 'string') {
+    function _hasContentProtection(manifest) {
+        if (!manifest) {
             return false;
         }
-        return mpd.includes('<ContentSteering');
+        const periods = manifest[DashConstants.PERIOD] || [];
+        for (let p = 0; p < periods.length; p++) {
+            if ((periods[p][DashConstants.CONTENT_PROTECTION] || []).length > 0) {
+                return true;
+            }
+            const adaptations = periods[p][DashConstants.ADAPTATION_SET] || [];
+            for (let a = 0; a < adaptations.length; a++) {
+                if ((adaptations[a][DashConstants.CONTENT_PROTECTION] || []).length > 0) {
+                    return true;
+                }
+                const reps = adaptations[a][DashConstants.REPRESENTATION] || [];
+                for (let r = 0; r < reps.length; r++) {
+                    if ((reps[r][DashConstants.CONTENT_PROTECTION] || []).length > 0) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
+    function _hasContentSteering(manifest) {
+        return !!manifest && (manifest[DashConstants.CONTENT_STEERING] || []).length > 0;
+    }
+
+    function _hasDvbReporting(manifest) {
+        const metrics = (manifest && manifest[DashConstants.METRICS]) || [];
+        return metrics.some(metric => (metric[DashConstants.REPORTING] || []).length > 0);
     }
 
     /**
-     * Heuristic check whether an MPD XML string contains DVB Reporting
-     * elements. Reporting sends playback metrics to external servers.
+     * Channels that emit their own requests but go to platform-wide endpoints,
+     * so they are unlikely to identify the content on their own. Warned in every
+     * mode except none, never a rejection.
+     *
+     * @param {Object} manifest - Manifest as parsed by DashParser.
      */
-    function _mpdContainsDvbReporting(mpd) {
-        if (!mpd || typeof mpd !== 'string') {
+    function _warnAboutSideChannels(manifest) {
+        if (getStrictMode() === DodgeConstants.STRICT_MODE.NONE) {
+            return;
+        }
+
+        if (_hasContentProtection(manifest)) {
+            logger.warn('Extended manifest contains DRM-protected content, which has not been tested with defenses, verify that license request patterns do not undermine the defense');
+        }
+        if (_hasContentSteering(manifest)) {
+            logger.warn('Extended manifest contains ContentSteering - steering requests go to a platform-wide endpoint and are unlikely to aid passive fingerprinting, but verify');
+        }
+        if (_hasDvbReporting(manifest)) {
+            logger.warn('Extended manifest contains DVB Reporting - reporting requests go to a platform-wide endpoint and are unlikely to aid passive fingerprinting, but verify');
+        }
+    }
+
+    /**
+     * Report tracks and references that fetch bytes outside the cycle plan, and
+     * reject them under strict mode 'max'.
+     *
+     * Thumbnail tracks are fetched by ThumbnailTracks through its own loader,
+     * sidecar text is one unshaped request for a whole subtitle file, and XLink
+     * resolution fetches external XML before playback starts. None of the three
+     * passes through DashHandler, so no cycle describes them.
+     *
+     * Called after DashParser has run. These are nested elements and namespaced
+     * attributes; reading the parsed tree is the only way to tell a fragmented
+     * text track from a sidecar one, or an xlink:href attribute from the same
+     * characters sitting in an element's text.
+     *
+     * Detecting XLink here is still early enough to stop the fetch. ManifestLoader
+     * parses, then runs this gate, and only afterwards calls
+     * xlinkController.resolveManifestOnLoad() - the one entry point to xlink
+     * fetching, with a single call site. A 'max' rejection returns before it, so
+     * no external XML is requested.
+     *
+     * @param {Object} manifest - Manifest as parsed by DashParser.
+     * @param {string} [url] - Original request URL, for the error message.
+     * @returns {boolean} True when rejected and manifest loading must stop.
+     */
+    function rejectIfUnshapedTracks(manifest, url) {
+        const strictMode = getStrictMode();
+        if (strictMode === DodgeConstants.STRICT_MODE.NONE) {
             return false;
         }
-        return mpd.includes('<Reporting');
+
+        const findings = [];
+        const thumbnails = _findThumbnailTracks(manifest);
+        if (thumbnails.length > 0) {
+            findings.push('thumbnail tracks (' + thumbnails.join(', ') + ')');
+        }
+        const text = _findSidecarTextTracks(manifest);
+        if (text.length > 0) {
+            findings.push('non-fragmented text tracks (' + text.join(', ') + ')');
+        }
+        const xlink = _findXlinkReferences(manifest);
+        if (xlink.length > 0) {
+            findings.push('XLink references (' + xlink.join(', ') + ')');
+        }
+
+        if (findings.length === 0) {
+            return false;
+        }
+
+        const detail = findings.join(' and ') + ' that bypass Dodge defense';
+        if (strictMode === DodgeConstants.STRICT_MODE.MAX) {
+            logger.error('Extended manifest contains ' + detail + ', rejected by strict mode max');
+            _triggerStrictModeError(url);
+            return true;
+        }
+
+        logger.warn('Extended manifest contains ' + detail +
+            ', verify that their sizes do not create a distinguishing traffic pattern!');
+        return false;
     }
 
     /**
@@ -1150,6 +1246,7 @@ function DodgeHandler(config) {
         rejectParsedManifest,
         rejectIfDynamic,
         rejectIfRangeDiscovery,
+        rejectIfUnshapedTracks,
         getStreamStats,
         isDodgeActive,
         isDodgeTrailing,
