@@ -528,6 +528,57 @@ function DodgeHandler(config) {
         return found;
     }
 
+    // MPD event schemes that make dash.js issue a request. EventController fires
+    // a GET to a URL carried in the event payload for the callback scheme, and
+    // refetches the manifest for the reload scheme, both only at value 1; any
+    // other value falls through to a plain event bus dispatch with no request.
+    const NETWORK_EVENT_SCHEMES = ['urn:mpeg:dash:event:callback:2015', 'urn:mpeg:dash:event:2012'];
+    const NETWORK_EVENT_VALUE = 1;
+
+    function _isNetworkEventStream(stream) {
+        return NETWORK_EVENT_SCHEMES.indexOf(stream.schemeIdUri) !== -1 &&
+            stream.value == NETWORK_EVENT_VALUE; // jshint ignore:line
+    }
+
+    /**
+     * Event streams that make dash.js fetch something at a content-relative
+     * time the cycle plan does not describe. The request is padded, since
+     * EventController builds its loader in the same context, but its existence,
+     * timing, and destination are not covered, and a callback URL is per-title
+     * by construction.
+     *
+     * @param {Object} manifest - Manifest as parsed by DashParser.
+     * @returns {Array<string>} Descriptions of what was found.
+     */
+    function _findNetworkEventStreams(manifest) {
+        const found = [];
+        const periods = (manifest && manifest[DashConstants.PERIOD]) || [];
+
+        for (let p = 0; p < periods.length; p++) {
+            const streams = periods[p][DashConstants.EVENT_STREAM] || [];
+            for (let s = 0; s < streams.length; s++) {
+                if (_isNetworkEventStream(streams[s])) {
+                    found.push('period ' + p + ' EventStream ' + streams[s].schemeIdUri);
+                }
+            }
+
+            const adaptations = periods[p][DashConstants.ADAPTATION_SET] || [];
+            for (let a = 0; a < adaptations.length; a++) {
+                const hosts = [adaptations[a]].concat(adaptations[a][DashConstants.REPRESENTATION] || []);
+                for (let h = 0; h < hosts.length; h++) {
+                    const inband = hosts[h][DashConstants.INBAND_EVENT_STREAM] || [];
+                    for (let i = 0; i < inband.length; i++) {
+                        if (_isNetworkEventStream(inband[i])) {
+                            found.push('period ' + p + ' InbandEventStream ' + inband[i].schemeIdUri);
+                        }
+                    }
+                }
+            }
+        }
+
+        return found;
+    }
+
     /**
      * ContentProtection anywhere in the manifest. DRM is allowed in every mode;
      * license traffic is simply not something the cycle plan covers.
@@ -594,9 +645,11 @@ function DodgeHandler(config) {
      * reject them under strict mode 'max'.
      *
      * Thumbnail tracks are fetched by ThumbnailTracks through its own loader,
-     * sidecar text is one unshaped request for a whole subtitle file, and XLink
-     * resolution fetches external XML before playback starts. None of the three
-     * passes through DashHandler, so no cycle describes them.
+     * sidecar text is one unshaped request for a whole subtitle file, XLink
+     * resolution fetches external XML before playback starts, and callback or
+     * reload event streams fire a request at a content-relative time chosen by
+     * the manifest author. None of them passes through DashHandler, so no cycle
+     * describes them.
      *
      * Called after DashParser has run. These are nested elements and namespaced
      * attributes; reading the parsed tree is the only way to tell a fragmented
@@ -631,6 +684,10 @@ function DodgeHandler(config) {
         const xlink = _findXlinkReferences(manifest);
         if (xlink.length > 0) {
             findings.push('XLink references (' + xlink.join(', ') + ')');
+        }
+        const events = _findNetworkEventStreams(manifest);
+        if (events.length > 0) {
+            findings.push('event streams with network side effects (' + events.join(', ') + ')');
         }
 
         if (findings.length === 0) {

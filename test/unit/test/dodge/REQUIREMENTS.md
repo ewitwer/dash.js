@@ -1044,12 +1044,14 @@ The handler intercepts all `FRAGMENT_LOADING_COMPLETED` events. Vanilla requests
 
 ### R10.6 - Unshaped tracks and references are detected after parsing
 
-Thumbnail tracks, sidecar text tracks and XLink references all fetch bytes without passing through
-`DashHandler`, so no cycle describes them: `ThumbnailTracks` uses its own loader, a sidecar subtitle
-is one unshaped request for a whole file, and XLink resolution fetches external XML before playback
-starts. `rejectIfUnshapedTracks()` reports all three from the manifest `DashParser` produced,
-rejecting under `'max'`, warning under `'representation'` and `'manifest'`, and doing nothing
-when strict mode is off. Every finding is reported in a single message naming the periods and
+Thumbnail tracks, sidecar text tracks, XLink references, and event streams with network side effects
+all fetch bytes without passing through `DashHandler`, so no cycle describes them:
+`ThumbnailTracks` uses its own loader, a sidecar subtitle is one unshaped request for a whole file,
+XLink resolution fetches external XML before playback starts, and the callback and reload event
+schemes fire a request at a content-relative time chosen by the manifest author.
+`rejectIfUnshapedTracks()` reports all four from the manifest `DashParser` produced, rejecting
+under `'max'`, warning under `'representation'` and `'manifest'`, and doing nothing when strict
+mode is off. Every finding is reported in a single message naming the periods and
 representations involved.
 
 
@@ -1062,6 +1064,14 @@ representations involved.
 | `dodge.DodgeHandler.js` | thumbnail tracks | a plain video track is not flagged |
 | `dodge.DodgeHandler.js` | XLink | an xlink:href on a Period is flagged |
 | `dodge.DodgeHandler.js` | XLink | the literal text "xlink:href" inside an element is not flagged |
+| `dodge.DodgeHandler.js` | event streams with network side effects | a callback EventStream is flagged |
+| `dodge.DodgeHandler.js` | event streams with network side effects | a reload EventStream is flagged |
+| `dodge.DodgeHandler.js` | event streams with network side effects | a callback InbandEventStream is flagged |
+| `dodge.DodgeHandler.js` | event streams with network side effects | an InbandEventStream on a Representation is flagged |
+| `dodge.DodgeHandler.js` | event streams with network side effects | an SCTE-35 EventStream is not flagged |
+| `dodge.DodgeHandler.js` | event streams with network side effects | an ID3 metadata InbandEventStream is not flagged |
+| `dodge.DodgeHandler.js` | event streams with network side effects | the reload scheme with a value other than 1 is not flagged |
+| `dodge.DodgeHandler.js` | event streams with network side effects | an event stream warns rather than rejecting below max |
 | `dodge.DodgeHandler.js` | warn rather than reject below max | thumbnails warn under representation |
 | `dodge.DodgeHandler.js` | warn rather than reject below max | thumbnails warn under manifest |
 | `dodge.DodgeHandler.js` | warn rather than reject below max | XLink warns under representation |
@@ -1558,7 +1568,7 @@ override stalls rather than falling back.
 | R10.3 Non-strict mode no error | 1 |
 | R10.4 Partial segment combination event routing | 8 |
 | R10.5 isDodgeActive and isDodgeTrailing status | 7 |
-| R10.6 Unshaped tracks detected after parsing | 14 |
+| R10.6 Unshaped tracks detected after parsing | 22 |
 | R10.7 Side channels reported, never rejected | 5 |
 | R10.12 CMCD warning during defended playback | 3 |
 | R10.13 Warning when strictMode is disabled | 1 |
@@ -1580,4 +1590,4 @@ override stalls rather than falling back.
 | R12.3 getStreamStats counts | 3 |
 | R12.4 Error fragment stalling | 8 |
 | R12.5 Range-ignoring origin detection | 15 |
-| **Total** | **656** |
+| **Total** | **664** |

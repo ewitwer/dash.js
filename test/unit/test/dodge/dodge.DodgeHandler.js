@@ -2728,6 +2728,69 @@ describe('DodgeHandler', function () {
             });
         });
 
+        // MPD events with a network side effect. The callback scheme GETs a URL
+        // from the event payload; the reload scheme refetches the manifest. Both
+        // fire at content-relative times no cycle plan describes. Only value 1
+        // has the effect, and an inband event is ignored unless its scheme is
+        // declared in the MPD, so both are part of the match.
+        describe('event streams with network side effects', function () {
+            const CALLBACK = 'urn:mpeg:dash:event:callback:2015';
+            const RELOAD = 'urn:mpeg:dash:event:2012';
+
+            function withEventStream(scheme, value) {
+                return mpd(period(VIDEO + '<EventStream schemeIdUri="' + scheme + '" value="' + value + '">'
+                    + '<Event presentationTime="0" duration="1" id="1"/></EventStream>'));
+            }
+
+            function withInbandStream(scheme, value) {
+                return mpd(period('<AdaptationSet mimeType="video/mp4">'
+                    + '<InbandEventStream schemeIdUri="' + scheme + '" value="' + value + '"/>'
+                    + '<SegmentTemplate initialization="init.m4s" media="$Number$.m4s"/>'
+                    + '<Representation id="v0" bandwidth="1000"/></AdaptationSet>'));
+            }
+
+            it('a callback EventStream is flagged', function () {
+                expect(check('max', withEventStream(CALLBACK, 1))).to.be.true; // jshint ignore:line
+            });
+
+            it('a reload EventStream is flagged', function () {
+                expect(check('max', withEventStream(RELOAD, 1))).to.be.true; // jshint ignore:line
+            });
+
+            it('a callback InbandEventStream is flagged', function () {
+                expect(check('max', withInbandStream(CALLBACK, 1))).to.be.true; // jshint ignore:line
+            });
+
+            it('an InbandEventStream on a Representation is flagged', function () {
+                const xml = mpd(period('<AdaptationSet mimeType="video/mp4">'
+                    + '<SegmentTemplate initialization="init.m4s" media="$Number$.m4s"/>'
+                    + '<Representation id="v0" bandwidth="1000">'
+                    + '<InbandEventStream schemeIdUri="' + RELOAD + '" value="1"/>'
+                    + '</Representation></AdaptationSet>'));
+                expect(check('max', xml)).to.be.true; // jshint ignore:line
+            });
+
+            // Inert schemes carry no network effect and must not be flagged.
+            it('an SCTE-35 EventStream is not flagged', function () {
+                expect(check('max', withEventStream('urn:scte:scte35:2013:xml', 1))).to.be.false; // jshint ignore:line
+            });
+
+            it('an ID3 metadata InbandEventStream is not flagged', function () {
+                expect(check('max', withInbandStream('https://aomedia.org/emsg/ID3', 1))).to.be.false; // jshint ignore:line
+            });
+
+            // EventController gates the effect on value 1; other values fall
+            // through to a plain event bus dispatch with no request.
+            it('the reload scheme with a value other than 1 is not flagged', function () {
+                expect(check('max', withEventStream(RELOAD, 2))).to.be.false; // jshint ignore:line
+            });
+
+            it('an event stream warns rather than rejecting below max', function () {
+                expect(check('representation', withEventStream(CALLBACK, 1))).to.be.false; // jshint ignore:line
+                expect(warnedAbout('event')).to.be.true; // jshint ignore:line
+            });
+        });
+
         describe('warn rather than reject below max', function () {
             const THUMBS = '<AdaptationSet mimeType="image/jpeg">'
                 + '<SegmentTemplate initialization="init.jpg" media="$Number$.jpg"/>'
