@@ -995,6 +995,48 @@ Without strict mode, invalid JSON or invalid extended manifests return `null` (g
 | `dodge.DodgeHandler.js` | tryProcessExtendedManifest | valid extended manifest JSON returns { mpd, baseUri } matching embedded values |
 | `dodge.DodgeHandler.js` | tryProcessExtendedManifest | two successive valid manifests: each returns its own mpd and baseUri independently |
 
+### R10.19 - The extended manifest's references into the MPD are verified at load
+
+1. Every `label` names a Representation, scoped by period exactly as the runtime scopes it: an entry
+   with a `period` is looked up only in that period, one without matches any.
+2. Every Representation that reaches `DashHandler` has a stream entry, checked through
+   `getDefendedStreamInfo()` itself so the check cannot drift from the lookup it mirrors. Thumbnail
+   and sidecar text adaptations are excluded: they bypass `DashHandler` and carry no cycles by design.
+3. `stream.period` is within the MPD's period count.
+4. Every init and data cycle `quality` resolves against the siblings of the representation its stream
+   names - a string against their ids, an integer against their count.
+
+**Only references are checkable.** Cycle byte ranges are built from measured segment sizes, which
+the MPD does not carry, so nothing here can confirm them. They remain the defense designer's
+responsibility.
+
+Unlike the side-channel gates this is fatal in every mode that enforces anything, because a mismatch
+is a playback failure rather than a leak. Under `strictMode: false` the module is inert by design and
+the check does not run at all. All findings are reported in one message.
+
+The representation lists read here are the ones `DashParser` produced. `CapabilitiesFilter` later
+removes representations the device cannot decode, mutating the same manifest, but it runs from
+`StreamController` well after this gate. Checking before it is deliberate: the verdict is a property
+of the manifest rather than of the device it was opened on.
+
+| File | Description | Test |
+|---|---|---|
+| `dodge.DodgeHandler.js` | rejectIfManifestMismatch, extended manifest against the MPD | a manifest whose labels and coverage match is accepted |
+| `dodge.DodgeHandler.js` | rejectIfManifestMismatch, extended manifest against the MPD | a label naming no representation is rejected |
+| `dodge.DodgeHandler.js` | rejectIfManifestMismatch, extended manifest against the MPD | a representation with no stream entry is rejected |
+| `dodge.DodgeHandler.js` | rejectIfManifestMismatch, extended manifest against the MPD | a period index beyond the manifest is rejected |
+| `dodge.DodgeHandler.js` | rejectIfManifestMismatch, extended manifest against the MPD | an entry scoped to the wrong period is rejected |
+| `dodge.DodgeHandler.js` | rejectIfManifestMismatch, extended manifest against the MPD | an entry without a period matches any period |
+| `dodge.DodgeHandler.js` | rejectIfManifestMismatch, extended manifest against the MPD | a string quality naming no sibling is rejected |
+| `dodge.DodgeHandler.js` | rejectIfManifestMismatch, extended manifest against the MPD | a string quality naming a sibling is accepted |
+| `dodge.DodgeHandler.js` | rejectIfManifestMismatch, extended manifest against the MPD | an integer quality beyond the sibling count is rejected |
+| `dodge.DodgeHandler.js` | rejectIfManifestMismatch, extended manifest against the MPD | an integer quality within the sibling count is accepted |
+| `dodge.DodgeHandler.js` | rejectIfManifestMismatch, extended manifest against the MPD | an init cycle quality is checked too |
+| `dodge.DodgeHandler.js` | rejectIfManifestMismatch, extended manifest against the MPD | a thumbnail representation needs no stream entry |
+| `dodge.DodgeHandler.js` | rejectIfManifestMismatch, extended manifest against the MPD | a sidecar text representation needs no stream entry |
+| `dodge.DodgeHandler.js` | rejectIfManifestMismatch, extended manifest against the MPD | manifest and max reject it as well |
+| `dodge.DodgeHandler.js` | rejectIfManifestMismatch, extended manifest against the MPD | strictMode false performs no check at all |
+
 ### R10.18 - A new source replaces the defense set
 
 `MediaPlayer.attachSource()` on an already-initialized player calls
@@ -1598,6 +1640,7 @@ override stalls rather than falling back.
 | R10.16 Byte-range discovery representations reported | 16 |
 | R10.17 Single post-parse gate exposed to the core | 5 |
 | R10.18 A new source replaces the defense set | 5 |
+| R10.19 Extended manifest verified against the MPD | 15 |
 | R11.1 strictMode = representation enforcement | 8 |
 | R11.2 strictMode = manifest enforcement | 6 |
 | R11.3 strictMode = max enforcement | 5 |
@@ -1611,4 +1654,4 @@ override stalls rather than falling back.
 | R12.3 getStreamStats counts | 3 |
 | R12.4 Error fragment stalling | 8 |
 | R12.5 Range-ignoring origin detection | 15 |
-| **Total** | **667** |
+| **Total** | **682** |

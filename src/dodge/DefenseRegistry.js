@@ -865,6 +865,23 @@ function DefenseRegistry() {
     }
 
     /**
+     * Every stored stream entry, across all registered extended manifests, in
+     * registration order. Used by the load-time cross-check against the MPD,
+     * which has to walk the entries rather than look them up by label.
+     *
+     * @returns {Array<Object>} The stream entries, by reference.
+     */
+    function getAllStreams() {
+        const streams = [];
+        for (let i = 0; i < manifestData.length; i++) {
+            for (let j = 0; j < manifestData[i]['streams'].length; j++) {
+                streams.push(manifestData[i]['streams'][j]);
+            }
+        }
+        return streams;
+    }
+
+    /**
      * Append data cycles to a progressive stream at runtime. The append is
      * atomic and self-contained:
      *
@@ -991,6 +1008,7 @@ function DefenseRegistry() {
         addExtendedManifest,
         appendDataCycles,
         finalizeStream,
+        getAllStreams,
         getDefendedStreamInfo,
         hasContent,
         reset,

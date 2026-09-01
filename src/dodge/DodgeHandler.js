@@ -410,6 +410,124 @@ function DodgeHandler(config) {
     }
 
     /**
+     * Verify that the extended manifest's references into the MPD resolve.
+     *
+     * Only *references* are checkable. Cycle byte ranges are built from measured
+     * segment sizes, which the MPD does not carry, so nothing here can confirm
+     * them; they remain the defense designer's responsibility.
+     *
+     * Unlike the side channel gates, a mismatch is a playback failure rather than
+     * a leak, so it is fatal in every mode that enforces anything. Under
+     * strictMode false, the check does not run.
+     *
+     * The representation lists read here are the ones DashParser produced.
+     * CapabilitiesFilter later removes representations this device cannot decode,
+     * mutating the same manifest, but it runs from StreamController well after
+     * this gate. Checking before it is deliberate: the verdict is a property
+     * of the manifest rather than of the device it was opened on.
+     *
+     * @param {Object} manifest - Manifest as parsed by DashParser.
+     * @param {string} [url] - Original request URL, for the error message.
+     * @returns {boolean} True when rejected and manifest loading must stop.
+     */
+    function rejectIfManifestMismatch(manifest, url) {
+        if (getStrictMode() === DodgeConstants.STRICT_MODE.NONE) {
+            return false;
+        }
+
+        const periods = (manifest && manifest[DashConstants.PERIOD]) || [];
+        const problems = [];
+
+        // Representation id -> its sibling ids, per period, for the label and
+        // quality checks. Tracks that never reach DashHandler are recorded
+        // separately: they carry no cycles by design.
+        const byPeriod = [];
+        for (let p = 0; p < periods.length; p++) {
+            const siblingsById = {};
+            const shaped = [];
+            const adaptations = periods[p][DashConstants.ADAPTATION_SET] || [];
+
+            for (let a = 0; a < adaptations.length; a++) {
+                const adaptation = adaptations[a];
+                const reps = adaptation[DashConstants.REPRESENTATION] || [];
+                const ids = reps.map(r => r.id);
+                const bypassesDashHandler = dashManifestModel.getIsTypeOf(adaptation, Constants.IMAGE) ||
+                    (dashManifestModel.getIsText(adaptation) && !dashManifestModel.getIsFragmented(adaptation));
+
+                for (let r = 0; r < reps.length; r++) {
+                    siblingsById[reps[r].id] = ids;
+                    if (!bypassesDashHandler) {
+                        shaped.push(reps[r].id);
+                    }
+                }
+            }
+            byPeriod.push({ siblingsById: siblingsById, shaped: shaped });
+        }
+
+        // Every stream entry resolves, and its cycle qualities resolve
+        // against the siblings of the representation it names.
+        const streams = defenseRegistry.getAllStreams();
+        for (let s = 0; s < streams.length; s++) {
+            const stream = streams[s];
+            const scoped = stream['period'];
+
+            if (scoped !== undefined && scoped !== null && scoped >= periods.length) {
+                problems.push('stream "' + stream['label'] + '" is scoped to period ' + scoped +
+                    ' but the MPD has ' + periods.length);
+                continue;
+            }
+
+            const candidates = (scoped === undefined || scoped === null)
+                ? byPeriod
+                : [byPeriod[scoped]];
+            const match = candidates.find(entry => entry && entry.siblingsById[stream['label']]);
+
+            if (!match) {
+                problems.push('stream "' + stream['label'] + '" names no representation' +
+                    ((scoped === undefined || scoped === null) ? '' : ' in period ' + scoped));
+                continue;
+            }
+
+            const siblings = match.siblingsById[stream['label']];
+            const cycles = (stream['init'] || []).concat(stream['data'] || []);
+            for (let c = 0; c < cycles.length; c++) {
+                const quality = cycles[c].quality;
+                if (quality === undefined || quality === null) {
+                    continue;
+                }
+                const resolves = typeof quality === 'number'
+                    ? quality < siblings.length
+                    : siblings.indexOf(quality) !== -1;
+                if (!resolves) {
+                    problems.push('stream "' + stream['label'] + '" has a cycle quality override ' +
+                        JSON.stringify(quality) + ' that resolves to no representation in its adaptation set');
+                }
+            }
+        }
+
+        // The converse: every representation that goes through DashHandler
+        // needs an entry, or it is blocked at request time.
+        for (let p = 0; p < byPeriod.length; p++) {
+            const shaped = byPeriod[p].shaped;
+            for (let r = 0; r < shaped.length; r++) {
+                if (!defenseRegistry.getDefendedStreamInfo(shaped[r], p)) {
+                    problems.push('representation "' + shaped[r] + '" in period ' + p +
+                        ' has no defended stream info');
+                }
+            }
+        }
+
+        if (problems.length === 0) {
+            return false;
+        }
+
+        logger.error('Extended manifest does not match the MPD it embeds - ' + problems.join('; ') +
+            ', blocking playback');
+        _triggerStrictModeError(url);
+        return true;
+    }
+
+    /**
      * Every gate that has to run on the parsed manifest in one call.
      *
      * `ManifestLoader` invokes this immediately after `parser.parse(data)` and
@@ -426,7 +544,8 @@ function DodgeHandler(config) {
 
         return rejectIfDynamic(manifest, url) ||
             rejectIfRangeDiscovery(manifest, url) ||
-            rejectIfUnshapedTracks(manifest, url);
+            rejectIfUnshapedTracks(manifest, url) ||
+            rejectIfManifestMismatch(manifest, url);
     }
 
     function _triggerStrictModeError(url) {
@@ -1317,6 +1436,7 @@ function DodgeHandler(config) {
         rejectIfDynamic,
         rejectIfRangeDiscovery,
         rejectIfUnshapedTracks,
+        rejectIfManifestMismatch,
         getStreamStats,
         isDodgeActive,
         isDodgeTrailing,

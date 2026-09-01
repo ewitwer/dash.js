@@ -2694,6 +2694,17 @@ describe('DodgeHandler', function () {
             return loggerSpy.warn.getCalls().some(c => c.args[0] && c.args[0].indexOf(term) !== -1);
         }
 
+        // rejectParsedManifest also cross-checks the MPD against the registered
+        // extended manifest, so register one that covers the fixtures' v0.
+        function gateAll(strictMode, xml) {
+            handler.tryProcessExtendedManifest(JSON.stringify({
+                start: { mpd: xml, base_uri: 'https://example.com/' },
+                streams: [{ label: 'v0', init: [{}], data: [{ index: 0, buffer: true }] }]
+            }), 'u');
+            settings.update({ dodge: { strictMode } });
+            return handler.rejectParsedManifest(dashParser.parse(xml), 'u');
+        }
+
         beforeEach(function () {
             eventBus = EventBus(context).getInstance();
             settings = Settings(context).getInstance();
@@ -2878,8 +2889,7 @@ describe('DodgeHandler', function () {
                     + '<ContentProtection schemeIdUri="urn:uuid:edef8ba9-79d6-4ace-a3c8-27dcd51d21ed"/>'
                     + '<SegmentTemplate initialization="init.m4s" media="$Number$.m4s"/>'
                     + '<Representation id="v0" bandwidth="1000"/></AdaptationSet>'));
-                settings.update({ dodge: { strictMode: 'max' } });
-                expect(handler.rejectParsedManifest(dashParser.parse(xml), 'u')).to.be.false; // jshint ignore:line
+                expect(gateAll('max', xml)).to.be.false; // jshint ignore:line
                 expect(warnedAbout('DRM')).to.be.true; // jshint ignore:line
             });
 
@@ -2889,16 +2899,14 @@ describe('DodgeHandler', function () {
                     + '<SupplementalProperty schemeIdUri="urn:example:x" value="urn:uuid:1234"/>'
                     + '<SegmentTemplate initialization="init.m4s" media="$Number$.m4s"/>'
                     + '<Representation id="v0" bandwidth="1000"/></AdaptationSet>'));
-                settings.update({ dodge: { strictMode: 'max' } });
-                handler.rejectParsedManifest(dashParser.parse(xml), 'u');
+                gateAll('max', xml);
                 expect(warnedAbout('DRM')).to.be.false; // jshint ignore:line
             });
 
             it('ContentSteering warns', function () {
                 const xml = mpd('<ContentSteering defaultServiceLocation="a">https://example.com/steer</ContentSteering>'
                     + period(VIDEO));
-                settings.update({ dodge: { strictMode: 'max' } });
-                expect(handler.rejectParsedManifest(dashParser.parse(xml), 'u')).to.be.false; // jshint ignore:line
+                expect(gateAll('max', xml)).to.be.false; // jshint ignore:line
                 expect(warnedAbout('ContentSteering')).to.be.true; // jshint ignore:line
             });
 
@@ -2908,16 +2916,14 @@ describe('DodgeHandler', function () {
                         + '<ContentProtection schemeIdUri="urn:uuid:edef8ba9-79d6-4ace-a3c8-27dcd51d21ed"/>'
                         + '<SegmentTemplate initialization="init.m4s" media="$Number$.m4s"/>'
                         + '<Representation id="v0" bandwidth="1000"/></AdaptationSet>'));
-                settings.update({ dodge: { strictMode: false } });
-                handler.rejectParsedManifest(dashParser.parse(xml), 'u');
+                gateAll(false, xml);
                 expect(loggerSpy.warn.called).to.be.false; // jshint ignore:line
             });
 
             it('DVB Reporting warns', function () {
                 const xml = mpd(period(VIDEO)
                     + '<Metrics metrics="HttpList"><Reporting schemeIdUri="urn:dvb:dash:reporting:2014" value="1"/></Metrics>');
-                settings.update({ dodge: { strictMode: 'max' } });
-                expect(handler.rejectParsedManifest(dashParser.parse(xml), 'u')).to.be.false; // jshint ignore:line
+                expect(gateAll('max', xml)).to.be.false; // jshint ignore:line
                 expect(warnedAbout('Reporting')).to.be.true; // jshint ignore:line
             });
         });
@@ -2940,6 +2946,165 @@ describe('DodgeHandler', function () {
         });
     });
 
+    // Cross-validation of the extended manifest against the embedded MPD
+
+    describe('rejectIfManifestMismatch, extended manifest against the MPD', function () {
+        let eventBus, settings, handler, loggerSpy, errorSpy, listener;
+        const dashParser = DashParser({}).create({ debug: new DebugMock() });
+        
+        function mpd(periods) {
+            return '<MPD xmlns="urn:mpeg:dash:schema:mpd:2011" type="static" minBufferTime="PT1S">'
+                + periods + '</MPD>';
+        }
+
+        function period(body, id) {
+            return '<Period id="' + (id || 'p0') + '" start="PT0S" duration="PT10S">' + body + '</Period>';
+        }
+
+        function videoSet(ids) {
+            return '<AdaptationSet mimeType="video/mp4">'
+                + '<SegmentTemplate initialization="init.m4s" media="$Number$.m4s"/>'
+                + ids.map((id) => '<Representation id="' + id + '" bandwidth="1000"/>').join('')
+                + '</AdaptationSet>';
+        }
+
+        function entry(label, extra) {
+            return Object.assign({ label: label, init: [{}], data: [{ index: 0, buffer: true }] }, extra || {});
+        }
+
+        function gate(strictMode, xml, streams) {
+            // Register under the default mode, then switch: the gate reads the
+            // mode when it runs, and 'max' would reject unrelated things here.
+            handler.tryProcessExtendedManifest(JSON.stringify({
+                start: { mpd: xml, base_uri: 'https://example.com/' },
+                streams: streams
+            }), 'http://example.com/v.json');
+            settings.update({ dodge: { strictMode } });
+            return handler.rejectIfManifestMismatch(dashParser.parse(xml), 'http://example.com/v.json');
+        }
+
+        beforeEach(function () {
+            eventBus = EventBus(context).getInstance();
+            settings = Settings(context).getInstance();
+
+            loggerSpy = { fatal: sinon.spy(), error: sinon.spy(), warn: sinon.spy(), info: sinon.spy(), debug: sinon.spy() };
+            sinon.stub(Debug(context).getInstance(), 'getLogger').returns(loggerSpy);
+
+            handler = DodgeHandler(context).create({
+                eventBus, events: Events, settings,
+                streamController: null,
+                mediaPlayer: { extend: () => {}, updateSettings: () => {} }
+            });
+
+            listener = {};
+            errorSpy = sinon.spy();
+            eventBus.on(Events.INTERNAL_MANIFEST_LOADED, errorSpy, listener);
+        });
+
+        afterEach(function () {
+            eventBus.off(Events.INTERNAL_MANIFEST_LOADED, errorSpy, listener);
+            settings.update({ dodge: { strictMode: false } });
+            handler.reset();
+        });
+
+        it('a manifest whose labels and coverage match is accepted', function () {
+            const xml = mpd(period(videoSet(['v0', 'v1'])));
+            expect(gate('representation', xml, [entry('v0'), entry('v1')])).to.be.false; // jshint ignore:line
+        });
+
+        it('a label naming no representation is rejected', function () {
+            const xml = mpd(period(videoSet(['v0'])));
+            expect(gate('representation', xml, [entry('v0'), entry('typo')])).to.be.true; // jshint ignore:line
+            expect(errorSpy.calledOnce).to.be.true; // jshint ignore:line
+        });
+
+        it('a representation with no stream entry is rejected', function () {
+            const xml = mpd(period(videoSet(['v0', 'v1'])));
+            expect(gate('representation', xml, [entry('v0')])).to.be.true; // jshint ignore:line
+        });
+
+        it('a period index beyond the manifest is rejected', function () {
+            const xml = mpd(period(videoSet(['v0'])));
+            expect(gate('representation', xml, [entry('v0', { period: 3 })])).to.be.true; // jshint ignore:line
+        });
+
+        it('an entry scoped to the wrong period is rejected', function () {
+            const xml = mpd(period(videoSet(['v0']), 'p0') + period(videoSet(['v1']), 'p1'));
+            // v1 lives in period 1, the entry claims period 0.
+            expect(gate('representation', xml, [entry('v0', { period: 0 }), entry('v1', { period: 0 })])).to.be.true; // jshint ignore:line
+        });
+
+        it('an entry without a period matches any period', function () {
+            const xml = mpd(period(videoSet(['v0']), 'p0') + period(videoSet(['v0']), 'p1'));
+            expect(gate('representation', xml, [entry('v0')])).to.be.false; // jshint ignore:line
+        });
+
+        it('a string quality naming no sibling is rejected', function () {
+            const xml = mpd(period(videoSet(['v0', 'v1'])));
+            const streams = [entry('v0', { data: [{ index: 0, buffer: true, quality: 'nope' }] }), entry('v1')];
+            expect(gate('representation', xml, streams)).to.be.true; // jshint ignore:line
+        });
+
+        it('a string quality naming a sibling is accepted', function () {
+            const xml = mpd(period(videoSet(['v0', 'v1'])));
+            const streams = [entry('v0', { data: [{ index: 0, buffer: true, quality: 'v1' }] }), entry('v1')];
+            expect(gate('representation', xml, streams)).to.be.false; // jshint ignore:line
+        });
+
+        it('an integer quality beyond the sibling count is rejected', function () {
+            const xml = mpd(period(videoSet(['v0', 'v1'])));
+            const streams = [entry('v0', { data: [{ index: 0, buffer: true, quality: 5 }] }), entry('v1')];
+            expect(gate('representation', xml, streams)).to.be.true; // jshint ignore:line
+        });
+
+        it('an integer quality within the sibling count is accepted', function () {
+            const xml = mpd(period(videoSet(['v0', 'v1'])));
+            const streams = [entry('v0', { data: [{ index: 0, buffer: true, quality: 1 }] }), entry('v1')];
+            expect(gate('representation', xml, streams)).to.be.false; // jshint ignore:line
+        });
+
+        it('an init cycle quality is checked too', function () {
+            const xml = mpd(period(videoSet(['v0', 'v1'])));
+            const streams = [entry('v0', { init: [{ quality: 'nope' }] }), entry('v1')];
+            expect(gate('representation', xml, streams)).to.be.true; // jshint ignore:line
+        });
+
+        // Tracks that never reach DashHandler have no cycles by design.
+        it('a thumbnail representation needs no stream entry', function () {
+            const thumbs = '<AdaptationSet mimeType="image/jpeg">'
+                + '<SegmentTemplate initialization="init.jpg" media="$Number$.jpg"/>'
+                + '<Representation id="th0" bandwidth="10">'
+                + '<EssentialProperty schemeIdUri="http://dashif.org/thumbnail_tile" value="10x1"/>'
+                + '</Representation></AdaptationSet>';
+            const xml = mpd(period(videoSet(['v0']) + thumbs));
+            expect(gate('representation', xml, [entry('v0')])).to.be.false; // jshint ignore:line
+        });
+
+        it('a sidecar text representation needs no stream entry', function () {
+            const sidecar = '<AdaptationSet mimeType="text/vtt">'
+                + '<Representation id="t0" bandwidth="100"><BaseURL>subs.vtt</BaseURL></Representation>'
+                + '</AdaptationSet>';
+            const xml = mpd(period(videoSet(['v0']) + sidecar));
+            expect(gate('representation', xml, [entry('v0')])).to.be.false; // jshint ignore:line
+        });
+
+        // Unlike the side-channel gates, a mismatch is a playback failure rather
+        // than a leak, so it is fatal in every mode that enforces anything.
+        it('manifest and max reject it as well', function () {
+            const xml = mpd(period(videoSet(['v0'])));
+            expect(gate('manifest', xml, [entry('typo')])).to.be.true; // jshint ignore:line
+            handler.reset();
+            expect(gate('max', xml, [entry('typo')])).to.be.true; // jshint ignore:line
+        });
+
+        it('strictMode false performs no check at all', function () {
+            const xml = mpd(period(videoSet(['v0', 'v1'])));
+            expect(gate(false, xml, [entry('typo')])).to.be.false; // jshint ignore:line
+            expect(loggerSpy.error.called).to.be.false; // jshint ignore:line
+            expect(errorSpy.called).to.be.false; // jshint ignore:line
+        });
+    });
+
     describe('rejectParsedManifest, the single post-parse gate', function () {
         let eventBus, settings, handler, loggerSpy, errorSpy, listener;
         const dashParser = DashParser({}).create({ debug: new DebugMock() });
@@ -2956,6 +3121,13 @@ describe('DodgeHandler', function () {
         }
 
         function gate(strictMode, xml) {
+            // ManifestLoader only reaches this gate for a source that was
+            // accepted as an extended manifest, so register a matching one:
+            // rejectIfManifestMismatch checks the MPD against what is stored.
+            handler.tryProcessExtendedManifest(JSON.stringify({
+                start: { mpd: xml, base_uri: 'https://example.com/' },
+                streams: [{ label: 'v0', init: [{}], data: [{ index: 0, buffer: true }] }]
+            }), 'http://example.com/v.json');
             settings.update({ dodge: { strictMode } });
             return handler.rejectParsedManifest(dashParser.parse(xml), 'http://example.com/v.json');
         }
