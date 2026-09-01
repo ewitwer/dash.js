@@ -62,6 +62,138 @@ function _initQualityKey(cycle) {
 }
 
 /**
+ * Byte bounds of a cycle range, or null when the cycle has no range and so
+ * fetches the whole segment. Ranges reaching this point are already known to be
+ * well formed; an omitted end runs to the end of the resource.
+ *
+ * @param {string|undefined|null} range - The cycle's range.
+ * @returns {{start: number, end: number}|null} Bounds, or null for "everything".
+ */
+function _cycleRangeBounds(range) {
+    if (range === undefined || range === null || range === '') {
+        return null;
+    }
+    const tokens = String(range).split('-');
+    const start = parseInt(tokens[0], 10);
+    const end = parseInt(tokens[1], 10);
+
+    return { start: isNaN(start) ? 0 : start, end: isNaN(end) ? Infinity : end };
+}
+
+/**
+ * The first hole in a set of byte ranges, or null when they are contiguous.
+ * Overlap is not a hole: pieces are written over each other and redundant
+ * coverage is a legitimate defense lever.
+ *
+ * @param {Array<{start: number, end: number}>} ranges - Bounds to cover.
+ * @returns {{from: number, to: number}|null} The first uncovered span.
+ */
+function _findRangeGap(ranges) {
+    const sorted = ranges.slice().sort((a, b) => a.start - b.start);
+    let covered = sorted[0].end;
+
+    for (let i = 1; i < sorted.length; i++) {
+        if (sorted[i].start > covered + 1) {
+            return { from: covered + 1, to: sorted[i].start - 1 };
+        }
+        covered = Math.max(covered, sorted[i].end);
+    }
+
+    return null;
+}
+
+/**
+ * Reject cycles whose ranges leave a hole in the segment they assemble.
+ *
+ * `DodgeHandler._concatPartialSegments` sizes the result from the lowest range
+ * start to the highest range end and writes each piece at its own offset, so a
+ * span no cycle covers is appended to the SourceBuffer as zeros.
+ *
+ * Grouping mirrors the assembler. Pieces are matched by segment index and by
+ * representation, so cycles carrying a quality override form their own group and
+ * cannot fill a hole left by the home representation's. Padding cycles are
+ * excluded because their responses are never accumulated, so a padding range
+ * cannot close a gap either. A group ends at its `full` cycle, which is where the
+ * assembler runs and consumes the pieces; the same index fetched again afterwards
+ * starts a new group.
+ *
+ * What this cannot check is whether the ranges cover the *whole* segment. Segment
+ * sizes come from measurement, not from the MPD, so under-coverage at the end is
+ * indistinguishable from a segment that is exactly that long.
+ *
+ * @param {Array} cycles - The init or data cycles, with `full` already computed.
+ * @param {string} label - Stream label, for error messages.
+ * @param {boolean} isInit - True for init cycles, which carry no segment index.
+ * @param {Object} [logger] - Optional logger for rejection messages.
+ * @returns {boolean} True when every group is contiguous.
+ */
+function checkRangeContiguity(cycles, label, isInit, logger) {
+    const groups = new Map();
+
+    function validate(group) {
+        if (group.unranged || group.ranges.length < 2) {
+            return true;
+        }
+        const gap = _findRangeGap(group.ranges);
+        if (gap) {
+            if (logger) {
+                logger.error('Extended manifest rejected: defended stream info with label ' + label +
+                    ', ' + group.description + ' leaves bytes ' + gap.from + '-' + gap.to +
+                    ' uncovered, so the assembled segment would be zero-filled there');
+            }
+            return false;
+        }
+        return true;
+    }
+
+    for (let i = 0; i < cycles.length; i++) {
+        const cycle = cycles[i];
+        if (cycle.padding) {
+            continue;
+        }
+
+        const qualityKey = _initQualityKey(cycle);
+        const key = qualityKey + '|' + (isInit ? 'init' : cycle.index);
+
+        let group = groups.get(key);
+        if (!group) {
+            group = {
+                ranges: [],
+                unranged: false,
+                description: (isInit ? 'init cycles' : 'cycles for segment index ' + cycle.index) +
+                    (qualityKey === 'home' ? '' : ' at quality ' + JSON.stringify(cycle.quality))
+            };
+            groups.set(key, group);
+        }
+
+        const bounds = _cycleRangeBounds(cycle.range);
+        if (bounds) {
+            group.ranges.push(bounds);
+        } else {
+            group.unranged = true;
+        }
+
+        if (cycle.full) {
+            if (!validate(group)) {
+                return false;
+            }
+            groups.delete(key);
+        }
+    }
+
+    // A group with no `full` cycle is never assembled, but check it anyway so a
+    // hole is reported wherever it sits.
+    let contiguous = true;
+    groups.forEach((group) => {
+        if (contiguous && !validate(group)) {
+            contiguous = false;
+        }
+    });
+
+    return contiguous;
+}
+
+/**
  * Validate init cycles in a stream entry. Check that each range, if
  * present, is a string of the form "<start>-<end>" with start <= end.
  * Check that padding and buffer are booleans, strings true/false, or
@@ -251,7 +383,7 @@ function checkInitCycles(stream, logger) {
         }
     }
 
-    return true;
+    return checkRangeContiguity(stream['init'], stream['label'], true, logger);
 }
 
 /**
@@ -561,7 +693,11 @@ function checkDataCycles(stream, logger) {
 
     stream.maxNoPad = computeMaxNoPad(data);
 
-    return computeDataCycleFull(data, !!stream['progressive'], stream['label'], logger);
+    if (!computeDataCycleFull(data, !!stream['progressive'], stream['label'], logger)) {
+        return false;
+    }
+
+    return checkRangeContiguity(data, stream['label'], false, logger);
 }
 
 /**
@@ -938,6 +1074,10 @@ function DefenseRegistry() {
         // Self-contained batch: full computed over the batch alone, every
         // introduced index required to be flushed within the batch.
         if (!computeDataCycleFull(batch, true, stream['label'], logger)) {
+            return false;
+        }
+
+        if (!checkRangeContiguity(batch, stream['label'], false, logger)) {
             return false;
         }
 

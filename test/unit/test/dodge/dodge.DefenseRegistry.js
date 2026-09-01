@@ -451,6 +451,123 @@ describe('DefenseRegistry', function () {
             expect(isValidExtendedManifest(m)).to.be.false; // jshint ignore:line
         });
 
+        // Assembled byte ranges must leave no gap
+        //
+        // _concatPartialSegments sizes the result from the lowest range start to
+        // the highest range end and writes each piece at its offset, so a hole
+        // between two pieces is appended as zeros with nothing reported. Overlap
+        // is fine: pieces are written over each other, and redundant coverage is
+        // a legitimate defense lever.
+
+        function ranged(cycles) {
+            return {
+                start: { mpd: '<MPD/>', base_uri: 'https://x.com/' },
+                streams: [{ label: 'a', init: [{}], data: cycles }]
+            };
+        }
+
+        it('data cycle ranges that tile the segment, true', function () {
+            expect(isValidExtendedManifest(ranged([
+                { index: 0, range: '0-499' },
+                { index: 0, range: '500-999', buffer: true }
+            ]))).to.be.true; // jshint ignore:line
+        });
+
+        it('data cycle ranges with a gap, false', function () {
+            expect(isValidExtendedManifest(ranged([
+                { index: 0, range: '0-499' },
+                { index: 0, range: '600-999', buffer: true }
+            ]))).to.be.false; // jshint ignore:line
+        });
+
+        it('data cycle ranges that overlap, true', function () {
+            expect(isValidExtendedManifest(ranged([
+                { index: 0, range: '0-599' },
+                { index: 0, range: '500-999', buffer: true }
+            ]))).to.be.true; // jshint ignore:line
+        });
+
+        it('data cycle ranges given out of order that still tile, true', function () {
+            expect(isValidExtendedManifest(ranged([
+                { index: 0, range: '500-999' },
+                { index: 0, range: '0-499', buffer: true }
+            ]))).to.be.true; // jshint ignore:line
+        });
+
+        // A padding response is never accumulated, so its range cannot fill a hole.
+        it('a padding cycle does not close a gap, false', function () {
+            expect(isValidExtendedManifest(ranged([
+                { index: 0, range: '0-499' },
+                { index: 0, range: '500-999', padding: true },
+                { index: 0, range: '1000-1499', buffer: true }
+            ]))).to.be.false; // jshint ignore:line
+        });
+
+        it('a single ranged cycle, true', function () {
+            expect(isValidExtendedManifest(ranged([{ index: 0, range: '0-999', buffer: true }]))).to.be.true; // jshint ignore:line
+        });
+
+        // No range means the whole segment, so nothing can be missing.
+        it('a cycle without a range, true', function () {
+            expect(isValidExtendedManifest(ranged([
+                { index: 0, range: '0-499' },
+                { index: 0, buffer: true }
+            ]))).to.be.true; // jshint ignore:line
+        });
+
+        it('an open-ended range covers everything after it, true', function () {
+            expect(isValidExtendedManifest(ranged([
+                { index: 0, range: '0-499' },
+                { index: 0, range: '500-', buffer: true }
+            ]))).to.be.true; // jshint ignore:line
+        });
+
+        it('each segment index is checked separately, false', function () {
+            expect(isValidExtendedManifest(ranged([
+                { index: 0, range: '0-499' },
+                { index: 0, range: '500-999' },
+                { index: 1, range: '0-499' },
+                { index: 1, range: '600-999', buffer: true }
+            ]))).to.be.false; // jshint ignore:line
+        });
+
+        // Each assembly is its own group: the same index fetched again after a
+        // flush starts over rather than continuing the previous run.
+        it('ranges are grouped per assembly, not per stream, true', function () {
+            expect(isValidExtendedManifest(ranged([
+                { index: 0, range: '0-499' },
+                { index: 0, range: '500-999', buffer: true },
+                { index: 0, range: '0-499' },
+                { index: 0, range: '500-999', buffer: true }
+            ]))).to.be.true; // jshint ignore:line
+        });
+
+        // The assembler matches pieces by representation, so cycles fetched at a
+        // different quality form a separate group and cannot fill each other's holes.
+        it('quality override cycles form their own group, true', function () {
+            expect(isValidExtendedManifest(ranged([
+                { index: 0, range: '0-999' },
+                { index: 0, range: '0-499', quality: 'alt' },
+                { index: 0, range: '500-999', quality: 'alt', buffer: true }
+            ]))).to.be.true; // jshint ignore:line
+        });
+
+        it('init cycle ranges with a gap, false', function () {
+            const m = {
+                start: { mpd: '<MPD/>', base_uri: 'https://x.com/' },
+                streams: [{ label: 'a', init: [{ range: '0-99' }, { range: '200-855', buffer: true }], data: [{ index: 0, buffer: true }] }]
+            };
+            expect(isValidExtendedManifest(m)).to.be.false; // jshint ignore:line
+        });
+
+        it('init cycle ranges that tile, true', function () {
+            const m = {
+                start: { mpd: '<MPD/>', base_uri: 'https://x.com/' },
+                streams: [{ label: 'a', init: [{ range: '0-99' }, { range: '100-855', buffer: true }], data: [{ index: 0, buffer: true }] }]
+            };
+            expect(isValidExtendedManifest(m)).to.be.true; // jshint ignore:line
+        });
+
         it('data cycle with range start > end, false', function () {
             const m = {
                 start: { mpd: '<MPD/>', base_uri: 'https://x.com/' },

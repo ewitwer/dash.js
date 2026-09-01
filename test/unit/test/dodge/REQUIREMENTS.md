@@ -855,6 +855,37 @@ A valid index is **normalized to a number in place**, alongside `padding`, `buff
 | `dodge.DefenseRegistry.js` | data cycle index normalization | a negative index is still rejected |
 | `dodge.DefenseRegistry.js` | data cycle index normalization | a numeric-string quality is still stored as a string |
 
+### R9.4b - Assembled byte ranges must leave no gap
+
+`DodgeHandler._concatPartialSegments` sizes the assembled segment from the lowest range start to the
+highest range end and writes each piece at its own offset. A span no cycle covers is therefore
+appended to the SourceBuffer as zeros, with nothing reported. `checkRangeContiguity()` rejects a
+manifest whose cycle ranges leave such a hole, in both init and data cycles, and in a progressive
+batch appended through `appendDataCycles`.
+
+**Overlap is accepted.** Pieces are written over each other, and redundant coverage is a legitimate
+defense lever, so only a hole is an error.
+
+**What this cannot check** is whether the ranges cover the *whole* segment. Segment sizes come from
+measurement, not from the MPD (R10.19), so under-coverage at the end is indistinguishable from a
+segment that is exactly that long. Only interior holes are detectable.
+
+| File | Description | Test |
+|---|---|---|
+| `dodge.DefenseRegistry.js` | isValidExtendedManifest | data cycle ranges that tile the segment, true |
+| `dodge.DefenseRegistry.js` | isValidExtendedManifest | data cycle ranges with a gap, false |
+| `dodge.DefenseRegistry.js` | isValidExtendedManifest | data cycle ranges that overlap, true |
+| `dodge.DefenseRegistry.js` | isValidExtendedManifest | data cycle ranges given out of order that still tile, true |
+| `dodge.DefenseRegistry.js` | isValidExtendedManifest | a padding cycle does not close a gap, false |
+| `dodge.DefenseRegistry.js` | isValidExtendedManifest | a single ranged cycle, true |
+| `dodge.DefenseRegistry.js` | isValidExtendedManifest | a cycle without a range, true |
+| `dodge.DefenseRegistry.js` | isValidExtendedManifest | an open-ended range covers everything after it, true |
+| `dodge.DefenseRegistry.js` | isValidExtendedManifest | each segment index is checked separately, false |
+| `dodge.DefenseRegistry.js` | isValidExtendedManifest | ranges are grouped per assembly, not per stream, true |
+| `dodge.DefenseRegistry.js` | isValidExtendedManifest | quality override cycles form their own group, true |
+| `dodge.DefenseRegistry.js` | isValidExtendedManifest | init cycle ranges with a gap, false |
+| `dodge.DefenseRegistry.js` | isValidExtendedManifest | init cycle ranges that tile, true |
+
 ### R9.5 - Cycle index lookup
 
 `getCycleIndexBySegmentIndex()` returns the index of the first non-padding cycle matching a given segment index, or `-1` if not found. Callers resolve a playback time to a segment index through `segmentsController.getSegmentByTime()` first, since segment durations are not uniform under SegmentTimeline.
@@ -1617,6 +1648,7 @@ override stalls rather than falling back.
 | R9.2 Init cycle validation | 18 |
 | R9.3 Init cycle quality validation and explicit buffer requirement | 17 |
 | R9.4 Data cycle validation, maxNoPad, and cycle.full precomputation | 25 |
+| R9.4b Assembled ranges leave no gap | 13 |
 | R9.5 Cycle index lookup | 4 |
 | R9.6 Registry stores and retrieves manifests | 5 |
 | R9.7 Period field validation | 6 |
@@ -1654,4 +1686,4 @@ override stalls rather than falling back.
 | R12.3 getStreamStats counts | 3 |
 | R12.4 Error fragment stalling | 8 |
 | R12.5 Range-ignoring origin detection | 15 |
-| **Total** | **682** |
+| **Total** | **695** |
