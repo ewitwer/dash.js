@@ -496,7 +496,7 @@ When a media chunk carries a `homeRepresentationId` (set by `DodgeDashHandlerOve
 | `dodge.DodgeDashHandlerOverride.js` | Per-cycle quality override | getSegmentRequestForTime sets homeRepresentationId when quality override is active |
 | `dodge.DodgeDashHandlerOverride.js` | Per-cycle quality override | getSegmentRequestForTime does not set homeRepresentationId when no quality override |
 
-### R6.4 - Media fragment releases are serialized
+### R6.4 - Fragment releases are serialized
 
 The event bus does not await its handlers, so a flush that releases several segments (R2.12) starts every `_onMediaFragmentLoaded` back to back. Because the quality override sandwich (R6.1) is asynchronous, unserialized handlers interleave: both `changeType` calls run before either append, media lands under the alternate codec rather than its own, and an ordinary segment released alongside an override is appended *inside* that override's sandwich and ahead of it in the buffer, defeating R2.12.
 
@@ -507,6 +507,10 @@ The event bus does not await its handlers, so a flush that releases several segm
 | `dodge.DodgeBufferControllerOverride.js` | _onMediaFragmentLoaded | two overrides released together: each sandwich completes before the next begins |
 | `dodge.DodgeBufferControllerOverride.js` | _onMediaFragmentLoaded | override plus ordinary segment: the ordinary segment does not land inside the sandwich |
 | `dodge.DodgeBufferControllerOverride.js` | _onMediaFragmentLoaded | a failed sandwich does not stop the next release from being appended |
+| `dodge.DodgeBufferControllerOverride.js` | init append serialization | an init released while a media append is in flight lands after it |
+| `dodge.DodgeBufferControllerOverride.js` | init append serialization | an init released mid-sandwich does not land inside it |
+| `dodge.DodgeBufferControllerOverride.js` | init append serialization | an init released on an idle chain still appends |
+| `dodge.DodgeBufferControllerOverride.js` | init append serialization | an alternate init is cached without appending, and does not stall the chain |
 
 ### R6.3 - Dodge-owned alternate init cache, invalidated on quality switch
 
@@ -1545,7 +1549,7 @@ override stalls rather than falling back.
 | R6.1 Init segment sandwich for quality overrides | 8 |
 | R6.2 homeRepresentationId tagging | 5 |
 | R6.3 Dodge-owned alternate init cache, invalidated on quality switch | 8 |
-| R6.4 Media fragment releases are serialized | 3 |
+| R6.4 Fragment releases are serialized | 7 |
 | R7.1 Random walk delay bounded | 6 |
 | R7.2 Scheduling is scoped to correct stream processor | 3 |
 | R7.3 Suppressed events skip scheduling | 2 |
@@ -1600,4 +1604,4 @@ override stalls rather than falling back.
 | R12.3 getStreamStats counts | 3 |
 | R12.4 Error fragment stalling | 8 |
 | R12.5 Range-ignoring origin detection | 15 |
-| **Total** | **659** |
+| **Total** | **663** |

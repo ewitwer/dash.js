@@ -179,7 +179,14 @@ function DodgeBufferControllerOverride(config) {
         if (chunk && chunk.representation) {
             altInitCache.set(chunk.representation.id, chunk);
         }
-        _parentOnInitFragmentLoaded.call(parent, e);
+
+        appendChain = appendChain
+            .then(() => _parentOnInitFragmentLoaded.call(parent, e))
+            .catch((err) => {
+                // One failed release must not poison the chain for the rest.
+                logger.warn('Init fragment append failed, defense may not progress: ' + (err && err.message ? err.message : err));
+            });
+        return appendChain;
     }
 
     /**

@@ -518,9 +518,9 @@ describe('DodgeBufferControllerOverride', function () {
 
     describe('_onInitFragmentLoaded', function () {
 
-        it('delegates to parent for home init (no homeRepresentationId)', function () {
+        it('delegates to parent for home init (no homeRepresentationId)', async function () {
             const e = { chunk: { representation: { id: 'video_1000k' }, homeRepresentationId: null } };
-            override._onInitFragmentLoaded(e);
+            await override._onInitFragmentLoaded(e);
             expect(mockParent._onInitFragmentLoaded.calledOnce).to.be.true; // jshint ignore:line
             expect(mockParent._onInitFragmentLoaded.firstCall.args[0]).to.equal(e);
         });
@@ -531,9 +531,9 @@ describe('DodgeBufferControllerOverride', function () {
             expect(mockParent._onInitFragmentLoaded.called).to.be.false; // jshint ignore:line
         });
 
-        it('home init is both cached locally and delegated to parent', function () {
+        it('home init is both cached locally and delegated to parent', async function () {
             const homeChunk = { representation: { id: 'video_1000k' }, homeRepresentationId: null };
-            override._onInitFragmentLoaded({ chunk: homeChunk });
+            await override._onInitFragmentLoaded({ chunk: homeChunk });
             expect(mockParent._onInitFragmentLoaded.calledOnce).to.be.true; // jshint ignore:line
         });
 
@@ -620,6 +620,100 @@ describe('DodgeBufferControllerOverride', function () {
             });
 
             expect(mockParent.appendToBuffer.called).to.be.false; // jshint ignore:line
+        });
+    });
+
+    // Init appends are serialized with media appends
+
+    describe('init append serialization', function () {
+
+        // SourceBufferSink drains its appendQueue in enqueue order, so whichever
+        // path enqueues first reaches the SourceBuffer first. Media appends are
+        // chained; if init appends are not, an init released while the chain is
+        // still draining jumps ahead of media that belongs before it, and that
+        // media is then parsed under the wrong initialization segment.
+        function recordOrder(order) {
+            mockParent.appendToBuffer = function (chunk) {
+                order.push('append:' + (chunk.label || chunk.name));
+                return new Promise((resolve) => setTimeout(resolve, 0));
+            };
+            mockParent.changeType = function (representation) {
+                order.push('changeType:' + representation.id);
+                return Promise.resolve();
+            };
+            mockParent._onMediaFragmentLoaded.callsFake(function (e) {
+                order.push('parentMedia:' + e.chunk.name);
+            });
+            mockParent._onInitFragmentLoaded.callsFake(function (e) {
+                order.push('parentInit:' + e.chunk.label);
+            });
+        }
+
+        const homeRep = { id: 'video_1000k' };
+        const altRep = { id: 'video_500k' };
+
+        it('an init released while a media append is in flight lands after it', async function () {
+            const order = [];
+            recordOrder(order);
+
+            const media = { representation: homeRep, homeRepresentationId: null, name: 'segA' };
+            const init = { representation: homeRep, homeRepresentationId: null, label: 'init2' };
+
+            const pMedia = override._onMediaFragmentLoaded({ chunk: media, request: {} });
+            const pInit = override._onInitFragmentLoaded({ chunk: init });
+            await Promise.all([pMedia, pInit]);
+
+            expect(order.join(' > ')).to.equal('parentMedia:segA > parentInit:init2');
+        });
+
+        it('an init released mid-sandwich does not land inside it', async function () {
+            const order = [];
+            recordOrder(order);
+            mockParent.getInitChunkFromCache.withArgs('video_500k')
+                .returns({ representation: altRep, label: 'altInit' });
+            mockParent.getInitChunkFromCache.withArgs('video_1000k')
+                .returns({ representation: homeRep, label: 'homeInit' });
+
+            const overrideChunk = { representation: altRep, homeRepresentationId: 'video_1000k', name: 'segA' };
+            // A third representation, so the release cannot change which home init
+            // the sandwich resolves and the assertion is purely about ordering.
+            const init = { representation: { id: 'video_2000k' }, homeRepresentationId: null, label: 'init2' };
+
+            const pMedia = override._onMediaFragmentLoaded({ chunk: overrideChunk, request: {} });
+            const pInit = override._onInitFragmentLoaded({ chunk: init });
+            await Promise.all([pMedia, pInit]);
+
+            expect(order.join(' > ')).to.equal([
+                'changeType:video_500k', 'append:altInit', 'append:segA',
+                'changeType:video_1000k', 'append:homeInit',
+                'parentInit:init2'
+            ].join(' > '));
+        });
+
+        it('an init released on an idle chain still appends', async function () {
+            const order = [];
+            recordOrder(order);
+
+            await override._onInitFragmentLoaded({
+                chunk: { representation: homeRep, homeRepresentationId: null, label: 'init1' }
+            });
+
+            expect(order.join(' > ')).to.equal('parentInit:init1');
+        });
+
+        it('an alternate init is cached without appending, and does not stall the chain', async function () {
+            const order = [];
+            recordOrder(order);
+
+            override._onInitFragmentLoaded({
+                chunk: { representation: altRep, homeRepresentationId: 'video_1000k', label: 'altInit' }
+            });
+            await override._onMediaFragmentLoaded({
+                chunk: { representation: homeRep, homeRepresentationId: null, name: 'segA' },
+                request: {}
+            });
+
+            expect(order.join(' > ')).to.equal('parentMedia:segA');
         });
     });
 });
