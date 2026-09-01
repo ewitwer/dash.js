@@ -592,6 +592,55 @@ describe('DefenseRegistry', function () {
             expect(isValidExtendedManifest(m)).to.be.true; // jshint ignore:line
         });
 
+        // '' and 0 are malformed ranges, not absent ones.
+        it('data cycle with an empty range, false', function () {
+            const m = {
+                start: { mpd: '<MPD/>', base_uri: 'https://x.com/' },
+                streams: [{ label: 'a', init: [{}], data: [{ index: 0, range: '', buffer: true }] }]
+            };
+            expect(isValidExtendedManifest(m)).to.be.false; // jshint ignore:line
+        });
+
+        it('init cycle with an empty range, false', function () {
+            const m = {
+                start: { mpd: '<MPD/>', base_uri: 'https://x.com/' },
+                streams: [{ label: 'a', init: [{ range: '' }], data: [{ index: 0, buffer: true }] }]
+            };
+            expect(isValidExtendedManifest(m)).to.be.false; // jshint ignore:line
+        });
+
+        it('data cycle with a zero range, false', function () {
+            const m = {
+                start: { mpd: '<MPD/>', base_uri: 'https://x.com/' },
+                streams: [{ label: 'a', init: [{}], data: [{ index: 0, range: 0, buffer: true }] }]
+            };
+            expect(isValidExtendedManifest(m)).to.be.false; // jshint ignore:line
+        });
+
+        // An absent range means "fetch the whole segment", which covers every
+        // byte, so it legitimately excuses the group from the check.
+        it('data cycle with an absent range is still unranged, true', function () {
+            const m = {
+                start: { mpd: '<MPD/>', base_uri: 'https://x.com/' },
+                streams: [{ label: 'a', init: [{}], data: [{ index: 0, range: null, buffer: true }] }]
+            };
+            expect(isValidExtendedManifest(m)).to.be.true; // jshint ignore:line
+        });
+
+        it('an empty range does not switch off the contiguity check', function () {
+            const m = {
+                start: { mpd: '<MPD/>', base_uri: 'https://x.com/' },
+                streams: [{
+                    label: 'a', init: [{}], data: [
+                        { index: 0, range: '0-9' },
+                        { index: 0, range: '' },
+                        { index: 0, range: '50-99', buffer: true }
+                    ]
+                }]
+            };
+            expect(isValidExtendedManifest(m)).to.be.false; // jshint ignore:line
+        });
+
         it('the rejection names the suffix range semantics', function () {
             const logged = [];
             isValidExtendedManifest({

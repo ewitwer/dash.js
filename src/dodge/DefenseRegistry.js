@@ -194,151 +194,158 @@ function checkRangeContiguity(cycles, label, isInit, logger) {
 }
 
 /**
- * Validate init cycles in a stream entry. Check that each range, if
- * present, is a string of the form "<start>-<end>" with start <= end.
- * Check that padding and buffer are booleans, strings true/false, or
- * absent (selective buffering is not allowed for init cycles).
- * Check that quality is a string representation ID, numerical
- * representation index, or absent. Precompute `full` flags.
+ * Validate the fields an init cycle and a data cycle have in common: range,
+ * padding, buffer, and quality. String booleans are normalized and buffer array
+ * elements coerced in place, so a caller reads the resolved value afterwards.
+ *
+ * The two cycle kinds differ in one field. A selective buffer array names
+ * segment indices, and an init cycle has none to name, so an array is rejected
+ * there and tentatively accepted here.
+ *
+ * @param {string} label - Stream label, for error messages.
+ * @param {Object} cycle - The cycle to validate (mutated in place).
+ * @param {number} i - Cycle position, for error messages.
+ * @param {boolean} isInit - True for init cycles, which take no buffer array.
+ * @param {Object} [logger] - Optional logger for rejection messages.
+ * @returns {boolean} True if the shared fields are valid.
+ */
+function checkSharedCycleFields(label, cycle, i, isInit, logger) {
+    const where = 'defended stream info with label ' + label + ', ' +
+        (isInit ? 'init' : 'data') + ' cycle at index ' + i + ', ';
+
+    function reject(message) {
+        if (logger) {
+            logger.error('Extended manifest rejected: ' + where + message);
+        }
+        return false;
+    }
+
+    // range is optional but, when present, MUST be a string of the form
+    // "<start>-<end>". The end MAY be omitted ("44-"), in which case it runs
+    // to the end of the resource.
+    const range = cycle.range;
+    if (range !== undefined && range !== null) {
+        if (typeof range !== 'string' && !(range instanceof String)) {
+            return reject('invalid range');
+        }
+
+        if (_omitsRangeStart(range)) {
+            return reject('range ' + JSON.stringify(range) +
+                ' omits its start, which HTTP reads as a suffix range');
+        }
+
+        const rangeTokens = range.split('-');
+        if (rangeTokens.length != 2 || isNaN(rangeTokens[0]) || isNaN(rangeTokens[1])) {
+            return reject('invalid range');
+        }
+        let rs = parseInt(rangeTokens[0], 10);
+        let re = parseInt(rangeTokens[1], 10);
+        if (isNaN(rs)) {
+            rs = 0;
+        }
+        if (isNaN(re)) {
+            re = Number.MAX_SAFE_INTEGER;
+        }
+
+        // Range start MUST NOT exceed range end.
+        if (rs > re) {
+            return reject('invalid range');
+        }
+    }
+
+    // padding MUST be a boolean (or a string parseable to boolean), or absent.
+    let padding = cycle.padding;
+    if (padding !== undefined && padding !== null) {
+        if (typeof padding === 'string') {
+            if (padding === 'true') {
+                padding = true;
+            } else if (padding === 'false') {
+                padding = false;
+            } else {
+                return reject('invalid padding value');
+            }
+            cycle.padding = padding;
+        } else if (typeof padding !== 'boolean') {
+            return reject('invalid padding value');
+        }
+    }
+
+    // buffer MUST be a boolean (or a string parseable to boolean), or absent.
+    // On a data cycle it MAY also be an array of non-negative segment indices
+    // (selective buffering).
+    let buffer = cycle.buffer;
+    if (buffer !== undefined && buffer !== null) {
+        if (Array.isArray(buffer)) {
+            if (isInit) {
+                return reject('buffer must not be an array');
+            }
+            for (let j = 0; j < buffer.length; j++) {
+                const elem = Number(buffer[j]);
+                if (isNaN(elem) || elem < 0 || !Number.isInteger(elem)) {
+                    return reject('invalid buffer array element at position ' + j);
+                }
+                buffer[j] = elem;
+            }
+            cycle.buffer = buffer;
+        } else if (typeof buffer === 'string') {
+            if (buffer === 'true') {
+                buffer = true;
+            } else if (buffer === 'false') {
+                buffer = false;
+            } else {
+                return reject('invalid buffer value');
+            }
+            cycle.buffer = buffer;
+        } else if (typeof buffer !== 'boolean') {
+            return reject('invalid buffer value');
+        }
+    }
+
+    // quality is optional. When present, it selects an alternate representation
+    // in the same adaptation set to fetch this cycle from. Accepted forms: a
+    // non-empty string (matched against representation.id at request time)
+    // or a non-negative integer (index into the array returned by
+    // adapter.getVoRepresentations(mediaInfo)).
+    const quality = cycle.quality;
+    if (quality !== undefined && quality !== null) {
+        if (typeof quality === 'string') {
+            if (quality.length === 0) {
+                return reject('invalid quality override (empty string)');
+            }
+            // Since other fields can be strings as long as they resolve to
+            // integers, warn here that strings containing numbers will be
+            // interpreted as representation IDs (use a JSON number if an
+            // index is intended).
+            const qint = Number(quality);
+            if (!isNaN(qint) && Number.isInteger(qint) && logger) {
+                logger.warn('Extended manifest parsing: ' + where +
+                    'quality override resolves to an integer ' + qint +
+                    ', treating as a representation ID');
+            }
+        } else if (typeof quality === 'number') {
+            if (!Number.isInteger(quality) || quality < 0) {
+                return reject('invalid quality override (must be a non-negative integer)');
+            }
+        } else {
+            return reject('invalid quality override');
+        }
+    }
+
+    return true;
+}
+
+/**
+ * Validate init cycles in a stream entry: the shared cycle fields (selective
+ * buffering is not allowed here), then precompute `full` flags and check that
+ * the ranges of each assembly group are contiguous.
  * @param {Object} stream - The stream entry from an extended manifest.
  * @param {Object} [logger] - Optional logger for rejection messages.
  * @returns {boolean} True if all init cycles are valid.
  */
 function checkInitCycles(stream, logger) {
     for (let i = 0; i < stream['init'].length; i++) {
-        const range = stream['init'][i].range;
-
-        // range is optional but, when present, MUST be a string of the form
-        // "<start>-<end>". The end MAY be omitted ("44-"), in which case it
-        // runs to the end of the resource. The start MUST NOT be: "-855" is a
-        // suffix-byte-range-spec under RFC 7233 section 2.1, asking for the
-        // LAST 855 bytes rather than bytes 0 through 855.
-        if (range !== undefined && range !== null) {
-            if (typeof range !== 'string' && !(range instanceof String)) {
-                if (logger) {
-                    logger.error('Extended manifest rejected: defended stream info with label ' + stream['label'] + ', init cycle at index ' + i + ', invalid range');
-                }
-                return false;
-            }
-
-            if (_omitsRangeStart(range)) {
-                if (logger) {
-                    logger.error('Extended manifest rejected: defended stream info with label ' + stream['label'] + ', init cycle at index ' + i + ', range ' + JSON.stringify(range) + ' omits its start, which HTTP reads as a suffix range');
-                }
-                return false;
-            }
-
-            const rangeTokens = range.split('-');
-            if (rangeTokens.length != 2 || isNaN(rangeTokens[0]) || isNaN(rangeTokens[1])) {
-                if (logger) {
-                    logger.error('Extended manifest rejected: defended stream info with label ' + stream['label'] + ', init cycle at index ' + i + ', invalid range');
-                }
-                return false;
-            }
-            let rs = parseInt(rangeTokens[0], 10);
-            let re = parseInt(rangeTokens[1], 10);
-            if (isNaN(rs)) {
-                rs = 0;
-            }
-            if (isNaN(re)) {
-                re = Number.MAX_SAFE_INTEGER;
-            }
-
-            // Range start MUST NOT exceed range end.
-            if (rs > re) {
-                if (logger) {
-                    logger.error('Extended manifest rejected: defended stream info with label ' + stream['label'] + ', init cycle at index ' + i + ', invalid range');
-                }
-                return false;
-            }
-        }
-
-        // padding MUST be a boolean (or a string parseable to boolean), or absent.
-        let padding = stream['init'][i].padding;
-        if (padding !== undefined && padding !== null) {
-            if (typeof padding === 'string') {
-                if (padding === 'true') {
-                    padding = true;
-                } else if (padding === 'false') {
-                    padding = false;
-                } else {
-                    if (logger) {
-                        logger.error('Extended manifest rejected: defended stream info with label ' + stream['label'] + ', init cycle at index ' + i + ', invalid padding value');
-                    }
-                    return false;
-                }
-                stream['init'][i].padding = padding;
-            } else if (typeof padding !== 'boolean') {
-                if (logger) {
-                    logger.error('Extended manifest rejected: defended stream info with label ' + stream['label'] + ', init cycle at index ' + i + ', invalid padding value');
-                }
-                return false;
-            }
-        }
-
-        // buffer MUST be a boolean (or a string parseable to boolean), or absent.
-        // Array buffer is NOT valid on init cycles.
-        let buffer = stream['init'][i].buffer;
-        if (buffer !== undefined && buffer !== null) {
-            if (Array.isArray(buffer)) {
-                if (logger) {
-                    logger.error('Extended manifest rejected: defended stream info with label ' + stream['label'] + ', init cycle at index ' + i + ', buffer must not be an array');
-                }
-                return false;
-            } else if (typeof buffer === 'string') {
-                if (buffer === 'true') {
-                    buffer = true;
-                } else if (buffer === 'false') {
-                    buffer = false;
-                } else {
-                    if (logger) {
-                        logger.error('Extended manifest rejected: defended stream info with label ' + stream['label'] + ', init cycle at index ' + i + ', invalid buffer value');
-                    }
-                    return false;
-                }
-                stream['init'][i].buffer = buffer;
-            } else if (typeof buffer !== 'boolean') {
-                if (logger) {
-                    logger.error('Extended manifest rejected: defended stream info with label ' + stream['label'] + ', init cycle at index ' + i + ', invalid buffer value');
-                }
-                return false;
-            }
-        }
-
-        // quality is optional on init cycles, with the same semantics as on data
-        // cycles: a non-empty string (matched against representation.id) or a
-        // non-negative integer (index into adapter.getVoRepresentations). On init
-        // cycles, quality selects the representation whose init segment is fetched
-        // and cached in the Dodge-owned cache or InitCache, if enabled. Resolution
-        // against the MPD is deferred to DodgeDashHandlerOverride.
-        let quality = stream['init'][i].quality;
-        if (quality !== undefined && quality !== null) {
-            if (typeof quality === 'string') {
-                if (quality.length === 0) {
-                    if (logger) {
-                        logger.error('Extended manifest rejected: defended stream info with label ' + stream['label'] + ', init cycle at index ' + i + ', invalid quality override (empty string)');
-                    }
-                    return false;
-                }
-                const qint = Number(quality);
-                if (!isNaN(qint) && Number.isInteger(qint)) {
-                    if (logger) {
-                        logger.warn('Extended manifest parsing: defended stream info with label ' + stream['label'] + ', init cycle at index ' + i + ', quality override resolves to an integer ' + qint + ', treating as a representation ID');
-                    }
-                }
-            } else if (typeof quality === 'number') {
-                if (!Number.isInteger(quality) || quality < 0) {
-                    if (logger) {
-                        logger.error('Extended manifest rejected: defended stream info with label ' + stream['label'] + ', init cycle at index ' + i + ', invalid quality override (must be a non-negative integer)');
-                    }
-                    return false;
-                }
-            } else {
-                if (logger) {
-                    logger.error('Extended manifest rejected: defended stream info with label ' + stream['label'] + ', init cycle at index ' + i + ', invalid quality override');
-                }
-                return false;
-            }
+        if (!checkSharedCycleFields(stream['label'], stream['init'][i], i, true, logger)) {
+            return false;
         }
     }
 
@@ -387,10 +394,10 @@ function checkInitCycles(stream, logger) {
 }
 
 /**
- * Validate the structural fields of a single data cycle (index, range,
- * padding, buffer, quality) and normalize string booleans / coerce
- * buffer array elements in place. Does not validate buffer array
- * references. Shared by checkDataCycles and appendDataCycles.
+ * Validate a single data cycle: its segment index, then the fields it shares
+ * with init cycles. Normalizes string booleans and coerces buffer array
+ * elements in place. Does not validate buffer array references, which
+ * need the whole cycle run.
  * @param {string} label - Stream label, for error messages.
  * @param {Object} cycle - The data cycle to validate (mutated in place).
  * @param {number} i - Cycle position, for error messages.
@@ -398,12 +405,9 @@ function checkInitCycles(stream, logger) {
  * @returns {boolean} True if the cycle's fields are valid.
  */
 function checkDataCycleFields(label, cycle, i, logger) {
-    const idx = Number(cycle.index);
-    const range = cycle.range;
-    let padding = cycle.padding;
-
     // Every data cycle MUST have a non-negative integer segment index.
     // Strings are accepted if they parse to a non-negative integer.
+    const idx = Number(cycle.index);
     if (isNaN(idx) || idx < 0 || !Number.isInteger(idx)) {
         if (logger) {
             logger.error('Extended manifest rejected: defended stream info with label ' + label + ', data cycle at index ' + i + ', invalid index');
@@ -414,149 +418,7 @@ function checkDataCycleFields(label, cycle, i, logger) {
     // Store the validated value.
     cycle.index = idx;
 
-    // range is optional
-    if (range) {
-        if (typeof range !== 'string' && !(range instanceof String)) {
-            if (logger) {
-                logger.error('Extended manifest rejected: defended stream info with label ' + label + ', data cycle at index ' + i + ', invalid range');
-            }
-            return false;
-        }
-
-        if (_omitsRangeStart(range)) {
-            if (logger) {
-                logger.error('Extended manifest rejected: defended stream info with label ' + label + ', data cycle at index ' + i + ', range ' + JSON.stringify(range) + ' omits its start, which HTTP reads as a suffix range');
-            }
-            return false;
-        }
-
-        const rangeTokens = range.split('-');
-        if (rangeTokens.length != 2 || isNaN(rangeTokens[0]) || isNaN(rangeTokens[1])) {
-            if (logger) {
-                logger.error('Extended manifest rejected: defended stream info with label ' + label + ', data cycle at index ' + i + ', invalid range');
-            }
-            return false;
-        }
-        let rs = parseInt(rangeTokens[0], 10);
-        let re = parseInt(rangeTokens[1], 10);
-        if (isNaN(rs)) {
-            rs = 0;
-        }
-        if (isNaN(re)) {
-            re = Number.MAX_SAFE_INTEGER;
-        }
-
-        // Range start MUST NOT exceed range end.
-        if (rs > re) {
-            if (logger) {
-                logger.error('Extended manifest rejected: defended stream info with label ' + label + ', data cycle at index ' + i + ', invalid range');
-            }
-            return false;
-        }
-    }
-
-    // padding MUST be a boolean (or a string parseable to boolean), or absent.
-    if (padding !== undefined && padding !== null) {
-        if (typeof padding === 'string') {
-            if (padding === 'true') {
-                padding = true;
-            } else if (padding === 'false') {
-                padding = false;
-            } else {
-                if (logger) {
-                    logger.error('Extended manifest rejected: defended stream info with label ' + label + ', data cycle at index ' + i + ', invalid padding value');
-                }
-                return false;
-            }
-            cycle.padding = padding;
-        } else if (typeof padding !== 'boolean') {
-            if (logger) {
-                logger.error('Extended manifest rejected: defended stream info with label ' + label + ', data cycle at index ' + i + ', invalid padding value');
-            }
-            return false;
-        }
-    }
-
-    // buffer MUST be a boolean (or a string parseable to boolean), an array
-    // of non-negative integers, or absent.
-    let buffer = cycle.buffer;
-    if (buffer !== undefined && buffer !== null) {
-        if (Array.isArray(buffer)) {
-            for (let j = 0; j < buffer.length; j++) {
-                const elem = Number(buffer[j]);
-                if (isNaN(elem) || elem < 0 || !Number.isInteger(elem)) {
-                    if (logger) {
-                        logger.error('Extended manifest rejected: defended stream info with label ' + label + ', data cycle at index ' + i + ', invalid buffer array element at position ' + j);
-                    }
-                    return false;
-                }
-                buffer[j] = elem;
-            }
-            cycle.buffer = buffer;
-        } else if (typeof buffer === 'string') {
-            if (buffer === 'true') {
-                buffer = true;
-            } else if (buffer === 'false') {
-                buffer = false;
-            } else {
-                if (logger) {
-                    logger.error('Extended manifest rejected: defended stream info with label ' + label + ', data cycle at index ' + i + ', invalid buffer value');
-                }
-                return false;
-            }
-            cycle.buffer = buffer;
-        } else if (typeof buffer !== 'boolean') {
-            if (logger) {
-                logger.error('Extended manifest rejected: defended stream info with label ' + label + ', data cycle at index ' + i + ', invalid buffer value');
-            }
-            return false;
-        }
-    }
-
-    // quality is optional. When present, it selects an alternate
-    // representation in the same adaptation set to fetch this cycle from.
-    // Accepted forms: a non-empty string (matched against representation.id
-    // at request time) or a non-negative integer (index into the array
-    // returned by adapter.getVoRepresentations(mediaInfo)). Numeric strings
-    // are kept as strings and treated as representation IDs (with a warning);
-    // use a JSON number if an index is intended. Actual resolution against
-    // the MPD's representations is deferred to DodgeDashHandlerOverride,
-    // since the registry has no access to them.
-    let quality = cycle.quality;
-    if (quality !== undefined && quality !== null) {
-        if (typeof quality === 'string') {
-            if (quality.length === 0) {
-                if (logger) {
-                    logger.error('Extended manifest rejected: defended stream info with label ' + label + ', data cycle at index ' + i + ', invalid quality override (empty string)');
-                }
-                return false;
-            }
-            // Since other fields can be strings as long as they resolve to
-            // integers, warn here that strings containing numbers will be
-            // interpreted as representation IDs (use a JSON number if an
-            // index is intended).
-            const qint = Number(quality);
-            if (!isNaN(qint) && Number.isInteger(qint)) {
-                if (logger) {
-                    logger.warn('Extended manifest parsing: defended stream info with label ' + label + ', data cycle at index ' + i + ', quality override resolves to an integer ' + qint + ', treating as a representation ID');
-                }
-            }
-        } else if (typeof quality === 'number') {
-            if (!Number.isInteger(quality) || quality < 0) {
-                if (logger) {
-                    logger.error('Extended manifest rejected: defended stream info with label ' + label + ', data cycle at index ' + i + ', invalid quality override (must be a non-negative integer)');
-                }
-                return false;
-            }
-        } else {
-            if (logger) {
-                logger.error('Extended manifest rejected: defended stream info with label ' + label + ', data cycle at index ' + i + ', invalid quality override');
-            }
-            return false;
-        }
-    }
-
-    return true;
+    return checkSharedCycleFields(label, cycle, i, false, logger);
 }
 
 /**

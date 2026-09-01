@@ -795,6 +795,11 @@ The gate reads the setting through `resolveNumericSetting()` (R11.8) rather than
 | `dodge.DefenseRegistry.js` | isValidExtendedManifest | init cycle with padding string "false", true |
 | `dodge.DefenseRegistry.js` | isValidExtendedManifest | init cycle with non-parseable string padding, false |
 | `dodge.DefenseRegistry.js` | isValidExtendedManifest | init cycle with non-boolean padding (number), false |
+| `dodge.DefenseRegistry.js` | isValidExtendedManifest | data cycle with an empty range, false |
+| `dodge.DefenseRegistry.js` | isValidExtendedManifest | init cycle with an empty range, false |
+| `dodge.DefenseRegistry.js` | isValidExtendedManifest | data cycle with a zero range, false |
+| `dodge.DefenseRegistry.js` | isValidExtendedManifest | data cycle with an absent range is still unranged, true |
+| `dodge.DefenseRegistry.js` | isValidExtendedManifest | an empty range does not switch off the contiguity check |
 
 ### R9.3 - Init cycle quality validation and explicit buffer requirement
 
