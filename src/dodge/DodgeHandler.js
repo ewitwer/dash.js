@@ -1148,10 +1148,23 @@ function DodgeHandler(config) {
         for (let i = 0; i < secondaryEvents.length; i++) {
             const event = secondaryEvents[i];
             const isLast = primaryIsAppend && i === secondaryEvents.length - 1;
+
+            // Every segment in the set enters the playback buffer, so every one
+            // needs its duration variance absorbed. BufferController._onAppended
+            // gates that on e.request, so each release carries the request that
+            // fetched it.
+            //
+            // The two flags that gate belong to the flush rather than to the
+            // fetch, though. Copy them from the flushing request.
+            if (event.request) {
+                event.request.buffer = request.buffer;
+                event.request.trail = request.trail;
+            }
+
             eventBus.trigger(event.event,
                 {
                     chunk: event.chunk,
-                    request: isLast ? event.request : undefined,
+                    request: event.request,
                     suppress: !isLast
                 },
                 { streamId: strInfo.id, mediaType: request.mediaType }

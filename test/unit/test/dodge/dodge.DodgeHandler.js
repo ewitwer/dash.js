@@ -599,20 +599,66 @@ describe('DodgeHandler', function () {
             expect(released).to.eql([3, 4, 5]);
         });
 
-        it('release order: only the last event fired is unsuppressed and carries a request', function () {
+        // Every released segment enters the playback buffer, so every one needs
+        // its duration variance absorbed. BufferController._onAppended gates that
+        // on e.request, so each released event carries its own segment's request.
+        it('release order: every released event carries its own segment request', function () {
             triggerFragmentLoaded(makeRequest({ full: true, buffer: false, index: 3 }));
             mediaLoadedSpy.resetHistory();
 
             triggerFragmentLoaded(makeRequest({ full: true, buffer: true, index: 2 }));
 
             const payloads = mediaLoadedSpy.getCalls().map(c => c.args[0]);
-            expect(payloads[0].suppress).to.be.true; // jshint ignore:line
-            expect(payloads[0].request).to.equal(undefined);
-            expect(payloads[1].suppress).to.be.false; // jshint ignore:line
+            expect(payloads.length).to.equal(2);
+            expect(payloads[0].request).to.not.equal(undefined);
             expect(payloads[1].request).to.not.equal(undefined);
-            // The unsuppressed event is the highest index, which is not the
-            // cycle that carried the buffer flag.
+            // Sorted by segment index, each carrying the request that fetched it.
+            expect(payloads[0].request.index).to.equal(2);
             expect(payloads[1].request.index).to.equal(3);
+        });
+
+        // The pending segment was fetched by a cycle whose own buffer flag was
+        // false - that is why it was queued. The flags the mock buffer gate reads
+        // have to describe the flush, not that earlier cycle.
+        it('release: the buffer and trail flags of the flush are applied to every request', function () {
+            triggerFragmentLoaded(makeRequest({ full: true, buffer: false, index: 3 }));
+            mediaLoadedSpy.resetHistory();
+
+            triggerFragmentLoaded(makeRequest({ full: true, buffer: true, trail: false, index: 2 }));
+
+            const payloads = mediaLoadedSpy.getCalls().map(c => c.args[0]);
+            payloads.forEach((payload) => {
+                expect(payload.request.buffer).to.be.ok; // jshint ignore:line
+                expect(payload.request.trail).to.be.false; // jshint ignore:line
+            });
+        });
+
+        it('release: a trailing flush marks every released request as trailing', function () {
+            triggerFragmentLoaded(makeRequest({ full: true, buffer: false, index: 3 }));
+            mediaLoadedSpy.resetHistory();
+
+            triggerFragmentLoaded(makeRequest({ full: true, buffer: true, trail: true, index: 2 }));
+
+            mediaLoadedSpy.getCalls().map(c => c.args[0]).forEach((payload) => {
+                expect(payload.request.trail).to.be.true; // jshint ignore:line
+            });
+        });
+
+        // A padding cycle carrying a buffer directive flushes real segments, and
+        // none of them used to receive a request at all.
+        it('release: a padding-driven flush still delivers a request per segment', function () {
+            triggerFragmentLoaded(makeRequest({ full: true, buffer: false, index: 0 }));
+            triggerFragmentLoaded(makeRequest({ full: true, buffer: false, index: 1 }));
+            mediaLoadedSpy.resetHistory();
+
+            triggerFragmentLoaded(makeRequest({ full: false, padding: true, buffer: true, index: 2 }));
+
+            const payloads = mediaLoadedSpy.getCalls().map(c => c.args[0]);
+            expect(payloads.length).to.equal(2);
+            payloads.forEach((payload) => {
+                expect(payload.request).to.not.equal(undefined);
+                expect(payload.request.buffer).to.be.ok; // jshint ignore:line
+            });
         });
 
         it('release order: pending init segments still lead the media segments', function () {

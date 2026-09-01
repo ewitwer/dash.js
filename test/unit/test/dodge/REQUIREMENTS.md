@@ -185,13 +185,24 @@ The index/`lastSegment` invariants are advanced only *after* a request is succes
 
 A defense may schedule cycles so that a segment downloads before one with a lower index. Download order is a defense lever; release order is not. At a flush, the pending events and the flushing cycle's own segment form one release set, which is sorted by segment index before any event is fired: init events carry index `NaN` and always lead, and media events follow in ascending index order. Sorting is stable, so entries that tie keep completion order.
 
-One event in the set is fired unsuppressed, and it is fired last, because it re-arms the ScheduleController through the vanilla `_onBytesAppended` path (R1.2). After sorting that is the highest index in the set, which is not necessarily the cycle that carried the buffer flag; it carries its own request, and every earlier event is suppressed with no request, as before. When the flushing cycle is a `MEDIA_FRAGMENT_PARTIAL` / `INIT_FRAGMENT_PARTIAL` / `PADDING_LOADED` event it appends nothing, so it stays last on its own and only the secondaries are sorted.
+Every event in the set carries the request that fetched its own segment, because
+`BufferController._onAppended` gates the mock buffer correction on `e.request` and every released
+segment enters the playback buffer (R5.1). The request must be the segment's own: `SourceBufferSink`
+records it as `lastRequestAppended`, which is what a `SOURCE_BUFFER_ERROR` reports and what the
+append log names.
+
+The `buffer` and `trail` flags on each of those requests are overwritten from the flushing request
+before the event fires. They describe the flush, not the fetch. The last event after sorting is
+fired unsuppressed and the rest suppressed.
 
 | File | Description | Test |
 |---|---|---|
 | `dodge.DodgeHandler.js` | Partial segment combination, _onFragmentLoadingCompleted | out-of-order download: releases in segment order, not completion order |
 | `dodge.DodgeHandler.js` | Partial segment combination, _onFragmentLoadingCompleted | out-of-order download: several pending segments are sorted by index |
-| `dodge.DodgeHandler.js` | Partial segment combination, _onFragmentLoadingCompleted | release order: only the last event fired is unsuppressed and carries a request |
+| `dodge.DodgeHandler.js` | Partial segment combination, _onFragmentLoadingCompleted | release order: every released event carries its own segment request |
+| `dodge.DodgeHandler.js` | Partial segment combination, _onFragmentLoadingCompleted | release: the buffer and trail flags of the flush are applied to every request |
+| `dodge.DodgeHandler.js` | Partial segment combination, _onFragmentLoadingCompleted | release: a trailing flush marks every released request as trailing |
+| `dodge.DodgeHandler.js` | Partial segment combination, _onFragmentLoadingCompleted | release: a padding-driven flush still delivers a request per segment |
 | `dodge.DodgeHandler.js` | Partial segment combination, _onFragmentLoadingCompleted | release order: pending init segments still lead the media segments |
 
 ---
@@ -395,9 +406,19 @@ Two complementary mechanisms prevent spurious seeks during the trailing phase:
 
 ## 5. Mock Buffer
 
-### R5.1 - Mock buffer accumulates duration variance for each non-trailing cycle
+### R5.1 - Mock buffer accumulates duration variance for every buffered segment
 
-`onBufferCycleLoaded()` adds `segmentDuration - actualDuration` to `mockBuffer` after each non-trailing cycle, accounting for the difference between MPD segment duration and actual content duration (significant for the last segment).
+`onBufferCycleLoaded()` adds `segmentDuration - actualDuration` to `mockBuffer`, accounting for the
+difference between the MPD's nominal segment duration and the actual content duration (significant
+for the last segment). The reported buffer level is `realBuffer + mockBuffer`, and
+`_shouldScheduleNextRequest` gates on it, so any content-dependent residue left in
+it becomes a content-dependent term in when the plan advances.
+
+The correction fires once per *buffered segment*, not once per cycle. A buffer directive can flush
+more than one segment - a selective array, or a directive that releases queued segments alongside
+its own - and each of them enters the playback buffer with its own duration, so each needs its own
+correction. R2.12 is what makes that possible: every released event carries a request, and the
+flags the gate reads describe the flush.
 
 | File | Description | Test |
 |---|---|---|
@@ -1512,7 +1533,7 @@ override stalls rather than falling back.
 | R2.9 Selective buffer | 10 |
 | R2.10 Per-cycle quality override on data cycles | 12 |
 | R2.11 Request generation stalls without advancing on URL failure | 3 |
-| R2.12 Segments released in segment order, not download order | 4 |
+| R2.12 Release in segment order | 7 |
 | R3.1 Video streams | (implicit) |
 | R3.2 Audio streams | 7 |
 | R3.3 Fragmented text streams | 7 |
@@ -1590,4 +1611,4 @@ override stalls rather than falling back.
 | R12.3 getStreamStats counts | 3 |
 | R12.4 Error fragment stalling | 8 |
 | R12.5 Range-ignoring origin detection | 15 |
-| **Total** | **664** |
+| **Total** | **667** |
