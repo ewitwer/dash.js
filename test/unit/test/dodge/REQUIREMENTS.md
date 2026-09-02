@@ -79,7 +79,7 @@ Streams with no init array: `getRemainingInitCycles()` returns 0 so the schedule
 
 | File | Description | Test |
 |---|---|---|
-| `dodge.DodgeDashHandlerOverride.js` | Data-only streams (self-initialized) | getRemainingInitCycles() returns 0 (scheduler skips init entirely) |
+| `dodge.DodgeDashHandlerOverride.js` | Data-only streams (self-initialized) | getRemainingInitCycles() returns 0 |
 | `dodge.DodgeDashHandlerOverride.js` | Data-only streams (self-initialized) | getNextSegmentRequest() returns a request object normally |
 | `dodge.DodgeDashHandlerOverride.js` | Data-only streams (self-initialized) | isLastSegmentRequested() returns false while cycles remain |
 | `dodge.DodgeDashHandlerOverride.js` | Data-only streams (self-initialized) | isLastSegmentRequested() returns true after all cycles consumed |
@@ -104,8 +104,8 @@ When no extended manifest is loaded and strict mode does not apply, every reques
 | File | Description | Test |
 |---|---|---|
 | `dodge.DodgeDashHandlerOverride.js` | getNextSegmentRequestIdempotent during defended playback | with no defended stream, delegates to parent |
-| `dodge.DodgeDashHandlerOverride.js` | getNextSegmentRequestIdempotent during defended playback | with defended stream info, returns null to suppress CMCD nor/nrr leak |
-| `dodge.DodgeDashHandlerOverride.js` | getNextSegmentRequestIdempotent during defended playback | with defended stream info, returns null consistently across multiple calls |
+| `dodge.DodgeDashHandlerOverride.js` | getNextSegmentRequestIdempotent during defended playback | with defended stream, returns null to suppress CMCD nor/nrr leak |
+| `dodge.DodgeDashHandlerOverride.js` | getNextSegmentRequestIdempotent during defended playback | with defended stream, returns null consistently across multiple calls |
 | `dodge.DodgeDashHandlerOverride.js` | getNextSegmentRequestIdempotent during defended playback | transitions from defended to undefended after reset restore parent delegation |
 
 ### R2.7 - `getLastSegment()` returns the override's segment during defended playback
@@ -351,10 +351,10 @@ manifest's rejection of dynamic MPDs does not prevent it.
 
 | File | Description | Test |
 |---|---|---|
-| `dodge.DodgeDashHandlerOverride.js` | SegmentTemplate with @k | @k present: $SubNumber$ resolves to the first partial segment |
-| `dodge.DodgeDashHandlerOverride.js` | SegmentTemplate with @k | @k present: the request starts at the segment start, not before it |
-| `dodge.DodgeDashHandlerOverride.js` | SegmentTemplate with @k | @k = 1: still resolves to partial segment 0 |
-| `dodge.DodgeDashHandlerOverride.js` | SegmentTemplate with @k | @k absent: the full-segment path is used and start time is unchanged |
+| `dodge.DodgeDashHandlerOverride.js` | SegmentTemplate with @k (partial segments) | @k present: $SubNumber$ resolves to the first partial segment |
+| `dodge.DodgeDashHandlerOverride.js` | SegmentTemplate with @k (partial segments) | @k present: the request starts at the segment start, not before it |
+| `dodge.DodgeDashHandlerOverride.js` | SegmentTemplate with @k (partial segments) | @k = 1: still resolves to partial segment 0 |
+| `dodge.DodgeDashHandlerOverride.js` | SegmentTemplate with @k (partial segments) | @k absent: the full-segment path is used and start time is unchanged |
 
 ---
 
@@ -371,7 +371,7 @@ Two complementary mechanisms prevent spurious seeks during the trailing phase:
 |---|---|---|
 | `dodge.DodgeGapControllerOverride.js` | _shouldJumpGap | during trailing: returns false (suppresses gap jump to avoid spurious seek) |
 | `dodge.DodgeGapControllerOverride.js` | _shouldJumpGap | not trailing: returns true (gap jump proceeds normally) |
-| `dodge.DodgeGapControllerOverride.js` | _shouldJumpGap | dodgeHandler absent: returns true (jumping unaffected) |
+| `dodge.DodgeGapControllerOverride.js` | _shouldJumpGap | dodgeHandler absent: returns true (no crash, gap jumping unaffected) |
 | `dodge.DodgeDashHandlerOverride.js` | getSegmentRequestForTime during trailing phase | seek near stream end during trailing returns next padding cycle, not vanilla parent request |
 
 ### R4.2 - Segment downloading is not marked complete during trailing
@@ -517,6 +517,21 @@ When a media chunk carries a `homeRepresentationId` (set by `DodgeDashHandlerOve
 | `dodge.DodgeDashHandlerOverride.js` | Per-cycle quality override | getSegmentRequestForTime sets homeRepresentationId when quality override is active |
 | `dodge.DodgeDashHandlerOverride.js` | Per-cycle quality override | getSegmentRequestForTime does not set homeRepresentationId when no quality override |
 
+### R6.3 - Dodge-owned alternate init cache, invalidated on quality switch
+
+`DodgeBufferControllerOverride` maintains a local `Map<representationId, chunk>` for alternate-representation init segments (identified by `chunk.homeRepresentationId` being set). These are stored unconditionally - not subject to `streaming.cacheInitSegments` - and are cleared when the override receives `QUALITY_CHANGE_REQUESTED` scoped to its `mediaType`, and on `reset`. The sandwich looks up the alternate init from this local cache (with parent `InitCache` as a fallback) and the home init from the parent `InitCache`.
+
+| File | Description | Test |
+|---|---|---|
+| `dodge.DodgeBufferControllerOverride.js` | _onInitFragmentLoaded | delegates to parent for home init (no homeRepresentationId) |
+| `dodge.DodgeBufferControllerOverride.js` | _onInitFragmentLoaded | alternate init is cached locally and does not delegate to parent |
+| `dodge.DodgeBufferControllerOverride.js` | _onInitFragmentLoaded | home init is both cached locally and delegated to parent |
+| `dodge.DodgeBufferControllerOverride.js` | _onInitFragmentLoaded | sandwich retrieves alternate init from the local cache (parent cache never consulted for alt) |
+| `dodge.DodgeBufferControllerOverride.js` | _onInitFragmentLoaded | local cache does not depend on streaming.cacheInitSegments - sandwich succeeds regardless |
+| `dodge.DodgeBufferControllerOverride.js` | _onInitFragmentLoaded | QUALITY_CHANGE_REQUESTED for this mediaType clears the local cache |
+| `dodge.DodgeBufferControllerOverride.js` | _onInitFragmentLoaded | QUALITY_CHANGE_REQUESTED for a different mediaType does not clear the local cache |
+| `dodge.DodgeBufferControllerOverride.js` | _onInitFragmentLoaded | reset clears the local cache |
+
 ### R6.4 - Fragment releases are serialized
 
 The event bus does not await its handlers, so a flush that releases several segments (R2.12) starts every `_onMediaFragmentLoaded` back to back. Because the quality override sandwich (R6.1) is asynchronous, unserialized handlers interleave: both `changeType` calls run before either append, media lands under the alternate codec rather than its own, and an ordinary segment released alongside an override is appended *inside* that override's sandwich and ahead of it in the buffer, defeating R2.12.
@@ -533,20 +548,6 @@ The event bus does not await its handlers, so a flush that releases several segm
 | `dodge.DodgeBufferControllerOverride.js` | init append serialization | an init released on an idle chain still appends |
 | `dodge.DodgeBufferControllerOverride.js` | init append serialization | an alternate init is cached without appending, and does not stall the chain |
 
-### R6.3 - Dodge-owned alternate init cache, invalidated on quality switch
-
-`DodgeBufferControllerOverride` maintains a local `Map<representationId, chunk>` for alternate-representation init segments (identified by `chunk.homeRepresentationId` being set). These are stored unconditionally - not subject to `streaming.cacheInitSegments` - and are cleared when the override receives `QUALITY_CHANGE_REQUESTED` scoped to its `mediaType`, and on `reset`. The sandwich looks up the alternate init from this local cache (with parent `InitCache` as a fallback) and the home init from the parent `InitCache`.
-
-| File | Description | Test |
-|---|---|---|
-| `dodge.DodgeBufferControllerOverride.js` | _onInitFragmentLoaded | delegates to parent for home init (no homeRepresentationId) |
-| `dodge.DodgeBufferControllerOverride.js` | _onInitFragmentLoaded | alternate init is cached locally and does not delegate to parent |
-| `dodge.DodgeBufferControllerOverride.js` | _onInitFragmentLoaded | home init is both cached locally and delegated to parent |
-| `dodge.DodgeBufferControllerOverride.js` | _onInitFragmentLoaded | sandwich retrieves alternate init from the local cache (parent cache never consulted for alt) |
-| `dodge.DodgeBufferControllerOverride.js` | _onInitFragmentLoaded | local cache does not depend on streaming.cacheInitSegments - sandwich succeeds regardless |
-| `dodge.DodgeBufferControllerOverride.js` | _onInitFragmentLoaded | QUALITY_CHANGE_REQUESTED for this mediaType clears the local cache |
-| `dodge.DodgeBufferControllerOverride.js` | _onInitFragmentLoaded | QUALITY_CHANGE_REQUESTED for a different mediaType does not clear the local cache |
-| `dodge.DodgeBufferControllerOverride.js` | _onInitFragmentLoaded | reset clears the local cache |
 
 ---
 
@@ -648,7 +649,7 @@ No URL length equalization is performed. Wire size is normalized in full by R8.2
 | `dodge.RequestPadding.js` | applyRequestPadding | numeric string paddingLengthBase: URL is not modified |
 | `dodge.RequestPadding.js` | applyRequestPadding | paddingLengthBase < 0: URL is not modified |
 | `dodge.RequestPadding.js` | applyRequestPadding | request with pad > 0: URL is extended by exactly pad bytes |
-| `dodge.RequestPadding.js` | applyRequestPadding | after padding, wire size equals paddingLengthBase (when paddingLengthRandom = 0) |
+| `dodge.RequestPadding.js` | applyRequestPadding | after padding, wire size equals paddingLengthBase (paddingLengthRandom = 0) |
 | `dodge.RequestPadding.js` | applyRequestPadding | headers contribute to the measured size |
 | `dodge.RequestPadding.js` | applyRequestPadding | existing padding value is preserved as prefix of the extended value |
 | `dodge.RequestPadding.js` | applyRequestPadding | with paddingLengthRandom > 0, wire size is in [paddingLengthBase, paddingLengthBase + paddingLengthRandom] |
@@ -656,7 +657,7 @@ No URL length equalization is performed. Wire size is normalized in full by R8.2
 | `dodge.RequestPadding.js` | applyRequestPadding | with a non-numeric paddingLengthRandom, wire size is deterministically paddingLengthBase |
 | `dodge.RequestPadding.js` | applyRequestPadding | with paddingLengthRandom = 0, wire size is deterministically paddingLengthBase |
 | `dodge.RequestPadding.js` | applyRequestPadding | pad = 0 (already at paddingLengthBase): URL is not modified |
-| `dodge.RequestPadding.js` | applyRequestPadding | request already exceeds padding length: warns and does not modify URL |
+| `dodge.RequestPadding.js` | applyRequestPadding | request already exceeds paddingLengthBase: warns and does not modify URL |
 | `dodge.RequestPadding.js` | applyRequestPadding | custom queryParam name: padding applied to the correct parameter |
 | `dodge.RequestPadding.js` | applyRequestPadding | invalid URL: warns and does not throw |
 
@@ -692,6 +693,10 @@ The gate reads the setting through `resolveNumericSetting()` (R11.8) rather than
 | `dodge.DodgeHandler.js` | paddingLengthBase warning in tryProcessExtendedManifest | paddingLengthBase 0 under manifest: warns and still accepts |
 | `dodge.DodgeHandler.js` | paddingLengthBase warning in tryProcessExtendedManifest | paddingLengthBase 0 under max: rejects the manifest |
 | `dodge.DodgeHandler.js` | paddingLengthBase warning in tryProcessExtendedManifest | negative paddingLengthBase is treated as disabled: warns |
+| `dodge.DodgeHandler.js` | paddingLengthBase warning in tryProcessExtendedManifest | non-numeric paddingLengthBase under max: rejects the manifest |
+| `dodge.DodgeHandler.js` | paddingLengthBase warning in tryProcessExtendedManifest | NaN paddingLengthBase under max: rejects the manifest |
+| `dodge.DodgeHandler.js` | paddingLengthBase warning in tryProcessExtendedManifest | numeric string paddingLengthBase under max: rejects the manifest |
+| `dodge.DodgeHandler.js` | paddingLengthBase warning in tryProcessExtendedManifest | non-numeric paddingLengthBase under representation: warns and still accepts |
 | `dodge.DodgeHandler.js` | paddingLengthBase warning in tryProcessExtendedManifest | paddingLengthBase set under max: accepted without warning |
 | `dodge.DodgeHandler.js` | paddingLengthBase warning in tryProcessExtendedManifest | strictMode off: no warning even with paddingLengthBase 0 |
 
@@ -701,7 +706,7 @@ The gate reads the setting through `resolveNumericSetting()` (R11.8) rather than
 
 ### R9.1 - Structural validation rejects malformed manifests
 
-`isValidExtendedManifest()` validates the top-level structure of extended manifest files: `start.mpd` and `start.base_uri` must be present and strings, and `start.base_uri` must additionally be an **absolute http(s) URL whose path ends in `/`**, `streams` must be a non-empty array where each entry has a `label` and at least one of `init` or `data`. It does **not** gate on the embedded MPD's `@type`; that check lives in R10.15, which reads the parsed value. Data cycle fields are validated: `index` must parse to a non-negative integer, `range` must be a well-formed string, `padding` must be a boolean (or a string parseable to boolean) or absent, `buffer` must be a boolean (or a string parseable to boolean), an array of non-negative integers (selective buffer), or absent, and `quality` is optional - when present, it must be either a non-empty string (representation ID, resolved lazily in the override against `adapter.getVoRepresentations(mediaInfo)`) or a non-negative JSON number (index into the same array). Numeric strings are kept as strings and treated as representation IDs; a warning is logged to flag the ambiguity. Use a JSON number if an index is intended.
+`isValidExtendedManifest()` validates the top-level structure of extended manifest files: `start.mpd` and `start.base_uri` must be present and strings, and `start.base_uri` must additionally be an **absolute http(s) URL whose path ends in `/`**, `streams` must be a non-empty array where each entry has a `label` and at least one of `init` or `data`. It does **not** gate on the embedded MPD's `@type`; that check lives in R10.11, which reads the parsed value. Data cycle fields are validated: `index` must parse to a non-negative integer, `range` must be a well-formed string, `padding` must be a boolean (or a string parseable to boolean) or absent, `buffer` must be a boolean (or a string parseable to boolean), an array of non-negative integers (selective buffer), or absent, and `quality` is optional - when present, it must be either a non-empty string (representation ID, resolved lazily in the override against `adapter.getVoRepresentations(mediaInfo)`) or a non-negative JSON number (index into the same array). Numeric strings are kept as strings and treated as representation IDs; a warning is logged to flag the ambiguity. Use a JSON number if an index is intended.
 
 | File | Description | Test |
 |---|---|---|
@@ -743,6 +748,9 @@ The gate reads the setting through `resolveNumericSetting()` (R11.8) rather than
 | `dodge.DefenseRegistry.js` | isValidExtendedManifest | data cycle with range start > end, false |
 | `dodge.DefenseRegistry.js` | isValidExtendedManifest | data cycle with an omitted range start, false |
 | `dodge.DefenseRegistry.js` | isValidExtendedManifest | data cycle with an omitted range end, true |
+| `dodge.DefenseRegistry.js` | isValidExtendedManifest | data cycle with an empty range, false |
+| `dodge.DefenseRegistry.js` | isValidExtendedManifest | data cycle with a zero range, false |
+| `dodge.DefenseRegistry.js` | isValidExtendedManifest | data cycle with an absent range is still unranged, true |
 | `dodge.DefenseRegistry.js` | isValidExtendedManifest | the rejection names the suffix range semantics |
 | `dodge.DefenseRegistry.js` | isValidExtendedManifest | data cycle with valid range, true |
 | `dodge.DefenseRegistry.js` | isValidExtendedManifest | data cycle with padding = true, true |
@@ -797,11 +805,7 @@ The gate reads the setting through `resolveNumericSetting()` (R11.8) rather than
 | `dodge.DefenseRegistry.js` | isValidExtendedManifest | init cycle with padding string "false", true |
 | `dodge.DefenseRegistry.js` | isValidExtendedManifest | init cycle with non-parseable string padding, false |
 | `dodge.DefenseRegistry.js` | isValidExtendedManifest | init cycle with non-boolean padding (number), false |
-| `dodge.DefenseRegistry.js` | isValidExtendedManifest | data cycle with an empty range, false |
 | `dodge.DefenseRegistry.js` | isValidExtendedManifest | init cycle with an empty range, false |
-| `dodge.DefenseRegistry.js` | isValidExtendedManifest | data cycle with a zero range, false |
-| `dodge.DefenseRegistry.js` | isValidExtendedManifest | data cycle with an absent range is still unranged, true |
-| `dodge.DefenseRegistry.js` | isValidExtendedManifest | an empty range does not switch off the contiguity check |
 
 ### R9.3 - Init cycle quality validation and explicit buffer requirement
 
@@ -813,15 +817,15 @@ Padding cycles are deliberately *not* excluded from the scan, which is where the
 
 | File | Description | Test |
 |---|---|---|
-| `dodge.DefenseRegistry.js` | init-cycle quality validation and explicit buffer requirement | rejects init cycle with empty string quality |
-| `dodge.DefenseRegistry.js` | init-cycle quality validation and explicit buffer requirement | rejects init cycle with negative integer quality |
-| `dodge.DefenseRegistry.js` | init-cycle quality validation and explicit buffer requirement | rejects init cycle with non-integer number quality |
-| `dodge.DefenseRegistry.js` | init-cycle quality validation and explicit buffer requirement | rejects init cycle with non-string, non-number quality |
-| `dodge.DefenseRegistry.js` | init-cycle quality validation and explicit buffer requirement | accepts init cycle with valid string quality (with explicit buffer flags) |
-| `dodge.DefenseRegistry.js` | init-cycle quality validation and explicit buffer requirement | accepts init cycle with valid numeric quality (with explicit buffer flags) |
-| `dodge.DefenseRegistry.js` | init-cycle quality validation and explicit buffer requirement | multi-representation init without buffer flags: no default (designer-owned) |
-| `dodge.DefenseRegistry.js` | init-cycle quality validation and explicit buffer requirement | single primary-init group without buffer: defaults buffer: true on last cycle |
-| `dodge.DefenseRegistry.js` | init-cycle quality validation and explicit buffer requirement | explicit multi-representation init: each buffer-flagged cycle is full |
+| `dodge.DefenseRegistry.js` | init cycle quality validation and explicit buffer requirement | rejects init cycle with empty string quality |
+| `dodge.DefenseRegistry.js` | init cycle quality validation and explicit buffer requirement | rejects init cycle with negative integer quality |
+| `dodge.DefenseRegistry.js` | init cycle quality validation and explicit buffer requirement | rejects init cycle with non-integer number quality |
+| `dodge.DefenseRegistry.js` | init cycle quality validation and explicit buffer requirement | rejects init cycle with non-string, non-number quality |
+| `dodge.DefenseRegistry.js` | init cycle quality validation and explicit buffer requirement | accepts init cycle with valid string quality (with explicit buffer flags) |
+| `dodge.DefenseRegistry.js` | init cycle quality validation and explicit buffer requirement | accepts init cycle with valid numeric quality (with explicit buffer flags) |
+| `dodge.DefenseRegistry.js` | init cycle quality validation and explicit buffer requirement | multi-representation init without buffer flags: no default (designer-owned) |
+| `dodge.DefenseRegistry.js` | init cycle quality validation and explicit buffer requirement | single primary init group without buffer: defaults buffer: true on last cycle |
+| `dodge.DefenseRegistry.js` | init cycle quality validation and explicit buffer requirement | explicit multi-representation init: each buffer-flagged cycle is full |
 | `dodge.DefenseRegistry.js` | init cycle full computation with padding cycles | a trailing padding cycle carries full for its group |
 | `dodge.DefenseRegistry.js` | init cycle full computation with padding cycles | only the last of several trailing padding cycles is full |
 | `dodge.DefenseRegistry.js` | init cycle full computation with padding cycles | each quality group ends at its own last cycle |
@@ -874,7 +878,7 @@ batch appended through `appendDataCycles`.
 defense lever, so only a hole is an error.
 
 **What this cannot check** is whether the ranges cover the *whole* segment. Segment sizes come from
-measurement, not from the MPD (R10.19), so under-coverage at the end is indistinguishable from a
+measurement, not from the MPD (R10.15), so under-coverage at the end is indistinguishable from a
 segment that is exactly that long. Only interior holes are detectable.
 
 | File | Description | Test |
@@ -886,6 +890,7 @@ segment that is exactly that long. Only interior holes are detectable.
 | `dodge.DefenseRegistry.js` | isValidExtendedManifest | a padding cycle does not close a gap, false |
 | `dodge.DefenseRegistry.js` | isValidExtendedManifest | a single ranged cycle, true |
 | `dodge.DefenseRegistry.js` | isValidExtendedManifest | a cycle without a range, true |
+| `dodge.DefenseRegistry.js` | isValidExtendedManifest | an empty range does not switch off the contiguity check |
 | `dodge.DefenseRegistry.js` | isValidExtendedManifest | an open-ended range covers everything after it, true |
 | `dodge.DefenseRegistry.js` | isValidExtendedManifest | each segment index is checked separately, false |
 | `dodge.DefenseRegistry.js` | isValidExtendedManifest | ranges are grouped per assembly, not per stream, true |
@@ -998,12 +1003,12 @@ When `defendedStreamInfo.progressive` is true, `getNextSegmentRequest` stalls (r
 
 | File | Description | Test |
 |---|---|---|
-| `dodge.DodgeDashHandlerOverride.js` | Progressive (incremental) manifests | getNextSegmentRequest stalls (returns null, no parent call) when running off the end while progressive |
-| `dodge.DodgeDashHandlerOverride.js` | Progressive (incremental) manifests | isLastSegmentRequested returns false while progressive, even at the last generated cycle |
-| `dodge.DodgeDashHandlerOverride.js` | Progressive (incremental) manifests | getNextSegmentRequest with empty progressive data stalls instead of finishing |
-| `dodge.DodgeDashHandlerOverride.js` | Progressive (incremental) manifests | appended cycles become available to getNextSegmentRequest via the stream reference |
-| `dodge.DodgeDashHandlerOverride.js` | Progressive (incremental) manifests | after finalizeStream, getNextSegmentRequest finishes when running off the end |
-| `dodge.DodgeDashHandlerOverride.js` | Progressive (incremental) manifests | after finalizeStream with trailing padding, the padding cycles are downloaded then the stream finishes |
+| `dodge.DodgeDashHandlerOverride.js` | Progressive manifests | getNextSegmentRequest stalls (returns null, no parent call) when running off the end while progressive |
+| `dodge.DodgeDashHandlerOverride.js` | Progressive manifests | isLastSegmentRequested returns false while progressive, even at the last generated cycle |
+| `dodge.DodgeDashHandlerOverride.js` | Progressive manifests | getNextSegmentRequest with empty progressive data stalls instead of finishing |
+| `dodge.DodgeDashHandlerOverride.js` | Progressive manifests | appended cycles become available to getNextSegmentRequest via the stream reference |
+| `dodge.DodgeDashHandlerOverride.js` | Progressive manifests | after finalizeStream, getNextSegmentRequest finishes when running off the end |
+| `dodge.DodgeDashHandlerOverride.js` | Progressive manifests | after finalizeStream with trailing padding, the padding cycles are downloaded then the stream finishes |
 
 ### R9.13 - `DodgeHandler` exposes progressive append/finalize via delegation
 
@@ -1032,66 +1037,6 @@ Without strict mode, invalid JSON or invalid extended manifests return `null` (g
 | `dodge.DodgeHandler.js` | tryProcessExtendedManifest | valid JSON with invalid extended manifest returns null |
 | `dodge.DodgeHandler.js` | tryProcessExtendedManifest | valid extended manifest JSON returns { mpd, baseUri } matching embedded values |
 | `dodge.DodgeHandler.js` | tryProcessExtendedManifest | two successive valid manifests: each returns its own mpd and baseUri independently |
-
-### R10.19 - The extended manifest's references into the MPD are verified at load
-
-1. Every `label` names a Representation, scoped by period exactly as the runtime scopes it: an entry
-   with a `period` is looked up only in that period, one without matches any.
-2. Every Representation that reaches `DashHandler` has a stream entry, checked through
-   `getDefendedStreamInfo()` itself so the check cannot drift from the lookup it mirrors. Thumbnail
-   and sidecar text adaptations are excluded: they bypass `DashHandler` and carry no cycles by design.
-3. `stream.period` is within the MPD's period count.
-4. Every init and data cycle `quality` resolves against the siblings of the representation its stream
-   names - a string against their ids, an integer against their count.
-
-**Only references are checkable.** Cycle byte ranges are built from measured segment sizes, which
-the MPD does not carry, so nothing here can confirm them. They remain the defense designer's
-responsibility.
-
-Unlike the side-channel gates this is fatal in every mode that enforces anything, because a mismatch
-is a playback failure rather than a leak. Under `strictMode: false` the module is inert by design and
-the check does not run at all. All findings are reported in one message.
-
-The representation lists read here are the ones `DashParser` produced. `CapabilitiesFilter` later
-removes representations the device cannot decode, mutating the same manifest, but it runs from
-`StreamController` well after this gate. Checking before it is deliberate: the verdict is a property
-of the manifest rather than of the device it was opened on.
-
-| File | Description | Test |
-|---|---|---|
-| `dodge.DodgeHandler.js` | rejectIfManifestMismatch, extended manifest against the MPD | a manifest whose labels and coverage match is accepted |
-| `dodge.DodgeHandler.js` | rejectIfManifestMismatch, extended manifest against the MPD | a label naming no representation is rejected |
-| `dodge.DodgeHandler.js` | rejectIfManifestMismatch, extended manifest against the MPD | a representation with no stream entry is rejected |
-| `dodge.DodgeHandler.js` | rejectIfManifestMismatch, extended manifest against the MPD | a period index beyond the manifest is rejected |
-| `dodge.DodgeHandler.js` | rejectIfManifestMismatch, extended manifest against the MPD | an entry scoped to the wrong period is rejected |
-| `dodge.DodgeHandler.js` | rejectIfManifestMismatch, extended manifest against the MPD | an entry without a period matches any period |
-| `dodge.DodgeHandler.js` | rejectIfManifestMismatch, extended manifest against the MPD | a string quality naming no sibling is rejected |
-| `dodge.DodgeHandler.js` | rejectIfManifestMismatch, extended manifest against the MPD | a string quality naming a sibling is accepted |
-| `dodge.DodgeHandler.js` | rejectIfManifestMismatch, extended manifest against the MPD | an integer quality beyond the sibling count is rejected |
-| `dodge.DodgeHandler.js` | rejectIfManifestMismatch, extended manifest against the MPD | an integer quality within the sibling count is accepted |
-| `dodge.DodgeHandler.js` | rejectIfManifestMismatch, extended manifest against the MPD | an init cycle quality is checked too |
-| `dodge.DodgeHandler.js` | rejectIfManifestMismatch, extended manifest against the MPD | a thumbnail representation needs no stream entry |
-| `dodge.DodgeHandler.js` | rejectIfManifestMismatch, extended manifest against the MPD | a sidecar text representation needs no stream entry |
-| `dodge.DodgeHandler.js` | rejectIfManifestMismatch, extended manifest against the MPD | manifest and max reject it as well |
-| `dodge.DodgeHandler.js` | rejectIfManifestMismatch, extended manifest against the MPD | strictMode false performs no check at all |
-
-### R10.18 - A new source replaces the defense set
-
-`MediaPlayer.attachSource()` on an already-initialized player calls
-`_resetPlaybackControllers()`, which resets fifteen controllers and not this module.
-`DefenseRegistry.reset()` otherwise runs only from `MediaPlayer.reset()`.
-
-`tryProcessExtendedManifest` resets the registry and clears `streamState` once the payload has
-parsed as JSON, before the manifest is stored. *After* the parse, so it only fires for something
-that is actually an extended manifest.
-
-| File | Description | Test |
-|---|---|---|
-| `dodge.DodgeHandler.js` | a new source replaces the defense set | a label from the previous source no longer resolves |
-| `dodge.DodgeHandler.js` | a new source replaces the defense set | a colliding label resolves to the new source, not the old one |
-| `dodge.DodgeHandler.js` | a new source replaces the defense set | the new source's own streams still resolve |
-| `dodge.DodgeHandler.js` | a new source replaces the defense set | an invalid extended manifest does not leave the previous defense in place |
-| `dodge.DodgeHandler.js` | a new source replaces the defense set | a payload that is not an extended manifest leaves the defense intact |
 
 ### R10.2 - `tryProcessExtendedManifest` with `strictMode = manifest` or `'max'` fires an error for non-extended manifest sources
 
@@ -1201,7 +1146,7 @@ representation level; a `ContentSteering` element on the MPD; and any `Metrics` 
 | `dodge.DodgeHandler.js` | side channels warn but never reject | nothing warns when strictMode is false |
 | `dodge.DodgeHandler.js` | side channels warn but never reject | DVB Reporting warns |
 
-### R10.12 - CMCD warning during defended playback
+### R10.8 - CMCD warning during defended playback
 
 When CMCD is enabled during Dodge playback, a warning is logged because client telemetry may leak content-identifying information. The warning serves as a diagnostic signal for the defense designer.
 
@@ -1211,7 +1156,7 @@ When CMCD is enabled during Dodge playback, a warning is logged because client t
 | `dodge.DodgeHandler.js` | CMCD warning in tryProcessExtendedManifest | CMCD enabled with strict mode representation: warns about CMCD |
 | `dodge.DodgeHandler.js` | CMCD warning in tryProcessExtendedManifest | CMCD disabled: no warning |
 
-### R10.13 - Warning when strictMode is disabled
+### R10.9 - Warning when strictMode is disabled
 
 When `strictMode` is set to `false`, `tryProcessExtendedManifest` logs a warning that undefended representations will fall back to vanilla dash.js without any defense.
 
@@ -1219,7 +1164,7 @@ When `strictMode` is set to `false`, `tryProcessExtendedManifest` logs a warning
 |---|---|---|
 | `dodge.DodgeHandler.js` | tryProcessExtendedManifest | strictMode false: warns that strict mode is disabled |
 
-### R10.14 - `cacheInitSegments` warning for anonymity set asymmetry
+### R10.10 - `cacheInitSegments` warning for anonymity set asymmetry
 
 When `streaming.cacheInitSegments` is enabled during defended playback, `tryProcessExtendedManifest` logs a warning. ABR-driven init refetches on quality switches are not controlled by the extended manifest; if two videos in an anonymity set have differing init segment structures, init caching produces different wire patterns across the set. The warning surfaces this concern to the defense designer. With strict mode disabled, the warning is suppressed.
 
@@ -1230,13 +1175,13 @@ When `streaming.cacheInitSegments` is enabled during defended playback, `tryProc
 | `dodge.DodgeHandler.js` | cacheInitSegments warning in tryProcessExtendedManifest | cacheInitSegments disabled, multiple representations: no warning |
 | `dodge.DodgeHandler.js` | cacheInitSegments warning in tryProcessExtendedManifest | strictMode off: no warning even with cache enabled |
 
-### R10.15 - A dynamic (live) MPD is rejected after parsing, in every strict mode
+### R10.11 - A dynamic (live) MPD is rejected after parsing, in every strict mode
 
 Extended manifests describe a fixed cycle array. Live content keeps adding segments that
 have no cycle in it, so there is no defense to run and no partial defense to degrade to.
 
 The check reads `manifest.type` after `DashParser` has run, via
-`DodgeHandler.rejectIfDynamic()`, reached through `rejectParsedManifest()` (R10.17) and
+`DodgeHandler.rejectIfDynamic()`, reached through `rejectParsedManifest()` (R10.13) and
 only when Dodge processed the source.
 
 On rejection the handler clears the registry, so a defense registered before the parse
@@ -1266,7 +1211,7 @@ An absent `@type` means static, per the DASH spec, and is not rejected.
 | `dodge.DodgeHandler.js` | every legal spelling is caught once dash.js has parsed it | an equivalent static MPD is not rejected |
 | `dodge.DodgeHandler.js` | every legal spelling is caught once dash.js has parsed it | an MPD with no type attribute is not rejected |
 
-### R10.16 - Representations needing byte-range discovery are reported
+### R10.12 - Representations needing byte-range discovery are reported
 
 When an MPD does not pin `Initialization@range`, `SegmentBaseLoader` fetches bytes 0-1500,
 then 0-3000, then 0-4500, and so on until it finds `moov`. When it does not pin
@@ -1289,28 +1234,28 @@ residual fetch is not shaped, and its response size scales with the segment coun
 
 | File | Description | Test |
 |---|---|---|
-| `dodge.DodgeHandler.js` | rejectIfRangeDiscovery, detection | SegmentBase with neither index range nor initialization range |
-| `dodge.DodgeHandler.js` | rejectIfRangeDiscovery, detection | SegmentBase with an index range but no initialization range |
-| `dodge.DodgeHandler.js` | rejectIfRangeDiscovery, detection | SegmentBase with an initialization range but no index range |
-| `dodge.DodgeHandler.js` | rejectIfRangeDiscovery, detection | a BaseURL-only representation |
-| `dodge.DodgeHandler.js` | rejectIfRangeDiscovery, detection | SegmentBase inherited from the AdaptationSet |
-| `dodge.DodgeHandler.js` | rejectIfRangeDiscovery, detection | one unranged representation among several ranged ones |
-| `dodge.DodgeHandler.js` | rejectIfRangeDiscovery, representations that need no discovery | SegmentBase with both an index range and an initialization range |
-| `dodge.DodgeHandler.js` | rejectIfRangeDiscovery, representations that need no discovery | SegmentTemplate with an initialization attribute |
-| `dodge.DodgeHandler.js` | rejectIfRangeDiscovery, representations that need no discovery | SegmentList with an Initialization sourceURL |
-| `dodge.DodgeHandler.js` | rejectIfRangeDiscovery, representations that need no discovery | no error is fired and nothing is warned |
-| `dodge.DodgeHandler.js` | rejectIfRangeDiscovery, strict mode gradation | max blocks and fires the strict mode error |
-| `dodge.DodgeHandler.js` | rejectIfRangeDiscovery, strict mode gradation | manifest warns and does not block |
-| `dodge.DodgeHandler.js` | rejectIfRangeDiscovery, strict mode gradation | representation warns and does not block |
-| `dodge.DodgeHandler.js` | rejectIfRangeDiscovery, strict mode gradation | strictMode false is silent |
-| `dodge.DodgeHandler.js` | rejectIfRangeDiscovery, strict mode gradation | the diagnostic names the affected representation |
-| `dodge.DodgeHandler.js` | rejectIfRangeDiscovery, strict mode gradation | the diagnostic names every affected representation |
+| `dodge.DodgeHandler.js` | detection | SegmentBase with neither index range nor initialization range |
+| `dodge.DodgeHandler.js` | detection | SegmentBase with an index range but no initialization range |
+| `dodge.DodgeHandler.js` | detection | SegmentBase with an initialization range but no index range |
+| `dodge.DodgeHandler.js` | detection | a BaseURL-only representation |
+| `dodge.DodgeHandler.js` | detection | SegmentBase inherited from the AdaptationSet |
+| `dodge.DodgeHandler.js` | detection | one unranged representation among several ranged ones |
+| `dodge.DodgeHandler.js` | representations that need no discovery | SegmentBase with both an index range and an initialization range |
+| `dodge.DodgeHandler.js` | representations that need no discovery | SegmentTemplate with an initialization attribute |
+| `dodge.DodgeHandler.js` | representations that need no discovery | SegmentList with an Initialization sourceURL |
+| `dodge.DodgeHandler.js` | representations that need no discovery | no error is fired and nothing is warned |
+| `dodge.DodgeHandler.js` | strict mode gradation | max blocks and fires the strict mode error |
+| `dodge.DodgeHandler.js` | strict mode gradation | manifest warns and does not block |
+| `dodge.DodgeHandler.js` | strict mode gradation | representation warns and does not block |
+| `dodge.DodgeHandler.js` | strict mode gradation | strictMode false is silent |
+| `dodge.DodgeHandler.js` | strict mode gradation | the diagnostic names the affected representation |
+| `dodge.DodgeHandler.js` | strict mode gradation | the diagnostic names every affected representation |
 
-### R10.17 - One post-parse gate is exposed to the dash.js core
+### R10.13 - One post-parse gate is exposed to the dash.js core
 
 `ManifestLoader` calls a single function, `DodgeHandler.rejectParsedManifest()`, immediately
 after `parser.parse(data)`, and aborts the load when it returns true. The composition of
-the individual gates (R10.15, R10.16) lives in `DodgeHandler`, so a new check that needs
+the individual gates (R10.11, R10.12) lives in `DodgeHandler`, so a new check that needs
 the parsed manifest is added inside Dodge with no further edits to the dash.js core.
 
 Gates run in order and stop at the first rejection. A manifest that is already refused will
@@ -1324,6 +1269,67 @@ diagnostic for the same source.
 | `dodge.DodgeHandler.js` | rejectParsedManifest, the single post-parse gate | a static manifest with explicit ranges passes both gates |
 | `dodge.DodgeHandler.js` | rejectParsedManifest, the single post-parse gate | stops at the first rejection |
 | `dodge.DodgeHandler.js` | rejectParsedManifest, the single post-parse gate | a non-blocking warning still lets the manifest through |
+
+### R10.14 - A new source replaces the defense set
+
+`MediaPlayer.attachSource()` on an already-initialized player calls
+`_resetPlaybackControllers()`, which resets fifteen controllers and not this module.
+`DefenseRegistry.reset()` otherwise runs only from `MediaPlayer.reset()`.
+
+`tryProcessExtendedManifest` resets the registry and clears `streamState` once the payload has
+parsed as JSON, before the manifest is stored. *After* the parse, so it only fires for something
+that is actually an extended manifest.
+
+| File | Description | Test |
+|---|---|---|
+| `dodge.DodgeHandler.js` | a new source replaces the defense set | a label from the previous source no longer resolves |
+| `dodge.DodgeHandler.js` | a new source replaces the defense set | a colliding label resolves to the new source, not the old one |
+| `dodge.DodgeHandler.js` | a new source replaces the defense set | the new source's own streams still resolve |
+| `dodge.DodgeHandler.js` | a new source replaces the defense set | an invalid extended manifest does not leave the previous defense in place |
+| `dodge.DodgeHandler.js` | a new source replaces the defense set | a payload that is not an extended manifest leaves the defense intact |
+
+### R10.15 - The extended manifest's references into the MPD are verified at load
+
+1. Every `label` names a Representation, scoped by period exactly as the runtime scopes it: an entry
+   with a `period` is looked up only in that period, one without matches any.
+2. Every Representation that reaches `DashHandler` has a stream entry, checked through
+   `getDefendedStreamInfo()` itself so the check cannot drift from the lookup it mirrors. Thumbnail
+   and sidecar text adaptations are excluded: they bypass `DashHandler` and carry no cycles by design.
+3. `stream.period` is within the MPD's period count.
+4. Every init and data cycle `quality` resolves against the siblings of the representation its stream
+   names - a string against their ids, an integer against their count.
+
+**Only references are checkable.** Cycle byte ranges are built from measured segment sizes, which
+the MPD does not carry, so nothing here can confirm them. They remain the defense designer's
+responsibility.
+
+Unlike the side-channel gates this is fatal in every mode that enforces anything, because a mismatch
+is a playback failure rather than a leak. Under `strictMode: false` the module is inert by design and
+the check does not run at all. All findings are reported in one message.
+
+The representation lists read here are the ones `DashParser` produced. `CapabilitiesFilter` later
+removes representations the device cannot decode, mutating the same manifest, but it runs from
+`StreamController` well after this gate. Checking before it is deliberate: the verdict is a property
+of the manifest rather than of the device it was opened on.
+
+| File | Description | Test |
+|---|---|---|
+| `dodge.DodgeHandler.js` | rejectIfManifestMismatch, extended manifest against the MPD | a manifest whose labels and coverage match is accepted |
+| `dodge.DodgeHandler.js` | rejectIfManifestMismatch, extended manifest against the MPD | a label naming no representation is rejected |
+| `dodge.DodgeHandler.js` | rejectIfManifestMismatch, extended manifest against the MPD | a representation with no stream entry is rejected |
+| `dodge.DodgeHandler.js` | rejectIfManifestMismatch, extended manifest against the MPD | a period index beyond the manifest is rejected |
+| `dodge.DodgeHandler.js` | rejectIfManifestMismatch, extended manifest against the MPD | an entry scoped to the wrong period is rejected |
+| `dodge.DodgeHandler.js` | rejectIfManifestMismatch, extended manifest against the MPD | an entry without a period matches any period |
+| `dodge.DodgeHandler.js` | rejectIfManifestMismatch, extended manifest against the MPD | a string quality naming no sibling is rejected |
+| `dodge.DodgeHandler.js` | rejectIfManifestMismatch, extended manifest against the MPD | a string quality naming a sibling is accepted |
+| `dodge.DodgeHandler.js` | rejectIfManifestMismatch, extended manifest against the MPD | an integer quality beyond the sibling count is rejected |
+| `dodge.DodgeHandler.js` | rejectIfManifestMismatch, extended manifest against the MPD | an integer quality within the sibling count is accepted |
+| `dodge.DodgeHandler.js` | rejectIfManifestMismatch, extended manifest against the MPD | an init cycle quality is checked too |
+| `dodge.DodgeHandler.js` | rejectIfManifestMismatch, extended manifest against the MPD | a thumbnail representation needs no stream entry |
+| `dodge.DodgeHandler.js` | rejectIfManifestMismatch, extended manifest against the MPD | a sidecar text representation needs no stream entry |
+| `dodge.DodgeHandler.js` | rejectIfManifestMismatch, extended manifest against the MPD | manifest and max reject it as well |
+| `dodge.DodgeHandler.js` | rejectIfManifestMismatch, extended manifest against the MPD | strictMode false performs no check at all |
+
 
 ---
 
@@ -1641,7 +1647,7 @@ override stalls rather than falling back.
 | R6.2 homeRepresentationId tagging | 5 |
 | R6.3 Dodge-owned alternate init cache, invalidated on quality switch | 8 |
 | R6.4 Fragment releases are serialized | 7 |
-| R7.1 Random walk delay bounded | 6 |
+| R7.1 Random walk delay bounded | 8 |
 | R7.2 Scheduling is scoped to correct stream processor | 3 |
 | R7.3 Suppressed events skip scheduling | 2 |
 | R7.4 Padding event routing | 2 |
@@ -1651,11 +1657,11 @@ override stalls rather than falling back.
 | R8.3 FetchLoader applies padding | 4 |
 | R8.4 XHRLoader applies padding | 4 |
 | R8.5 Unset paddingLengthBase is reported | 10 |
-| R9.1 Structural validation rejects malformed manifests | 64 |
-| R9.2 Init cycle validation | 18 |
+| R9.1 Structural validation rejects malformed manifests | 70 |
+| R9.2 Init cycle validation | 19 |
 | R9.3 Init cycle quality validation and explicit buffer requirement | 17 |
-| R9.4 Data cycle validation, maxNoPad, and cycle.full precomputation | 25 |
-| R9.4b Assembled ranges leave no gap | 13 |
+| R9.4 Data cycle validation, maxNoPad, and cycle.full precomputation | 22 |
+| R9.4b Assembled ranges leave no gap | 14 |
 | R9.5 Cycle index lookup | 4 |
 | R9.6 Registry stores and retrieves manifests | 5 |
 | R9.7 Period field validation | 6 |
@@ -1672,14 +1678,14 @@ override stalls rather than falling back.
 | R10.5 isDodgeActive and isDodgeTrailing status | 7 |
 | R10.6 Unshaped tracks detected after parsing | 22 |
 | R10.7 Side channels reported, never rejected | 5 |
-| R10.12 CMCD warning during defended playback | 3 |
-| R10.13 Warning when strictMode is disabled | 1 |
-| R10.14 cacheInitSegments warning for anonymity set asymmetry | 4 |
-| R10.15 Dynamic MPD rejected after parsing, every strict mode | 18 |
-| R10.16 Byte-range discovery representations reported | 16 |
-| R10.17 Single post-parse gate exposed to the core | 5 |
-| R10.18 A new source replaces the defense set | 5 |
-| R10.19 Extended manifest verified against the MPD | 15 |
+| R10.8 CMCD warning during defended playback | 3 |
+| R10.9 Warning when strictMode is disabled | 1 |
+| R10.10 cacheInitSegments warning for anonymity set asymmetry | 4 |
+| R10.11 Dynamic MPD rejected after parsing, every strict mode | 18 |
+| R10.12 Byte-range discovery representations reported | 16 |
+| R10.13 Single post-parse gate exposed to the core | 5 |
+| R10.14 A new source replaces the defense set | 5 |
+| R10.15 Extended manifest verified against the MPD | 15 |
 | R11.1 strictMode = representation enforcement | 8 |
 | R11.2 strictMode = manifest enforcement | 6 |
 | R11.3 strictMode = max enforcement | 5 |
