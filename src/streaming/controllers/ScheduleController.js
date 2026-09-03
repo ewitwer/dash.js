@@ -163,7 +163,7 @@ function ScheduleController(config) {
      */
     function _getNextFragment() {
         const currentRepresentation = representationController.getCurrentRepresentation();
-        const remainingInitCycles = dashHandler ? dashHandler.getRemainingInitCycles() : -1;
+        const remainingInitCycles = dashHandler ? dashHandler.getRemainingInitCycles(currentRepresentation) : -1;
 
         // Dodge defended streams can queue multiple init cycles for a single
         // home representation (e.g. an alt-rep init staged for a later quality

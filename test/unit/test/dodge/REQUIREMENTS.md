@@ -130,8 +130,6 @@ The parent DashHandler's `lastSegment` is never updated during defended playback
 | `dodge.DodgeDashHandlerOverride.js` | Defended behavior with extended manifest | updateDefendedStreamInfo() with same label across multiple calls preserves defense |
 | `dodge.DodgeDashHandlerOverride.js` | Defended behavior with extended manifest | getIsDefended() returns true when defended stream info is set |
 | `dodge.DodgeDashHandlerOverride.js` | Defended behavior with extended manifest | getIsDefended() returns false after reset with strictMode false |
-| `dodge.DodgeDashHandlerOverride.js` | ABR home representation switch | preserves cycle counters across same-label re-queries |
-| `dodge.DodgeDashHandlerOverride.js` | ABR home representation switch | resets cycle counters when the representation label changes |
 
 ### R2.9 - Selective buffer: array buffer on data cycles flushes only matching pending segments
 
@@ -204,6 +202,46 @@ fired unsuppressed and the rest suppressed.
 | `dodge.DodgeHandler.js` | Partial segment combination, _onFragmentLoadingCompleted | release: a trailing flush marks every released request as trailing |
 | `dodge.DodgeHandler.js` | Partial segment combination, _onFragmentLoadingCompleted | release: a padding-driven flush still delivers a request per segment |
 | `dodge.DodgeHandler.js` | Partial segment combination, _onFragmentLoadingCompleted | release order: pending init segments still lead the media segments |
+
+### R2.13 - A home representation switch restarts the init sequence and resumes the data sequence
+
+When ABR or the application changes the home representation, the counters cannot carry over: each
+stream entry owns its cycle array, so cycle N of the new one is an unrelated part of the defense.
+`updateDefendedStreamInfo()` restarts the init sequence, because the new representation needs its
+own init segment, and drops the cached `lastSegment`, which would otherwise generate the previous
+representation's URL.
+
+The data sequence does not restart. It resumes at the first non-padding cycle for the segment index
+last requested, located with `getCycleIndexBySegmentIndex()`. That index is re-fetched under the new
+representation rather than skipped: a switch can land between two cycles of the same segment, in
+which case the segment was never assembled, and continuing past it would leave a hole in the buffer.
+When the new representation has no cycle for that index, the switch falls back to the beginning of
+its cycle array, which restarts the video, and says so in a warning.
+
+`getRemainingInitCycles(representation)` answers for the representation named rather than for the
+one in use. `ScheduleController` picks the init path over the media path with this count, and it asks
+before `StreamProcessor` has called `updateDefendedStreamInfo()` for the switch it is about to make,
+so the state still describes the representation being left behind, which has no init cycles
+remaining. Answering with that count sends the scheduler down the media path, and the new
+representation's first media segment goes out before its init segment. Callers that mean
+the stream in use pass no argument.
+
+The functional test `dodge/quality-switch` covers the ordering end to end: it plays pinned to the
+lowest representation, hands ABR back the wheel, and requires the first request for the representation
+ABR moves to be its init segment. That assertion is what fails against the unfixed scheduler, with the
+first request arriving as a media segment. The resume point is pinned by the unit tests below rather
+than by that test, because dash.js sets an explicit buffering time on the switch paths it exercises,
+which resolves the segment index before the resume logic is consulted.
+
+| File | Description | Test |
+|---|---|---|
+| `dodge.DodgeDashHandlerOverride.js` | ABR home representation switch | preserves cycle counters across same-label re-queries |
+| `dodge.DodgeDashHandlerOverride.js` | ABR home representation switch | resumes the data sequence at the cycle for the last segment index requested |
+| `dodge.DodgeDashHandlerOverride.js` | ABR home representation switch | resumes at the first non-padding cycle for that segment index |
+| `dodge.DodgeDashHandlerOverride.js` | ABR home representation switch | starts over when the new representation has no cycle for that segment index |
+| `dodge.DodgeDashHandlerOverride.js` | ABR home representation switch | restarts the init sequence for the new representation |
+| `dodge.DodgeDashHandlerOverride.js` | ABR home representation switch | reports the incoming representation init cycles before the switch is applied |
+| `dodge.DodgeDashHandlerOverride.js` | ABR home representation switch | reports the remaining init cycles of the representation in use when it is unchanged |
 
 ---
 
@@ -1615,11 +1653,12 @@ override stalls rather than falling back.
 | R2.5 Fallback to parent | 6 |
 | R2.6 CMCD nor/nrr suppressed during defense | 4 |
 | R2.7 getLastSegment returns override's segment | 3 |
-| R2.8 Defense state management | 8 |
+| R2.8 Defense state management | 6 |
 | R2.9 Selective buffer | 10 |
 | R2.10 Per-cycle quality override on data cycles | 12 |
 | R2.11 Request generation stalls without advancing on URL failure | 3 |
 | R2.12 Release in segment order | 7 |
+| R2.13 Home representation switch restarts init, resumes data | 7 |
 | R3.1 Video streams | (implicit) |
 | R3.2 Audio streams | 7 |
 | R3.3 Fragmented text streams | 7 |

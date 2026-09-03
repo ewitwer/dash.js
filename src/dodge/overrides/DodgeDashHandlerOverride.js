@@ -652,8 +652,30 @@ function DodgeDashHandlerOverride(config) {
         return lastSegment;
     }
 
-    function getRemainingInitCycles() {
+    /**
+     * How many init cycles are still needed, for the representation the
+     * caller names. ScheduleController uses this to choose the init path over
+     * the media path, and it asks before StreamProcessor has called
+     * updateDefendedStreamInfo for the switch it is about to make, so the state
+     * here still describes the representation being switched away from. That
+     * one has no init cycles left, and answering 0 sends the scheduler down the
+     * media path: the new representation's first media segment would then go
+     * out before any of its init cycles. Answer for the representation asked
+     * about instead. Callers that mean "the stream in use" pass nothing.
+     *
+     * @param {Object} [representation] - The representation being asked about.
+     * @returns {number} Remaining init cycles, or -1 when no defense is active.
+     */
+    function getRemainingInitCycles(representation) {
         if (!defendedStreamInfo) { return -1; }
+
+        if (representation && representation.id !== lastResolvedLabel) {
+            const pending = defenseRegistry.getDefendedStreamInfo(representation.id, representation.adaptation.period.index);
+            if (pending) {
+                return pending['init'].length;
+            }
+        }
+
         return defendedStreamInfo['init'].length - lastInitIndex - 1;
     }
 
@@ -669,22 +691,46 @@ function DodgeDashHandlerOverride(config) {
         const label = representation.id;
 
         // On a home representation switch (e.g. ABR picked a different
-        // quality), reset per-stream cycle counters. StreamProcessor calls
-        // this method before every init/segment request, so same-label
-        // re-queries preserve state; only a genuine label change triggers
-        // the reset. Without this, lastInitIndex / lastCycleIndex would be
-        // carried into the new stream entry's cycle arrays, potentially
-        // reading past the end or skipping cycles.
-        if (lastResolvedLabel !== null && lastResolvedLabel !== label) {
-            logger.debug('Home representation switched from ' + lastResolvedLabel + ' to ' + label + ', resetting cycle counters');
+        // quality), the counters cannot carry over: each stream entry owns its
+        // cycle array, so cycle N of the new one is an unrelated part of the
+        // defense. StreamProcessor calls this method before every init/segment
+        // request, so same-label re-queries preserve state; only a genuine
+        // label change moves the counters.
+        const previousLabel = lastResolvedLabel;
+        const previousSegment = lastSegment;
+        lastResolvedLabel = label;
+
+        defendedStreamInfo = defenseRegistry.getDefendedStreamInfo(label, period);
+
+        if (previousLabel !== null && previousLabel !== label) {
+            logger.debug('Home representation switched from ' + previousLabel + ' to ' + label);
+            // The new representation needs its own init segment, so its init
+            // cycles start over. lastSegment described a segment of the old
+            // representation and would generate that representation's URL,
+            // so it goes; the next request looks the segment up afresh.
             lastInitIndex = -1;
             lastCycleIndex = -1;
             lastSegment = null;
             mediaHasFinished = false;
-        }
-        lastResolvedLabel = label;
 
-        defendedStreamInfo = defenseRegistry.getDefendedStreamInfo(label, period);
+            // Data cycles resume at the segment index that was last requested,
+            // rather than restarting the video from the beginning of the new
+            // cycle array. That index is re-fetched under the new representation
+            // instead of skipped: a switch can land between two cycles of the
+            // same segment, and continuing past a segment that was never
+            // assembled would leave a hole in the buffer.
+            if (defendedStreamInfo && previousSegment) {
+                const resumeIndex = getCycleIndexBySegmentIndex(defendedStreamInfo, previousSegment.index);
+                if (resumeIndex >= 0) {
+                    lastCycleIndex = resumeIndex - 1;
+                } else {
+                    logger.warn('Representation "' + label + '" has no data cycle for segment index ' +
+                        previousSegment.index + ', which the representation switched away from had reached. ' +
+                        'Playback restarts at the beginning of this representation\'s cycles. ' +
+                        'Give every defended representation of a source the same segment indices!');
+                }
+            }
+        }
 
         if (defendedStreamInfo) {
             logger.debug('Defended stream info set for label ' + label + ', period ' + period + ', adaptation ' + adaptation + ', quality ' + quality);

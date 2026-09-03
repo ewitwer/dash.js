@@ -1879,9 +1879,46 @@ describe('DodgeDashHandlerOverride', function () {
         });
     });
 
-    // ABR home representation switch resets cycle counters
+    // ABR home representation switch: restart the init sequence, resume the data one
 
     describe('ABR home representation switch', function () {
+
+        // Two representations of the same content. Each stream entry owns its
+        // cycle array, so a counter cannot simply carry over between them.
+        function addTwoRepresentations(highData) {
+            defenseController.addExtendedManifest({
+                start: { mpd: '<MPD/>', base_uri: 'https://example.com/' },
+                streams: [
+                    {
+                        label: 'rep_low',
+                        init: [{ buffer: false }, { buffer: true }],
+                        data: [{ index: 0, buffer: true }, { index: 1, buffer: true }, { index: 2, buffer: true }]
+                    },
+                    {
+                        label: 'rep_high',
+                        init: [{ buffer: false }, { buffer: true }],
+                        data: highData || [{ index: 0, buffer: true }, { index: 1, buffer: true }, { index: 2, buffer: true }]
+                    }
+                ]
+            });
+        }
+
+        function representationFor(label) {
+            const representation = makeRepresentation();
+            representation.id = label;
+            return representation;
+        }
+
+        // Run rep_low through its init cycles and up to the given segment
+        // index, so the switch happens from a known point in the defense.
+        function playLowThrough(repLow, segmentIndex) {
+            override.updateDefendedStreamInfo(repLow);
+            override.getInitRequest({}, repLow);
+            override.getInitRequest({}, repLow);
+            for (let i = 0; i <= segmentIndex; i++) {
+                override.getNextSegmentRequest({}, repLow);
+            }
+        }
 
         it('preserves cycle counters across same-label re-queries', function () {
             defenseController.addExtendedManifest({
@@ -1897,24 +1934,76 @@ describe('DodgeDashHandlerOverride', function () {
             expect(next.index).to.equal(1); // advances, does not restart
         });
 
-        it('resets cycle counters when the representation label changes', function () {
-            defenseController.addExtendedManifest({
-                start: { mpd: '<MPD/>', base_uri: 'https://example.com/' },
-                streams: [
-                    { label: 'rep_low', init: [{ buffer: true }], data: [{ index: 0, buffer: true }, { index: 1, buffer: true }] },
-                    { label: 'rep_high', init: [{ buffer: true }], data: [{ index: 0, buffer: true }, { index: 1, buffer: true }] }
-                ]
-            });
-            const repLow = makeRepresentation();
-            repLow.id = 'rep_low';
-            override.updateDefendedStreamInfo(repLow);
-            override.getNextSegmentRequest({}, repLow); // lastCycleIndex -> 0
+        it('resumes the data sequence at the cycle for the last segment index requested', function () {
+            addTwoRepresentations();
+            const repLow = representationFor('rep_low');
+            playLowThrough(repLow, 1);
 
-            const repHigh = makeRepresentation();
-            repHigh.id = 'rep_high';
-            override.updateDefendedStreamInfo(repHigh); // label changed, reset
+            const repHigh = representationFor('rep_high');
+            override.updateDefendedStreamInfo(repHigh);
             const next = override.getNextSegmentRequest({}, repHigh);
-            expect(next.index).to.equal(0); // restarted from cycle 0
+            expect(next.index).to.equal(1); // resumes, does not restart the video at 0
+            expect(next.representation.id).to.equal('rep_high');
+        });
+
+        it('resumes at the first non-padding cycle for that segment index', function () {
+            addTwoRepresentations([
+                { index: 0, buffer: true },
+                { index: 1, padding: true },
+                { index: 1, buffer: true },
+                { index: 2, buffer: true }
+            ]);
+            const repLow = representationFor('rep_low');
+            playLowThrough(repLow, 1);
+
+            const repHigh = representationFor('rep_high');
+            override.updateDefendedStreamInfo(repHigh);
+            const next = override.getNextSegmentRequest({}, repHigh);
+            expect(next.index).to.equal(1);
+            expect(next.padding).to.be.false; // jshint ignore:line
+        });
+
+        it('starts over when the new representation has no cycle for that segment index', function () {
+            addTwoRepresentations([{ index: 0, buffer: true }]);
+            const repLow = representationFor('rep_low');
+            playLowThrough(repLow, 1);
+
+            const repHigh = representationFor('rep_high');
+            override.updateDefendedStreamInfo(repHigh);
+            const next = override.getNextSegmentRequest({}, repHigh);
+            expect(next.index).to.equal(0);
+        });
+
+        it('restarts the init sequence for the new representation', function () {
+            addTwoRepresentations();
+            const repLow = representationFor('rep_low');
+            playLowThrough(repLow, 1);
+            expect(override.getRemainingInitCycles()).to.equal(0);
+
+            const repHigh = representationFor('rep_high');
+            override.updateDefendedStreamInfo(repHigh);
+            expect(override.getRemainingInitCycles()).to.equal(2);
+        });
+
+        it('reports the incoming representation init cycles before the switch is applied', function () {
+            addTwoRepresentations();
+            const repLow = representationFor('rep_low');
+            playLowThrough(repLow, 1);
+
+            // The scheduler asks before StreamProcessor calls
+            // updateDefendedStreamInfo. Answering with rep_low's count, which is
+            // 0 by now, sends it down the media path, and rep_high's first media
+            // segment goes out before rep_high's init segment.
+            const repHigh = representationFor('rep_high');
+            expect(override.getRemainingInitCycles(repHigh)).to.equal(2);
+        });
+
+        it('reports the remaining init cycles of the representation in use when it is unchanged', function () {
+            addTwoRepresentations();
+            const repLow = representationFor('rep_low');
+            override.updateDefendedStreamInfo(repLow);
+            override.getInitRequest({}, repLow);
+            expect(override.getRemainingInitCycles(repLow)).to.equal(1);
         });
     });
 

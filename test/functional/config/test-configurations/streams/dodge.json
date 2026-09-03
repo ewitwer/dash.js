@@ -133,6 +133,14 @@
       "includedTestfiles": [
         "dodge/multiperiod"
       ]
+    },
+    {
+      "name": "BBB Undefended (ABR quality switch)",
+      "type": "vod",
+      "url": "/base/test/functional/content/dodge/bbb_30fps_undef.exmfst.json",
+      "includedTestfiles": [
+        "dodge/quality-switch"
+      ]
     }
   ]
 }
