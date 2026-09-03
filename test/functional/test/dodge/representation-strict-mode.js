@@ -3,11 +3,17 @@ import {expect} from 'chai';
 import Utils from '../../src/Utils.js';
 
 import {
+    checkIsNotProgressing,
     initializeDashJsAdapter,
     playForDuration
 } from '../common/common.js';
 
 const TESTCASE = Constants.TESTCASES.DODGE.REPRESENTATION_STRICT_MODE;
+
+// How long the source is given to load and be refused. Long enough for the
+// extended manifest to be fetched and the gate to run, and long enough that a
+// segment request escaping before the refusal would land inside the window.
+const LOAD_ATTEMPT_MS = 8000;
 
 Utils.getTestvectorsForTestcase(TESTCASE).forEach((item) => {
     const mpd = item.url;
@@ -17,41 +23,27 @@ Utils.getTestvectorsForTestcase(TESTCASE).forEach((item) => {
         let trafficPromise;
 
         before(async () => {
-            // Default strictMode 'representation' blocks undefended representations
-            // per DashHandler: the audio DashHandler's request methods return null
-            // because it has no matching defended stream info, so no audio segment
-            // is ever fetched. Because dash.js will not enter the playing state
-            // until both audio and video buffers reach the startup threshold,
-            // playback never progresses under this manifest.
+            // This extended manifest defends all three video representations and
+            // leaves the audio representation the MPD declares with no entry.
+            // Under the default strictMode 'representation' that is not a
+            // partially defended source, it is a refused one: the load time gate
+            // rejects any extended manifest that leaves a representation reaching
+            // DashHandler uncovered, so no stream processor is ever built and
+            // nothing is fetched. A plain MPD is unaffected, since it carries no
+            // extended manifest for the gate to check, which is what separates
+            // 'representation' from 'manifest'.
             //
-            // The video DashHandler still runs defense cycles until the video
-            // buffer reaches the buffer target, at which point the base ScheduleController
-            // stops scheduling. A small bounded number of defended video
-            // segments therefore leaks before the session goes silent.
-            //
-            // We explicitly accept this bounded leak instead of failing the whole
-            // session at manifest load: the attacker can likely already tell Dodge is
-            // in use from the defended pattern itself, and the per-representation
-            // null return keeps the code path simple. The assertions below pin
-            // both that the defense ran for video and that scheduling halted
-            // within the expected buffer fill bound.
-            playerAdapter = initializeDashJsAdapter(item, mpd, {
-                streaming: {
-                    abr: {
-                        autoSwitchBitrate: { video: false, audio: false },
-                        maxBitrate: { video: 1500 }
-                    },
-                    buffer: {
-                        bufferTimeDefault: 8
-                    }
-                }
-            });
+            // The refusal itself cannot be asserted directly here. DodgeHandler
+            // names the uncovered representation in an error log, but a Dodge log
+            // message never reaches the player's LOG event, and the strict mode
+            // error never reaches the public ERROR event either, because
+            // ManifestUpdater forwards only parsing failures to the error
+            // handler. What an application can observe is what is pinned below.
+            playerAdapter = initializeDashJsAdapter(item, mpd);
 
-            trafficPromise = playerAdapter.collectDodgeTraffic(
-                Constants.TEST_TIMEOUT_THRESHOLDS.DODGE_TRAFFIC_COLLECTION
-            );
+            trafficPromise = playerAdapter.collectDodgeTraffic(LOAD_ATTEMPT_MS);
 
-            await playForDuration(10000);
+            await playForDuration(LOAD_ATTEMPT_MS);
         })
 
         after(() => {
@@ -60,37 +52,22 @@ Utils.getTestvectorsForTestcase(TESTCASE).forEach((item) => {
             }
         })
 
-        it(`Video defense is active`, () => {
+        it(`Dodge defense is not active (the extended manifest leaves audio uncovered)`, () => {
             const isActive = playerAdapter.isDodgeActive();
-            expect(isActive).to.be.true;
+            expect(isActive).to.be.false;
         })
 
-        it(`No audio segment requests are made (undefended audio blocked)`, async () => {
-            const traffic = await trafficPromise;
-
-            // With no audio stream entry in the extended manifest, strict mode
-            // should prevent audio segment requests entirely.
-            const audioRequests = traffic.filter(
-                t => t.mediaType === 'audio' && t.type === 'MediaSegment'
-            );
-            expect(audioRequests.length).to.equal(0, 'Expected no audio media segment requests (undefended audio should be blocked)');
+        it(`Playback should not progress`, async () => {
+            await checkIsNotProgressing(playerAdapter);
         })
 
-        it(`Video fetching halts once the buffer fills (playback never starts)`, async () => {
+        it(`No segments are requested for any representation`, async () => {
             const traffic = await trafficPromise;
 
-            // Playback cannot start without audio, so video scheduling must stop
-            // after the buffer reaches the target. At bufferTimeDefault = 8s
-            // and 4s/segment, the buffer fills after ~2 segments; the highest
-            // segment index fetched should not exceed 4.
-            const videoSegments = traffic.filter(
-                t => t.mediaType === 'video' && t.type === 'MediaSegment'
-            );
-            const maxIndex = videoSegments.reduce(
-                (max, t) => (t.index > max ? t.index : max),
-                -1
-            );
-            expect(maxIndex).to.be.at.most(6, 'Expected video scheduling to halt after buffer filled');
+            // The whole source is refused at load time, so unlike a per
+            // representation block there is no bounded leak of defended video
+            // before the session goes quiet. Nothing at all is fetched.
+            expect(traffic.length).to.equal(0, 'Expected no segment requests from a refused extended manifest');
         })
     })
 })

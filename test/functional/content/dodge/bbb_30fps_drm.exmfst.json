@@ -20,6 +20,36 @@
       ]
     },
     {
+      "label": "bbb_30fps_1024x576_2500k",
+      "init": [
+        {
+          "range": "0-704"
+        }
+      ],
+      "data": [
+        {
+          "index": 0,
+          "range": "0-758240",
+          "buffer": true
+        }
+      ]
+    },
+    {
+      "label": "bbb_30fps_1280x720_4000k",
+      "init": [
+        {
+          "range": "0-704"
+        }
+      ],
+      "data": [
+        {
+          "index": 0,
+          "range": "0-1019519",
+          "buffer": true
+        }
+      ]
+    },
+    {
       "label": "bbb_a64k",
       "init": [
         {

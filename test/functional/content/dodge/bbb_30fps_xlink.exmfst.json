@@ -40,6 +40,76 @@
       ]
     },
     {
+      "label": "bbb_30fps_1024x576_2500k",
+      "init": [
+        {
+          "range": "0-704"
+        }
+      ],
+      "data": [
+        {
+          "index": 0,
+          "range": "0-758240",
+          "buffer": true
+        },
+        {
+          "index": 1,
+          "range": "0-1468267",
+          "buffer": true
+        },
+        {
+          "index": 2,
+          "range": "0-1203119",
+          "buffer": true
+        },
+        {
+          "index": 3,
+          "range": "0-1226399",
+          "buffer": true
+        },
+        {
+          "index": 4,
+          "range": "0-1286480",
+          "buffer": true
+        }
+      ]
+    },
+    {
+      "label": "bbb_30fps_1280x720_4000k",
+      "init": [
+        {
+          "range": "0-704"
+        }
+      ],
+      "data": [
+        {
+          "index": 0,
+          "range": "0-1019519",
+          "buffer": true
+        },
+        {
+          "index": 1,
+          "range": "0-2426612",
+          "buffer": true
+        },
+        {
+          "index": 2,
+          "range": "0-1919212",
+          "buffer": true
+        },
+        {
+          "index": 3,
+          "range": "0-1958124",
+          "buffer": true
+        },
+        {
+          "index": 4,
+          "range": "0-2042804",
+          "buffer": true
+        }
+      ]
+    },
+    {
       "label": "bbb_a64k",
       "init": [
         {

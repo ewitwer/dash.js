@@ -63,7 +63,7 @@
       ]
     },
     {
-      "name": "BBB Video-only defense (no audio stream entry)",
+      "name": "BBB Video-only (extended manifest leaves audio uncovered)",
       "type": "vod",
       "url": "/base/test/functional/content/dodge/bbb_30fps_video_only.exmfst.json",
       "includedTestfiles": [
