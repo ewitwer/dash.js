@@ -44,6 +44,13 @@ let warnedRandom = false;
  * for each header. This covers the request line and all headers, capturing the
  * two components that vary across Dodge cycles (URL and Range header length).
  *
+ * The URL is resolved against the document before it is measured, so every
+ * request is measured on the same footing. A page may hand `attachSource` a
+ * relative manifest URL, and that request arrives here written the way the page
+ * wrote it. Measuring it as written would leave out the host, which the wire
+ * carries in a `Host` header either way, so it would go out shorter than an
+ * absolute request padded to the same target.
+ *
  * When the Dodge module is loaded, this runs on all requests.
  *
  * @param {Object} commonMediaRequest - The CommonMediaRequest about to be sent.
@@ -77,7 +84,20 @@ export function applyRequestPadding(commonMediaRequest, settings, logger) {
     // Approximate the HTTP/1.1 wire size: URL length (request line) plus all
     // headers. Each header contributes key.length + ': '.length + value.length
     // + '\r\n'.length = key.length + value.length + 4 bytes.
-    let size = commonMediaRequest.url.length;
+    // Resolve first: a relative URL measured as written omits the host, and
+    // `new URL` with no base throws on one outright, which used to skip the
+    // padding for that request entirely.
+    let resolved;
+    try {
+        resolved = new URL(commonMediaRequest.url, window.location.href);
+    } catch (err) {
+        logger.error('Add request padding: cannot resolve ' + commonMediaRequest.url +
+            ', request goes out unpadded, ' + (err && err.message ? err.message : err));
+        return;
+    }
+
+    const resolvedUrl = resolved.toString();
+    let size = resolvedUrl.length;
     const headers = commonMediaRequest.headers;
     if (headers) {
         for (const key in headers) {
@@ -99,23 +119,22 @@ export function applyRequestPadding(commonMediaRequest, settings, logger) {
     }
 
     // Extend the padding query param in the URL by appending zeros.
-    // When the param doesn't already exist (e.g. absolute URL Dodge
-    // requests), adding it introduces overhead (?key= or &key=) that
-    // must be subtracted from the zeros count.
-    try {
-        const url = new URL(commonMediaRequest.url);
-        const current = url.searchParams.get(queryParam) || '';
-        url.searchParams.set(queryParam, current);
+    // When the param doesn't already exist (e.g. the manifest request, or an
+    // absolute URL that was not built by Dodge), adding it introduces overhead
+    // (?key= or &key=) that must be subtracted from the zeros count.
+    //
+    // The resolved URL is what goes back on the request, so a relative one is
+    // rewritten absolute. It addresses the same resource, and it is what the
+    // size above was measured from.
+    const current = resolved.searchParams.get(queryParam) || '';
+    resolved.searchParams.set(queryParam, current);
 
-        const overhead = url.toString().length - commonMediaRequest.url.length;
-        const zeros = pad - overhead;
-        if (zeros <= 0) {
-            logger.warn('Add request padding: updated request size ' + size + ' with padding header exceeds paddingLength ' + paddingLength);
-            return;
-        }
-        url.searchParams.set(queryParam, current + '0'.repeat(zeros));
-        commonMediaRequest.url = url.toString();
-    } catch (err) {
-        logger.warn('Add request padding: failed to extend URL, ' + (err && err.message ? err.message : err));
+    const overhead = resolved.toString().length - resolvedUrl.length;
+    const zeros = pad - overhead;
+    if (zeros <= 0) {
+        logger.warn('Add request padding: updated request size ' + size + ' with padding header exceeds paddingLength ' + paddingLength);
+        return;
     }
+    resolved.searchParams.set(queryParam, current + '0'.repeat(zeros));
+    commonMediaRequest.url = resolved.toString();
 }

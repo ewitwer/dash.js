@@ -699,6 +699,22 @@ No URL length equalization is performed. Wire size is normalized in full by R8.2
 | `dodge.RequestPadding.js` | applyRequestPadding | custom queryParam name: padding applied to the correct parameter |
 | `dodge.RequestPadding.js` | applyRequestPadding | invalid URL: warns and does not throw |
 
+### R8.2b - A relative request URL is resolved before it is measured and padded
+
+A page may hand `attachSource` a relative manifest URL, and that request reaches the loader written
+the way the page wrote it. `applyRequestPadding` resolves every URL against `window.location.href`
+before measuring it, and puts the resolved URL back on the request.
+
+A URL that cannot be resolved even against the document is reported at error level and names the
+request. An unpadded request is a defense failure.
+
+| File | Description | Test |
+|---|---|---|
+| `dodge.RequestPadding.js` | applyRequestPadding | relative URL: padded to the target size |
+| `dodge.RequestPadding.js` | applyRequestPadding | a relative URL and its absolute equivalent reach the same wire size |
+| `dodge.RequestPadding.js` | applyRequestPadding | a URL that cannot be parsed at all is reported as an error naming it |
+| `dodge.RequestPadding.js` | applyRequestPadding | a path with no scheme is resolved and padded, not treated as invalid |
+
 ### R8.3 - FetchLoader applies request padding before dispatching the request
 
 | File | Description | Test |
@@ -1734,6 +1750,7 @@ and the unit tests, fall back to this bundle's own instance.
 | R7.5 Random walk delay on all scheduling paths | 11 |
 | R8.1 Every request URL carries a cache-busting query value | 6 |
 | R8.2 Request padding normalizes wire size | 17 |
+| R8.2b A relative URL is resolved before measuring | 4 |
 | R8.3 FetchLoader applies padding | 4 |
 | R8.4 XHRLoader applies padding | 4 |
 | R8.5 Unset paddingLengthBase is reported | 10 |
@@ -1781,4 +1798,4 @@ and the unit tests, fall back to this bundle's own instance.
 | R12.4 Error fragment stalling | 8 |
 | R12.5 Range-ignoring origin detection | 15 |
 | R12.6 Dodge logs through the player's Debug | 3 |
-| **Total** | **702** |
+| **Total** | **706** |

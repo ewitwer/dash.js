@@ -27,7 +27,7 @@ function makeSettings(paddingLengthBase, queryParam, paddingLengthRandom) {
 }
 
 function makeLogger() {
-    return { warn: sinon.spy() };
+    return { warn: sinon.spy(), error: sinon.spy() };
 }
 
 // Compute the approximate wire size that applyRequestPadding measures.
@@ -100,6 +100,52 @@ describe('applyRequestPadding', function () {
         const req = makeRequest(url, {});
         applyRequestPadding(req, makeSettings(-1), makeLogger());
         expect(req.url).to.equal(url);
+    });
+
+    // Relative request URLs
+
+    // A page may hand attachSource a relative manifest URL, and that request
+    // reaches the loader written the way the page wrote it. It has to be
+    // normalized like any other, and to the same wire size as the absolute form
+    // of the same request: the size model counts the whole URL string, so a
+    // relative URL measured as written would omit the host and go out short.
+
+    it('relative URL: padded to the target size', function () {
+        const relative = '/media/manifest.mpd';
+        const absolute = new URL(relative, window.location.href).toString();
+        const req = makeRequest(relative, {});
+        const target = absolute.length + 50;
+
+        applyRequestPadding(req, makeSettings(target), makeLogger());
+
+        expect(wireSize(req)).to.equal(target);
+    });
+
+    it('a relative URL and its absolute equivalent reach the same wire size', function () {
+        const relative = '/media/manifest.mpd';
+        const absolute = new URL(relative, window.location.href).toString();
+        const target = absolute.length + 80;
+
+        const fromRelative = makeRequest(relative, { Range: 'bytes=0-999' });
+        const fromAbsolute = makeRequest(absolute, { Range: 'bytes=0-999' });
+        applyRequestPadding(fromRelative, makeSettings(target), makeLogger());
+        applyRequestPadding(fromAbsolute, makeSettings(target), makeLogger());
+
+        expect(wireSize(fromRelative)).to.equal(wireSize(fromAbsolute));
+    });
+
+    it('a URL that cannot be parsed at all is reported as an error naming it', function () {
+        // An unpadded request is a defense failure rather than a cosmetic
+        // problem, so it is reported at error level and says which request.
+        const url = 'http://';
+        const logger = makeLogger();
+        const req = makeRequest(url, {});
+
+        applyRequestPadding(req, makeSettings(1024), logger);
+
+        expect(req.url).to.equal(url);
+        const named = logger.error.getCalls().filter(c => String(c.args[0]).indexOf(url) !== -1);
+        expect(named.length).to.equal(1);
     });
 
     // Padding applied
@@ -238,11 +284,18 @@ describe('applyRequestPadding', function () {
 
     // Invalid URL
 
-    it('invalid URL: warns and does not throw', function () {
+    // This used to be read as an invalid URL and skipped. It is a relative one,
+    // which is what the manifest request looks like when a page hands
+    // attachSource a path, and it has to be padded like anything else.
+    it('a path with no scheme is resolved and padded, not treated as invalid', function () {
         const req = makeRequest('not-a-valid-url', {});
         const logger = makeLogger();
-        expect(() => applyRequestPadding(req, makeSettings(1000), logger)).to.not.throw();
-        expect(logger.warn.calledOnce).to.be.true; // jshint ignore:line
+        const target = new URL('not-a-valid-url', window.location.href).toString().length + 40;
+
+        expect(() => applyRequestPadding(req, makeSettings(target), logger)).to.not.throw();
+
+        expect(wireSize(req)).to.equal(target);
+        expect(logger.error.called).to.be.false; // jshint ignore:line
     });
 });
 
