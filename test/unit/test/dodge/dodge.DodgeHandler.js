@@ -3550,6 +3550,75 @@ describe('DodgeHandler', function () {
         });
     });
 
+    // The refusal reaching the application
+
+    describe('strict mode error reporting', function () {
+        let eventBus, settings, publicErrorSpy, internalSpy, listener;
+
+        beforeEach(function () {
+            eventBus = EventBus(context).getInstance();
+            settings = Settings(context).getInstance();
+            settings.update({ dodge: { strictMode: 'manifest' } });
+
+            listener = {};
+            publicErrorSpy = sinon.spy();
+            internalSpy = sinon.spy();
+            eventBus.on(Events.ERROR, publicErrorSpy, listener);
+            eventBus.on(Events.INTERNAL_MANIFEST_LOADED, internalSpy, listener);
+        });
+
+        afterEach(function () {
+            eventBus.off(Events.ERROR, publicErrorSpy, listener);
+            eventBus.off(Events.INTERNAL_MANIFEST_LOADED, internalSpy, listener);
+            settings.update({ dodge: { strictMode: false } });
+        });
+
+        it('a refusal fires the public ERROR event, not only the internal one', function () {
+            dodgeHandler.tryProcessExtendedManifest('<MPD/>', 'http://example.com/video.mpd');
+
+            expect(publicErrorSpy.calledOnce).to.be.true; // jshint ignore:line
+            expect(publicErrorSpy.firstCall.args[0].error.code).to.equal(DodgeErrors.DODGE_STRICT_MODE_ERROR_CODE);
+        });
+
+        it('the public error carries the same message as the internal one', function () {
+            const url = 'http://example.com/video.mpd';
+            dodgeHandler.tryProcessExtendedManifest('<MPD/>', url);
+
+            const publicError = publicErrorSpy.firstCall.args[0].error;
+            expect(publicError.message).to.equal(internalSpy.firstCall.args[0].error.message);
+            expect(publicError.message).to.include(url);
+        });
+
+        it('a manifest that is refused after parsing also reports', function () {
+            // The gates that run on the parsed manifest go through the same
+            // funnel, so a coverage gap has to reach the application too.
+            const manifest = {
+                Period: [{
+                    AdaptationSet: [{
+                        mimeType: 'video/mp4',
+                        Representation: [{ id: 'v0' }]
+                    }]
+                }]
+            };
+            dodgeHandler.tryProcessExtendedManifest(JSON.stringify({
+                start: { mpd: '<MPD/>', base_uri: 'https://example.com/' },
+                streams: [{ label: 'other', init: [{ buffer: true }], data: [{ index: 0, buffer: true }] }]
+            }), 'http://example.com/video.exmfst.json');
+            publicErrorSpy.resetHistory();
+
+            dodgeHandler.rejectParsedManifest(manifest, 'http://example.com/video.exmfst.json');
+
+            expect(publicErrorSpy.calledOnce).to.be.true; // jshint ignore:line
+            expect(publicErrorSpy.firstCall.args[0].error.code).to.equal(DodgeErrors.DODGE_STRICT_MODE_ERROR_CODE);
+        });
+
+        it('a source that is accepted reports nothing', function () {
+            dodgeHandler.tryProcessExtendedManifest(JSON.stringify(makeValidManifest()), 'http://example.com/valid.exmfst.json');
+
+            expect(publicErrorSpy.called).to.be.false; // jshint ignore:line
+        });
+    });
+
     // Logger wiring across the bundle boundary
 
     describe('logger wiring', function () {

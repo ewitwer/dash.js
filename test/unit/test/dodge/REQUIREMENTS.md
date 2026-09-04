@@ -1371,6 +1371,27 @@ of the manifest rather than of the device it was opened on.
 
 ---
 
+### R10.16 - A refusal is reported to the application, not only to the log
+
+Every strict mode refusal, from the source-level gates and from the ones that run on the parsed
+manifest, funnels through `_triggerStrictModeError`, which raises two events. `INTERNAL_MANIFEST_LOADED`
+carries the error and stops the load. `Events.ERROR` carries the same `DashJSError` to the
+application, because dash.js reports an error to the application only when something calls
+`errHandler.error`, and `ManifestUpdater` does that for `MANIFEST_LOADER_PARSING_FAILURE_ERROR_CODE`
+alone. A Dodge refusal is not one, so without the second event a refused source is indistinguishable
+from a player that hung. `ErrorHandler.error` is a trigger of `Events.ERROR`, and Dodge has no
+errHandler of its own, so it raises the event directly. The order follows `ManifestUpdater`,
+which reports after the internal event. A source that is accepted raises neither.
+
+| File | Description | Test |
+|---|---|---|
+| `dodge.DodgeHandler.js` | strict mode error reporting | a refusal fires the public ERROR event, not only the internal one |
+| `dodge.DodgeHandler.js` | strict mode error reporting | the public error carries the same message as the internal one |
+| `dodge.DodgeHandler.js` | strict mode error reporting | a manifest that is refused after parsing also reports |
+| `dodge.DodgeHandler.js` | strict mode error reporting | a source that is accepted reports nothing |
+
+---
+
 ## 11. Strict Mode Enforcement
 
 ### R11.1 - `strictMode = representation` blocks undefended representations when an extended manifest is active
@@ -1745,6 +1766,7 @@ and the unit tests, fall back to this bundle's own instance.
 | R10.13 Single post-parse gate exposed to the core | 5 |
 | R10.14 A new source replaces the defense set | 5 |
 | R10.15 Extended manifest verified against the MPD | 15 |
+| R10.16 A refusal is reported to the application | 4 |
 | R11.1 strictMode = representation enforcement | 8 |
 | R11.2 strictMode = manifest enforcement | 6 |
 | R11.3 strictMode = max enforcement | 5 |
@@ -1759,4 +1781,4 @@ and the unit tests, fall back to this bundle's own instance.
 | R12.4 Error fragment stalling | 8 |
 | R12.5 Range-ignoring origin detection | 15 |
 | R12.6 Dodge logs through the player's Debug | 3 |
-| **Total** | **698** |
+| **Total** | **702** |

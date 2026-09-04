@@ -551,16 +551,20 @@ function DodgeHandler(config) {
             rejectIfUnshapedTracks(manifest, url) ||
             rejectIfManifestMismatch(manifest, url);
     }
-
+    
     function _triggerStrictModeError(url) {
         logger.error('Dodge strict mode is enabled and no valid extended manifest at ' + (url || '(unknown URL)') + ', blocking playback');
+
+        const error = new DashJSError(
+            DodgeErrors.DODGE_STRICT_MODE_ERROR_CODE,
+            DodgeErrors.DODGE_STRICT_MODE_ERROR_MESSAGE + (url || '')
+        );
+
         eventBus.trigger(events.INTERNAL_MANIFEST_LOADED, {
             manifest: null,
-            error: new DashJSError(
-                DodgeErrors.DODGE_STRICT_MODE_ERROR_CODE,
-                DodgeErrors.DODGE_STRICT_MODE_ERROR_MESSAGE + (url || '')
-            )
+            error: error
         });
+        eventBus.trigger(events.ERROR, { error: error });
     }
 
     // Elements DASH allows an xlink:href on that dash.js actually resolves.

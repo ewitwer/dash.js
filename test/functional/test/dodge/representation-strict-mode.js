@@ -15,6 +15,10 @@ const TESTCASE = Constants.TESTCASES.DODGE.REPRESENTATION_STRICT_MODE;
 // segment request escaping before the refusal would land inside the window.
 const LOAD_ATTEMPT_MS = 8000;
 
+// Mirrors src/dodge/errors/DodgeErrors.js. The functional tests run against the
+// built bundle rather than the sources, so the value is repeated here.
+const DODGE_STRICT_MODE_ERROR_CODE = 300;
+
 Utils.getTestvectorsForTestcase(TESTCASE).forEach((item) => {
     const mpd = item.url;
 
@@ -33,12 +37,9 @@ Utils.getTestvectorsForTestcase(TESTCASE).forEach((item) => {
             // extended manifest for the gate to check, which is what separates
             // 'representation' from 'manifest'.
             //
-            // The refusal itself cannot be asserted directly here. DodgeHandler
-            // names the uncovered representation in an error log, but a Dodge log
-            // message never reaches the player's LOG event, and the strict mode
-            // error never reaches the public ERROR event either, because
-            // ManifestUpdater forwards only parsing failures to the error
-            // handler. What an application can observe is what is pinned below.
+            // A refusal reaches the application two ways, and both are pinned
+            // below: the Dodge strict mode error on the player's ERROR event, and
+            // the error log naming which representation was left out.
             playerAdapter = initializeDashJsAdapter(item, mpd);
 
             trafficPromise = playerAdapter.collectDodgeTraffic(LOAD_ATTEMPT_MS);
@@ -59,6 +60,22 @@ Utils.getTestvectorsForTestcase(TESTCASE).forEach((item) => {
 
         it(`Playback should not progress`, async () => {
             await checkIsNotProgressing(playerAdapter);
+        })
+
+        it(`The refusal is reported to the application as a Dodge strict mode error`, () => {
+            const errors = playerAdapter.getErrorEvents();
+            const codes = errors.map(e => e.error && e.error.code);
+            expect(codes).to.include(DODGE_STRICT_MODE_ERROR_CODE,
+                'Expected a Dodge strict mode error on the player, saw ' + JSON.stringify(codes));
+        })
+
+        it(`The refusal names the representation that has no entry`, () => {
+            const errors = playerAdapter.getLogEvents()[dashjs.Debug.LOG_LEVEL_ERROR]; // jshint ignore:line
+            const namesTheGap = errors.some(
+                message => message.indexOf('bbb_a64k') !== -1 &&
+                    message.indexOf('no defended stream info') !== -1
+            );
+            expect(namesTheGap, 'Dodge error log was ' + JSON.stringify(errors)).to.be.true; // jshint ignore:line
         })
 
         it(`No segments are requested for any representation`, async () => {
