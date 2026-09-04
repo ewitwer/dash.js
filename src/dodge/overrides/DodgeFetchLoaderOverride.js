@@ -29,7 +29,7 @@
  *  POSSIBILITY OF SUCH DAMAGE.
  */
 
-import Debug from '../../core/Debug.js';
+import { getDodgeDebug } from '../utils/DodgeDebug.js';
 import Settings from '../../core/Settings.js';
 import { applyRequestPadding } from '../utils/RequestPadding.js';
 
@@ -48,7 +48,7 @@ function DodgeFetchLoaderOverride() {
     const _parentLoad = parent.load;
 
     const settings = Settings(context).getInstance();
-    const logger = Debug(context).getInstance().getLogger(this);
+    const logger = getDodgeDebug(context).getLogger(this);
 
     /**
      * Apply request padding and delegate to the parent FetchLoader.

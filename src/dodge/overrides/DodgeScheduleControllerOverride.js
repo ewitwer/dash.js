@@ -42,7 +42,7 @@
  * Registered via mediaPlayer.extend('ScheduleController', DodgeScheduleControllerOverride, true).
  */
 
-import Debug from '../../core/Debug.js';
+import { getDodgeDebug } from '../utils/DodgeDebug.js';
 import { resolveNumericSetting } from '../utils/StrictMode.js';
 
 function DodgeScheduleControllerOverride(config) {
@@ -55,7 +55,7 @@ function DodgeScheduleControllerOverride(config) {
     const dashHandler = config.dashHandler;
     const settings = config.settings;
 
-    const logger = Debug(context).getInstance().getLogger({ __dashjs_factory_name: 'DodgeScheduleControllerOverride' });
+    const logger = getDodgeDebug(context).getLogger({ __dashjs_factory_name: 'DodgeScheduleControllerOverride' });
     let warnedScheduleRandom = false;
     let warnedScheduleBase = false;
 

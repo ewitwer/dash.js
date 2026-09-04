@@ -29,7 +29,7 @@
  *  POSSIBILITY OF SUCH DAMAGE.
  */
 
-import Debug from '../core/Debug.js';
+import { getDodgeDebug } from './utils/DodgeDebug.js';
 import FactoryMaker from '../core/FactoryMaker.js';
 
 /**
@@ -788,7 +788,7 @@ function DefenseRegistry() {
         manifestData;
 
     function setup() {
-        logger = Debug(context).getInstance().getLogger(instance);
+        logger = getDodgeDebug(context).getLogger(instance);
         manifestData = [];
     }
 

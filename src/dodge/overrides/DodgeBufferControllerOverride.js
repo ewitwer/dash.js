@@ -29,7 +29,7 @@
  *  POSSIBILITY OF SUCH DAMAGE.
  */
 
-import Debug from '../../core/Debug.js';
+import { getDodgeDebug } from '../utils/DodgeDebug.js';
 import EventBus from '../../core/EventBus.js';
 import Settings from '../../core/Settings.js';
 import MediaPlayerEvents from '../../streaming/MediaPlayerEvents.js';
@@ -72,7 +72,7 @@ function DodgeBufferControllerOverride(config) {
     const capabilities = config.capabilities;
     const playbackController = config.playbackController;
 
-    const debug = Debug(context).getInstance();
+    const debug = getDodgeDebug(context);
     const eventBus = EventBus(context).getInstance();
     const settings = Settings(context).getInstance();
     const mediaType = parent.getType ? parent.getType() : null;

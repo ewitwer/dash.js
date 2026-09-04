@@ -1638,6 +1638,26 @@ override stalls rather than falling back.
 | `dodge.DodgeHandler.js` | Range-ignoring origin detection, _onFragmentLoadingCompleted | an init segment whose response exceeds its range is rejected |
 | `dodge.DodgeHandler.js` | Range-ignoring origin detection, _onFragmentLoadingCompleted | a vanilla request is not checked and keeps its sender |
 
+### R12.6 - Dodge logs through the player's own `Debug` instance
+
+`dash.dodge` is built from its own webpack entry with no externals, so it carries private copies of
+the dash.js core modules, `FactoryMaker` among them. A `Debug(context)` call made from inside the
+bundle therefore searches a singleton registry the player never wrote to, finds nothing, and builds a
+fresh `Debug` with no `settings`. Both guards in `doLog` then fail: nothing reaches the console and no
+LOG event is dispatched, so every Dodge warning and error is discarded in the build a deployer
+actually loads.
+
+`DodgeHandler` takes the player's `Debug` from `mediaPlayer.getDebug()` and records it in
+`utils/DodgeDebug.js`, keyed by context so two players on a page keep their own log levels. The
+registry and the overrides read it back from there. Anything constructed before `DodgeHandler` runs,
+and the unit tests, fall back to this bundle's own instance.
+
+| File | Description | Test |
+|---|---|---|
+| `dodge.DodgeHandler.js` | logger wiring | logs through the player's Debug instance, not the copy in the Dodge bundle |
+| `dodge.DodgeHandler.js` | logger wiring | the defense registry logs through that same instance |
+| `dodge.DodgeHandler.js` | logger wiring | falls back to the context Debug when the player exposes none |
+
 ---
 
 ## Summary
@@ -1738,4 +1758,5 @@ override stalls rather than falling back.
 | R12.3 getStreamStats counts | 3 |
 | R12.4 Error fragment stalling | 8 |
 | R12.5 Range-ignoring origin detection | 15 |
-| **Total** | **695** |
+| R12.6 Dodge logs through the player's Debug | 3 |
+| **Total** | **698** |

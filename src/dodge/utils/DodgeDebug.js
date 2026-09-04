@@ -29,38 +29,39 @@
  *  POSSIBILITY OF SUCH DAMAGE.
  */
 
-import { getDodgeDebug } from '../utils/DodgeDebug.js';
-import Settings from '../../core/Settings.js';
-import { applyRequestPadding } from '../utils/RequestPadding.js';
+import Debug from '../../core/Debug.js';
 
 /**
- * Overrides XHRLoader.load() to apply request-level padding for Dodge
- * requests before delegating to the parent implementation.
+ * Where the Dodge modules get their logger.
  *
- * When `dodge.paddingLengthBase` is set, all Dodge requests are padded so
- * the approximate HTTP/1.1 wire size (URL + all request headers) falls in
- * `[paddingLengthBase, paddingLengthBase + paddingLengthRandom]`.
+ * Dodge ships as its own bundle, `dash.dodge`, built from a separate webpack
+ * entry with no externals, so it carries private copies of the dash.js core
+ * modules. One of them is `FactoryMaker`, which means a `Debug(context)` call
+ * made from inside this bundle looks up a singleton registry that the player
+ * never wrote to. It finds nothing, builds a fresh `Debug` with no `settings`,
+ * and every `doLog` on it then fails both of its own guards: nothing is written
+ * to the console, and no LOG event is dispatched.
+ *
+ * `DodgeHandler` therefore takes the player's own `Debug` from `getDebug()` and
+ * records it here, keyed by the context it belongs to so that two players on a
+ * page keep their own log levels. Everything else in the bundle reads it back.
  */
-function DodgeXHRLoaderOverride() {
+const injected = new WeakMap();
 
-    const context = this.context;
-    const parent = this.parent;
-    const _parentLoad = parent.load;
-
-    const settings = Settings(context).getInstance();
-    const logger = getDodgeDebug(context).getLogger(this);
-
-    /**
-     * Apply request padding and delegate to the parent XHRLoader.
-     * @param {CommonMediaRequest} commonMediaRequest
-     * @param {CommonMediaResponse} commonMediaResponse
-     */
-    function load(commonMediaRequest, commonMediaResponse) {
-        applyRequestPadding(commonMediaRequest, settings, logger);
-        return _parentLoad.call(parent, commonMediaRequest, commonMediaResponse);
-    }
-
-    return { load };
+/**
+ * Record the player's Debug instance for this context.
+ * @param {Object} context - The MediaPlayer context Dodge was created with.
+ * @param {Object} debug - The player's Debug instance.
+ */
+export function setDodgeDebug(context, debug) {
+    injected.set(context, debug);
 }
 
-export default DodgeXHRLoaderOverride;
+/**
+ * The Debug instance the Dodge modules should log through.
+ * @param {Object} context - The MediaPlayer context.
+ * @returns {Object} The player's Debug instance, or this bundle's own.
+ */
+export function getDodgeDebug(context) {
+    return injected.get(context) || Debug(context).getInstance();
+}

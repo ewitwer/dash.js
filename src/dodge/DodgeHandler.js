@@ -31,7 +31,6 @@
 
 import DataChunk from '../streaming/vo/DataChunk.js';
 import DashJSError from '../streaming/vo/DashJSError.js';
-import Debug from '../core/Debug.js';
 import DefenseRegistry from './DefenseRegistry.js';
 import DodgeBufferControllerOverride from './overrides/DodgeBufferControllerOverride.js';
 import DodgeDashHandlerOverride from './overrides/DodgeDashHandlerOverride.js';
@@ -45,6 +44,7 @@ import Constants from '../streaming/constants/Constants.js';
 import DodgeConstants from './constants/DodgeConstants.js';
 import DashConstants from '../dash/constants/DashConstants.js';
 import DashManifestModel from '../dash/models/DashManifestModel.js';
+import { getDodgeDebug, setDodgeDebug } from './utils/DodgeDebug.js';
 import { createStrictModeReader, resolveNumericSetting } from './utils/StrictMode.js';
 import FactoryMaker from '../core/FactoryMaker.js';
 import EventBus from '../core/EventBus.js';
@@ -85,7 +85,15 @@ function DodgeHandler(config) {
     const streamController = config.streamController;
     const mediaPlayer = config.mediaPlayer;
 
-    const debug = Debug(context).getInstance();
+    // Record the player's own Debug for everything else in this bundle before
+    // anything here logs or builds a singleton. Resolving Debug from inside the
+    // bundle instead finds this bundle's private FactoryMaker, and the fresh
+    // Debug it builds has no settings, so it discards every message.
+    // See utils/DodgeDebug.js.
+    if (mediaPlayer && mediaPlayer.getDebug) {
+        setDodgeDebug(context, mediaPlayer.getDebug());
+    }
+    const debug = getDodgeDebug(context);
     let logger,
         defenseRegistry,
         dashManifestModel,

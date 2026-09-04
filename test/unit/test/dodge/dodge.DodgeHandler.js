@@ -3550,4 +3550,78 @@ describe('DodgeHandler', function () {
         });
     });
 
+    // Logger wiring across the bundle boundary
+
+    describe('logger wiring', function () {
+
+        function makeRecordingDebug() {
+            const logger = {
+                fatal: sinon.spy(), error: sinon.spy(), warn: sinon.spy(),
+                info: sinon.spy(), debug: sinon.spy()
+            };
+            return { logger, debug: { getLogger: sinon.stub().returns(logger) } };
+        }
+
+        function createHandler(mediaPlayer) {
+            const ctx = {};
+            const ctxSettings = Settings(ctx).getInstance();
+            ctxSettings.update({ dodge: { strictMode: 'manifest' } });
+            return DodgeHandler(ctx).create({
+                eventBus: EventBus(ctx).getInstance(),
+                events: Events,
+                settings: ctxSettings,
+                streamController: null,
+                mediaPlayer
+            });
+        }
+
+        function errorsMatching(logger, text) {
+            return logger.error.getCalls().filter(c => String(c.args[0]).indexOf(text) !== -1);
+        }
+
+        it('logs through the player\'s Debug instance, not the copy in the Dodge bundle', function () {
+            const recording = makeRecordingDebug();
+            const handler = createHandler({ extend: () => {}, getDebug: () => recording.debug });
+
+            handler.tryProcessExtendedManifest('<MPD/>', 'https://example.com/source.mpd');
+
+            expect(errorsMatching(recording.logger, 'Dodge strict mode is enabled')).to.have.lengthOf(1);
+        });
+
+        it('the defense registry logs through that same instance', function () {
+            const recording = makeRecordingDebug();
+            const handler = createHandler({ extend: () => {}, getDebug: () => recording.debug });
+
+            // A stream entry with no label: rejected by DefenseRegistry, which
+            // is a separate singleton and needs the same instance to be heard.
+            handler.tryProcessExtendedManifest(
+                JSON.stringify({ start: { mpd: '<MPD/>', base_uri: 'https://example.com/' }, streams: [{}] }),
+                'https://example.com/source.json');
+
+            expect(errorsMatching(recording.logger, 'Extended manifest rejected')).to.have.lengthOf.at.least(1);
+        });
+
+        it('falls back to the context Debug when the player exposes none', function () {
+            const ctx = {};
+            const logger = {
+                fatal: sinon.spy(), error: sinon.spy(), warn: sinon.spy(),
+                info: sinon.spy(), debug: sinon.spy()
+            };
+            const ctxSettings = Settings(ctx).getInstance();
+            ctxSettings.update({ dodge: { strictMode: 'manifest' } });
+            sinon.stub(Debug(ctx).getInstance(), 'getLogger').returns(logger);
+
+            const handler = DodgeHandler(ctx).create({
+                eventBus: EventBus(ctx).getInstance(),
+                events: Events,
+                settings: ctxSettings,
+                streamController: null,
+                mediaPlayer: { extend: () => {} }
+            });
+            handler.tryProcessExtendedManifest('<MPD/>', 'https://example.com/source.mpd');
+
+            expect(errorsMatching(logger, 'Dodge strict mode is enabled')).to.have.lengthOf(1);
+        });
+    });
+
 });
