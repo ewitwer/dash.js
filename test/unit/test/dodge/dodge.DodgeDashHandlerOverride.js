@@ -2005,6 +2005,32 @@ describe('DodgeDashHandlerOverride', function () {
             override.getInitRequest({}, repLow);
             expect(override.getRemainingInitCycles(repLow)).to.equal(1);
         });
+
+        it('reports -1 for a representation the extended manifest does not cover', function () {
+            addTwoRepresentations();
+            const repLow = representationFor('rep_low');
+            playLowThrough(repLow, 1); // rep_low has no init cycles left
+
+            const repUncovered = representationFor('rep_uncovered');
+            expect(override.getRemainingInitCycles(repUncovered)).to.equal(-1);
+        });
+
+        it('still reports 0 for a covered representation that needs no init cycles', function () {
+            defenseController.addExtendedManifest({
+                start: { mpd: '<MPD/>', base_uri: 'https://example.com/' },
+                streams: [
+                    { label: 'rep_low', init: [{ buffer: true }], data: [{ index: 0, buffer: true }] },
+                    { label: 'rep_selfinit', data: [{ index: 0, buffer: true }] }
+                ]
+            });
+            const repLow = representationFor('rep_low');
+            override.updateDefendedStreamInfo(repLow);
+            override.getInitRequest({}, repLow);
+
+            // Covered but self-initialized: 0 is the honest answer, not "no opinion".
+            const repSelfInit = representationFor('rep_selfinit');
+            expect(override.getRemainingInitCycles(repSelfInit)).to.equal(0);
+        });
     });
 
     // SegmentBase / byte-range content (WebM, single-file MP4)

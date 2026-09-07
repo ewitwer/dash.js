@@ -242,6 +242,8 @@ which resolves the segment index before the resume logic is consulted.
 | `dodge.DodgeDashHandlerOverride.js` | ABR home representation switch | restarts the init sequence for the new representation |
 | `dodge.DodgeDashHandlerOverride.js` | ABR home representation switch | reports the incoming representation init cycles before the switch is applied |
 | `dodge.DodgeDashHandlerOverride.js` | ABR home representation switch | reports the remaining init cycles of the representation in use when it is unchanged |
+| `dodge.DodgeDashHandlerOverride.js` | ABR home representation switch | reports -1 for a representation the extended manifest does not cover |
+| `dodge.DodgeDashHandlerOverride.js` | ABR home representation switch | still reports 0 for a covered representation that needs no init cycles |
 
 ---
 

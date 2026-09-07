@@ -664,16 +664,14 @@ function DodgeDashHandlerOverride(config) {
      * about instead. Callers that mean "the stream in use" pass nothing.
      *
      * @param {Object} [representation] - The representation being asked about.
-     * @returns {number} Remaining init cycles, or -1 when no defense is active.
+     * @returns {number} Remaining init cycles, or -1 when no defense covers it.
      */
     function getRemainingInitCycles(representation) {
         if (!defendedStreamInfo) { return -1; }
 
         if (representation && representation.id !== lastResolvedLabel) {
             const pending = defenseRegistry.getDefendedStreamInfo(representation.id, representation.adaptation.period.index);
-            if (pending) {
-                return pending['init'].length;
-            }
+            return pending ? pending['init'].length : -1;
         }
 
         return defendedStreamInfo['init'].length - lastInitIndex - 1;
