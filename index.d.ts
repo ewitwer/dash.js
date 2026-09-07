@@ -1982,7 +1982,57 @@ export class MediaPlayerSettingClass {
         recoverAttempts?: {
             mediaErrorDecode?: number
         }
+    };
+    dodge?: {
+        scheduleWaitBase?: number,
+        scheduleWaitRandom?: number,
+        queryParam?: string,
+        paddingLengthBase?: number,
+        paddingLengthRandom?: number,
+        strictMode?: false | 'representation' | 'manifest' | 'max'
     }
+}
+
+/**
+ * One data cycle of a Dodge defense, as accepted by appendDodgeDataCycles and
+ * finalizeDodgeStream.
+ *
+ * The runtime also accepts the string spellings of these fields ('true', '3')
+ * and normalizes them in place; the canonical JSON forms are named here.
+ */
+export interface DodgeDataCycle {
+    /**
+     * Segment index this cycle fetches part of. Several cycles may share an
+     * index, in which case their ranges are assembled into one segment.
+     */
+    index: number;
+
+    /**
+     * Byte range of the form 'start-end'. The start is required: a suffix
+     * range such as '-855' reads back a different set of bytes than a defense
+     * measured, so it is rejected rather than reinterpreted.
+     */
+    range?: string;
+
+    /**
+     * True when the response is discarded rather than accumulated. Padding
+     * cycles shape the traffic and never reach the buffer.
+     */
+    padding?: boolean;
+
+    /**
+     * True flushes the segments accumulated so far to the SourceBuffer when
+     * this cycle's response arrives. An array does the same but selectively,
+     * naming the segment indices to flush.
+     */
+    buffer?: boolean | number[];
+
+    /**
+     * Fetch from a sibling representation rather than the home one. A string
+     * is a representation ID; a number is an index into the array returned by
+     * getRepresentationsByType, which is device-dependent.
+     */
+    quality?: string | number;
 }
 
 export interface MediaFinishedInformation {
@@ -2103,6 +2153,8 @@ export interface MediaPlayerClass {
 
     addUTCTimingSource(schemeIdUri: string, value: string): void;
 
+    appendDodgeDataCycles(label: string, periodIndex: number | null, cycles: DodgeDataCycle[]): boolean;
+
     attachProtectionController(value: ProtectionController): void;
 
     attachSource(urlOrManifest: string | object, startTime?: number | string): void;
@@ -2124,6 +2176,8 @@ export interface MediaPlayerClass {
     enableText(enable: boolean): boolean;
 
     extend(parentNameString: string, childInstance: object, override: boolean): void;
+
+    finalizeDodgeStream(label: string, periodIndex: number | null, paddingCycles?: DodgeDataCycle[]): boolean;
 
     formatUTC(time: number, locales: string, hour12: boolean, withDate?: boolean): string;
 
@@ -2208,6 +2262,10 @@ export interface MediaPlayerClass {
     getXHRWithCredentialsForType(type: string): boolean;
 
     initialize(view: HTMLVideoElement, source: string, autoPlay: boolean, startTime: number | string): void;
+
+    isDodgeActive(): boolean;
+
+    isDodgeTrailing(): boolean;
 
     isDynamic(): boolean;
 
@@ -2306,6 +2364,8 @@ export interface MediaPlayerClass {
     timeAsUTC(): number;
 
     timeInDvrWindow(): number;
+
+    timeSinceEnd(): number;
 
     trigger(type: MediaPlayerEvent, payload: object, filters: object): void;
 
