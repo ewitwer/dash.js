@@ -163,16 +163,21 @@ function ScheduleController(config) {
      */
     function _getNextFragment() {
         const currentRepresentation = representationController.getCurrentRepresentation();
-        const remainingInitCycles = dashHandler ? dashHandler.getRemainingInitCycles(currentRepresentation) : -1;
+        let remainingInitCycles = dashHandler ? dashHandler.getRemainingInitCycles(currentRepresentation) : -1;
+        const needsInitSegment = initSegmentRequired ||
+            currentRepresentation.id !== lastInitializedRepresentationId || switchTrack;
 
         // Dodge defended streams can queue multiple init cycles for a single
         // home representation (e.g. an alt-rep init staged for a later quality
-        // override). The vanilla DashHandler stub returns -1, so this guard is
-        // a no-op for non-Dodge playback. A quality change or AdaptationSet
+        // override). The vanilla DashHandler stub returns -1, so the guards here
+        // are a no-op for non-Dodge playback. A quality change or AdaptationSet
         // switch still takes the init path via the original condition.
+        if (needsInitSegment && remainingInitCycles === 0) {
+            remainingInitCycles = dashHandler.restartInitCycles();
+        }
+
         const dodgeNeedsMoreInits = remainingInitCycles > 0;
-        const qualitySwitchNeedsInit = remainingInitCycles &&
-            (initSegmentRequired || currentRepresentation.id !== lastInitializedRepresentationId || switchTrack);
+        const qualitySwitchNeedsInit = remainingInitCycles && needsInitSegment;
         if (dodgeNeedsMoreInits || qualitySwitchNeedsInit) {
             _initFragmentNeeded(currentRepresentation, remainingInitCycles)
         } else {

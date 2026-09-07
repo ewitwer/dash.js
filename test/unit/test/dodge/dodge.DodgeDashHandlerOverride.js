@@ -2033,6 +2033,79 @@ describe('DodgeDashHandlerOverride', function () {
         });
     });
 
+    // A seek can abort an in-flight init segment append, after which
+    // StreamProcessor asks for the init segment again. The cycle sequence is how
+    // init segments reach the buffer, so it has to be served a second time.
+
+    describe('Init cycle replay', function () {
+
+        beforeEach(function () {
+            defenseController.addExtendedManifest(makeManifest());
+            override.updateDefendedStreamInfo(rep);
+        });
+
+        function consumeInitCycles() {
+            override.getInitRequest({}, rep);
+            override.getInitRequest({}, rep);
+        }
+
+        it('reports the full init cycle count again', function () {
+            consumeInitCycles();
+            expect(override.getRemainingInitCycles()).to.equal(0);
+
+            expect(override.restartInitCycles()).to.equal(2);
+        });
+
+        it('serves the first init cycle again', function () {
+            consumeInitCycles();
+            override.restartInitCycles();
+
+            const request = override.getInitRequest({}, rep);
+            expect(request).to.exist; // jshint ignore:line
+            expect(request.range).to.equal('0-855');
+            expect(request.full).to.be.false; // jshint ignore:line
+        });
+
+        it('serves the whole sequence again, ending on the flushing cycle', function () {
+            consumeInitCycles();
+            override.restartInitCycles();
+
+            override.getInitRequest({}, rep);
+            const last = override.getInitRequest({}, rep);
+            expect(last.range).to.equal('856-1711');
+            expect(last.full).to.be.true; // jshint ignore:line
+            expect(last.buffer).to.be.true; // jshint ignore:line
+        });
+
+        it('leaves the data cycle position alone', function () {
+            consumeInitCycles();
+            override.getNextSegmentRequest({}, rep); // data cycle 0
+
+            override.restartInitCycles();
+
+            // Replaying init cycles must not rewind playback to the first segment.
+            const next = override.getNextSegmentRequest({}, rep);
+            expect(next.index).to.equal(1);
+        });
+
+        it('reports -1 when no defense covers the stream', function () {
+            override.updateDefendedStreamInfo(null);
+            expect(override.restartInitCycles()).to.equal(-1);
+        });
+
+        it('reports 0 for a covered self-initialized stream', function () {
+            defenseController.addExtendedManifest({
+                start: { mpd: '<MPD/>', base_uri: 'https://example.com/' },
+                streams: [{ label: 'rep_selfinit', data: [{ index: 0, buffer: true }] }]
+            });
+            const repSelfInit = makeRepresentation();
+            repSelfInit.id = 'rep_selfinit';
+            override.updateDefendedStreamInfo(repSelfInit);
+
+            expect(override.restartInitCycles()).to.equal(0);
+        });
+    });
+
     // SegmentBase / byte-range content (WebM, single-file MP4)
 
     describe('SegmentBase (byte-range) content', function () {

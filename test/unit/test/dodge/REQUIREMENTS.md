@@ -245,6 +245,33 @@ which resolves the segment index before the resume logic is consulted.
 | `dodge.DodgeDashHandlerOverride.js` | ABR home representation switch | reports -1 for a representation the extended manifest does not cover |
 | `dodge.DodgeDashHandlerOverride.js` | ABR home representation switch | still reports 0 for a covered representation that needs no init cycles |
 
+### R2.14 - A re-requested init segment replays the defense's init cycles
+
+A seek aborts the SourceBuffer, and `StreamProcessor` then calls `setInitSegmentRequired(true)` so the init segment is appended again. On a defended representation, the cycle sequence is how an init segment reaches the buffer, so `DodgeDashHandlerOverride.restartInitCycles()` rewinds `lastInitIndex` and reports the full init cycle count, and `getInitRequest()` serves the sequence again from the start.
+
+`ScheduleController._getNextFragment` calls it only when the player asks for an init segment (`initSegmentRequired`, a representation that is not the last initialized one, or a track switch) *and* the representation reports 0 remaining cycles. A sequence that has not finished still reports `> 0` and is not rewound. Without the rewind the request is never made, the SourceBuffer is left without an init segment, and `initSegmentRequired` stays latched, since only `_initFragmentNeeded` clears it.
+
+Only the init counter moves. `lastCycleIndex` and `lastSegment` describe where playback sits in the data cycles, which a re-init does not change. The vanilla `DashHandler` stub reports -1, so nothing here changes non-Dodge playback. A covered self-initialized stream reports 0 and stays on the media path, because it has no init cycles to replay.
+
+| File | Description | Test |
+|---|---|---|
+| `dodge.DodgeDashHandlerOverride.js` | Init cycle replay | reports the full init cycle count again |
+| `dodge.DodgeDashHandlerOverride.js` | Init cycle replay | serves the first init cycle again |
+| `dodge.DodgeDashHandlerOverride.js` | Init cycle replay | serves the whole sequence again, ending on the flushing cycle |
+| `dodge.DodgeDashHandlerOverride.js` | Init cycle replay | leaves the data cycle position alone |
+| `dodge.DodgeDashHandlerOverride.js` | Init cycle replay | reports -1 when no defense covers the stream |
+| `dodge.DodgeDashHandlerOverride.js` | Init cycle replay | reports 0 for a covered self-initialized stream |
+| `dodge.ScheduleControllerInitPath.js` | a defended representation that has used up its init cycles | replays its init cycles when the player asks for the init segment again |
+| `dodge.ScheduleControllerInitPath.js` | a defended representation that has used up its init cycles | rewinds the cycle sequence exactly once for one such request |
+| `dodge.ScheduleControllerInitPath.js` | a defended representation that has used up its init cycles | takes the media path while no init segment has been asked for |
+| `dodge.ScheduleControllerInitPath.js` | a defended representation that has used up its init cycles | stays on the media path when rewinding yields no cycles |
+| `dodge.ScheduleControllerInitPath.js` | a defended representation with init cycles still to send | takes the init path without being asked for an init segment |
+| `dodge.ScheduleControllerInitPath.js` | a defended representation with init cycles still to send | does not rewind a sequence that has not finished |
+| `dodge.ScheduleControllerInitPath.js` | vanilla playback, where the DashHandler stub reports -1 | takes the init path when an init segment is required |
+| `dodge.ScheduleControllerInitPath.js` | vanilla playback, where the DashHandler stub reports -1 | takes the init path when the representation is not the initialized one |
+| `dodge.ScheduleControllerInitPath.js` | vanilla playback, where the DashHandler stub reports -1 | takes the media path once the representation has been initialized |
+| `dodge.ScheduleControllerInitPath.js` | vanilla playback, where the DashHandler stub reports -1 | never rewinds, since there are no cycles to rewind |
+
 ---
 
 ## 3. Media Type Coverage

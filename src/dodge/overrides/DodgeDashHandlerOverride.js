@@ -677,6 +677,29 @@ function DodgeDashHandlerOverride(config) {
         return defendedStreamInfo['init'].length - lastInitIndex - 1;
     }
 
+    /**
+     * Serve the init cycle sequence again from the start.
+     *
+     * ScheduleController calls this when the player asks for an init segment
+     * on a representation whose cycles are already used up. A seek aborts the
+     * SourceBuffer, and StreamProcessor then sets `initSegmentRequired` so the
+     * init segment is appended again.
+     *
+     * Only the init counter moves. `lastCycleIndex` and `lastSegment` describe
+     * where playback is in the data cycles, which a re-init does not change.
+     *
+     * @returns {number} Init cycles now to be sent, or -1 when no defense covers
+     *          the stream.
+     */
+    function restartInitCycles() {
+        if (!defendedStreamInfo) {
+            return -1;
+        }
+
+        lastInitIndex = -1;
+        return defendedStreamInfo['init'].length;
+    }
+
     function updateDefendedStreamInfo(representation) {
         if (!representation) {
             defendedStreamInfo = null;
@@ -766,6 +789,7 @@ function DodgeDashHandlerOverride(config) {
         getCurrentIndex,
         getLastSegment,
         getRemainingInitCycles,
+        restartInitCycles,
         updateDefendedStreamInfo,
         getIsDefended,
         getIsTrailing,

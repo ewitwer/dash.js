@@ -462,6 +462,7 @@ function DashHandler(config) {
     function getIsDefended() { return false; }
     function getIsTrailing() { return false; }
     function getRemainingInitCycles() { return -1; }
+    function restartInitCycles() { return -1; }
     instance = {
         getCurrentIndex,
         getInitRequest,
@@ -471,6 +472,7 @@ function DashHandler(config) {
         getNextSegmentRequest,
         getNextSegmentRequestIdempotent,
         getRemainingInitCycles,
+        restartInitCycles,
         getSegmentRequestForTime,
         getStreamId,
         getStreamInfo,
