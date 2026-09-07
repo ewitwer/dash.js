@@ -148,6 +148,7 @@ function DodgeHandler(config) {
         eventBus.on(events.INIT_FRAGMENT_PARTIAL, _onPartialSegment, instance);
         eventBus.on(events.MEDIA_FRAGMENT_PARTIAL, _onPartialSegment, instance);
         eventBus.on(events.PADDING_LOADED, _onPaddingLoaded, instance);
+        eventBus.on(events.REPRESENTATION_SWITCHED, _onRepresentationSwitched, instance);
         // NEED_KEY is observed for diagnostics only.
         if (events.NEED_KEY) {
             eventBus.on(events.NEED_KEY, _onNeedKey, instance);
@@ -933,6 +934,7 @@ function DodgeHandler(config) {
         eventBus.off(events.INIT_FRAGMENT_PARTIAL, _onPartialSegment, instance);
         eventBus.off(events.MEDIA_FRAGMENT_PARTIAL, _onPartialSegment, instance);
         eventBus.off(events.PADDING_LOADED, _onPaddingLoaded, instance);
+        eventBus.off(events.REPRESENTATION_SWITCHED, _onRepresentationSwitched, instance);
         if (events.NEED_KEY) {
             eventBus.off(events.NEED_KEY, _onNeedKey, instance);
         }
@@ -978,6 +980,79 @@ function DodgeHandler(config) {
                 sc.setShouldCheckPlaybackQuality(checkQuality);
                 sc.startScheduleTimer(0);
             }
+        }
+    }
+
+    /**
+     * The home representation is about to change. Release what the outgoing one
+     * left queued.
+     *
+     * A buffer window spanning several segment indices, or selective buffering
+     * deferring an index past a flush point, can still be open at this moment.
+     * Those segments are downloaded and assembled, but they belong to the
+     * representation being left: its init segment is what the SourceBuffer
+     * needs in order to parse them. Dropping them leaves a hole no later cycle
+     * refetches, because the incoming representation resumes at the last segment
+     * index requested rather than the lowest one still queued.
+     *
+     * The announcement comes from `updateDefendedStreamInfo`, which StreamProcessor
+     * calls before every init and media request and before
+     * `appendInitSegmentFromCache`. That ordering is what makes the release safe
+     * without a changeType, and it does not depend on the incoming representation
+     * fetching an init segment at all: a defense may stage a sibling's init
+     * segment ahead of time through an init cycle carrying `quality`, in which
+     * case the incoming representation's init is appended straight from cache
+     * with no request of its own.
+     */
+    function _onRepresentationSwitched(e) {
+        const state = streamState.get(e.streamId);
+        if (!state) {
+            return;
+        }
+
+        // Walked backwards so entries can be spliced out, then restored to
+        // completion order for the sort below.
+        function take(queue) {
+            const taken = [];
+            for (let i = queue.length - 1; i >= 0; i--) {
+                if (queue[i].mediaType !== e.mediaType) {
+                    continue;
+                }
+                taken.push(queue[i]);
+                queue.splice(i, 1);
+            }
+            return taken.reverse();
+        }
+
+        const stale = take(state.pendingInit).concat(take(state.pendingMedia));
+        if (stale.length === 0) {
+            return;
+        }
+
+        stale.sort(_releaseOrder);
+
+        for (let i = 0; i < stale.length; i++) {
+            const event = stale[i];
+
+            // These segments enter the playback buffer like any other, so their
+            // duration variance has to be absorbed. They are not trailing: their
+            // representation is being left, not finishing.
+            if (event.request) {
+                event.request.buffer = true;
+                event.request.trail = false;
+            }
+
+            logger.debug('Releasing queued ' + e.mediaType + ' segment ' + event.index +
+                ' before leaving representation ' + e.previousRepresentationId);
+
+            eventBus.trigger(event.event,
+                {
+                    chunk: event.chunk,
+                    request: event.request,
+                    suppress: true
+                },
+                { streamId: e.streamId, mediaType: e.mediaType }
+            );
         }
     }
 
@@ -1131,6 +1206,16 @@ function DodgeHandler(config) {
                             pendingMedia.splice(i, 1);
                         }
                     } else {
+                        // A switch drains the queue as it happens
+                        // (_onRepresentationSwitched), so what reaches here is
+                        // a response that was already in flight when the
+                        // representation changed and was queued afterwards. It
+                        // cannot join this flush: the SourceBuffer is parsing
+                        // against the incoming representation's init segment by
+                        // now, so appending it would need a changeType. Drop it
+                        // and let its segment index be refetched.
+                        logger.debug('Discarding ' + request.mediaType + ' segment ' + event.index +
+                            ' queued by representation ' + eventHomeRepId + ' after the switch to ' + homeRepId);
                         pendingMedia.splice(i, 1);
                     }
                 }

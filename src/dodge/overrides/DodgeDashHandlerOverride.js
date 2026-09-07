@@ -64,6 +64,8 @@ function DodgeDashHandlerOverride(config) {
     const timelineConverter = config.timelineConverter;
     const segmentsController = config.segmentsController;
     const playbackController = config.playbackController;
+    const eventBus = config.eventBus;
+    const events = config.events;
     const debug = config.debug;
 
     let logger,
@@ -725,6 +727,7 @@ function DodgeDashHandlerOverride(config) {
 
         if (previousLabel !== null && previousLabel !== label) {
             logger.debug('Home representation switched from ' + previousLabel + ' to ' + label);
+
             // The new representation needs its own init segment, so its init
             // cycles start over. lastSegment described a segment of the old
             // representation and would generate that representation's URL,
@@ -751,6 +754,11 @@ function DodgeDashHandlerOverride(config) {
                         'Give every defended representation of a source the same segment indices!');
                 }
             }
+            
+            eventBus.trigger(events.REPRESENTATION_SWITCHED,
+                { previousRepresentationId: previousLabel },
+                { streamId: parent.getStreamId(), mediaType: parent.getType() }
+            );
         }
 
         if (defendedStreamInfo) {

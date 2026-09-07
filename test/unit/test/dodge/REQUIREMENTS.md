@@ -272,6 +272,27 @@ Only the init counter moves. `lastCycleIndex` and `lastSegment` describe where p
 | `dodge.ScheduleControllerInitPath.js` | vanilla playback, where the DashHandler stub reports -1 | takes the media path once the representation has been initialized |
 | `dodge.ScheduleControllerInitPath.js` | vanilla playback, where the DashHandler stub reports -1 | never rewinds, since there are no cycles to rewind |
 
+### R2.15 - A home representation switch releases what the outgoing representation queued
+
+A buffer window spanning several segment indices, or selective buffering deferring an index past a flush point, can still be open when ABR, a manual switch, or a track switch moves the home representation. Those queued segments are downloaded and assembled but belong to the representation being left, whose init segment is what the SourceBuffer needs in order to parse them. Dropping them leaves a hole no later cycle refetches, since `updateDefendedStreamInfo` resumes the incoming representation at the last segment index *requested*, not the lowest one still queued.
+
+`DodgeDashHandlerOverride.updateDefendedStreamInfo()` announces the switch on `REPRESENTATION_SWITCHED`, scoped to its stream and media type and naming the representation being left. `DodgeHandler._onRepresentationSwitched()` releases the queued init and media chunks for that stream and media type, init first and media in segment index order (`_releaseOrder`), with ties keeping completion order.
+
+| File | Description | Test |
+|---|---|---|
+| `dodge.DodgeDashHandlerOverride.js` | Representation switch announcement | announces a change of home representation |
+| `dodge.DodgeDashHandlerOverride.js` | Representation switch announcement | names the representation being left |
+| `dodge.DodgeDashHandlerOverride.js` | Representation switch announcement | scopes the announcement to its stream and media type |
+| `dodge.DodgeDashHandlerOverride.js` | Representation switch announcement | announces only once its own state is settled |
+| `dodge.DodgeDashHandlerOverride.js` | Representation switch announcement | stays quiet while the home representation is unchanged |
+| `dodge.DodgeHandler.js` | home representation switch | releases a segment the previous representation queued |
+| `dodge.DodgeHandler.js` | home representation switch | releases several queued segments in segment index order |
+| `dodge.DodgeHandler.js` | home representation switch | releases a queued init segment ahead of the media |
+| `dodge.DodgeHandler.js` | home representation switch | marks a released request buffered so its duration variance is absorbed |
+| `dodge.DodgeHandler.js` | home representation switch | leaves another media type alone |
+| `dodge.DodgeHandler.js` | home representation switch | leaves another stream alone |
+| `dodge.DodgeHandler.js` | home representation switch | is a no-op when the queue is empty |
+
 ---
 
 ## 3. Media Type Coverage

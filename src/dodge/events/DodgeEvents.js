@@ -38,6 +38,7 @@ const DodgeEvents = {
     PADDING_LOADED: 'paddingLoaded',
     INIT_FRAGMENT_PARTIAL: 'initFragmentPartial',
     MEDIA_FRAGMENT_PARTIAL: 'mediaFragmentPartial',
+    REPRESENTATION_SWITCHED: 'representationSwitched',
 };
 
 export default DodgeEvents;

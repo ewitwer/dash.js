@@ -821,6 +821,109 @@ describe('DodgeHandler', function () {
             expect(mediaLoadedSpy.callCount).to.equal(3); // 2 secondary + 1 primary
             expect(handler.getStreamStats('stream-1').pendingMedia).to.equal(0);
         });
+
+        // A buffer window spanning more than one segment index, or selective
+        // buffering deferring an index past a flush point, can still be open
+        // when the home representation moves. What it queued belongs to the
+        // representation being left, and has to reach the SourceBuffer while
+        // that representation's init segment is still the active one.
+        describe('home representation switch', function () {
+
+            function switchAway(previousRepresentationId, filters) {
+                eventBus.trigger(Events.REPRESENTATION_SWITCHED,
+                    { previousRepresentationId: previousRepresentationId },
+                    Object.assign({ streamId: 'stream-1', mediaType: 'video' }, filters || {}));
+            }
+
+            function makeInitRequest(overrides) {
+                return makeRequest(Object.assign({
+                    index: NaN,
+                    type: 'InitializationSegment',
+                    isInitializationRequest: () => true
+                }, overrides || {}));
+            }
+
+            it('releases a segment the previous representation queued', function () {
+                triggerFragmentLoaded(makeRequest({ full: true, buffer: false, index: 0 }));
+                expect(handler.getStreamStats('stream-1').pendingMedia).to.equal(1);
+
+                mediaLoadedSpy.resetHistory();
+                switchAway('rep0');
+
+                expect(mediaLoadedSpy.callCount).to.equal(1);
+                expect(mediaLoadedSpy.firstCall.args[0].chunk.index).to.equal(0);
+                expect(handler.getStreamStats('stream-1').pendingMedia).to.equal(0);
+            });
+
+            it('releases several queued segments in segment index order', function () {
+                triggerFragmentLoaded(makeRequest({ full: true, buffer: false, index: 1 }));
+                triggerFragmentLoaded(makeRequest({ full: true, buffer: false, index: 0 }));
+
+                mediaLoadedSpy.resetHistory();
+                switchAway('rep0');
+
+                const indices = mediaLoadedSpy.getCalls().map(c => c.args[0].chunk.index);
+                expect(indices).to.eql([0, 1]);
+            });
+
+            it('releases a queued init segment ahead of the media', function () {
+                const order = [];
+                const orderListener = {};
+                const noteMedia = () => order.push('media');
+                const noteInit = () => order.push('init');
+                eventBus.on(Events.MEDIA_FRAGMENT_LOADED, noteMedia, orderListener);
+                eventBus.on(Events.INIT_FRAGMENT_LOADED, noteInit, orderListener);
+
+                try {
+                    triggerFragmentLoaded(makeInitRequest({ full: true, buffer: false }));
+                    triggerFragmentLoaded(makeRequest({ full: true, buffer: false, index: 0 }));
+                    order.length = 0;
+
+                    switchAway('rep0');
+
+                    expect(order).to.eql(['init', 'media']);
+                } finally {
+                    eventBus.off(Events.MEDIA_FRAGMENT_LOADED, noteMedia, orderListener);
+                    eventBus.off(Events.INIT_FRAGMENT_LOADED, noteInit, orderListener);
+                }
+            });
+
+            it('marks a released request buffered so its duration variance is absorbed', function () {
+                const queued = makeRequest({ full: true, buffer: false, index: 0 });
+                triggerFragmentLoaded(queued);
+
+                switchAway('rep0');
+
+                expect(queued.buffer).to.be.true; // jshint ignore:line
+                expect(queued.trail).to.be.false; // jshint ignore:line
+            });
+
+            it('leaves another media type alone', function () {
+                triggerFragmentLoaded(makeRequest({ full: true, buffer: false, index: 0 }));
+
+                mediaLoadedSpy.resetHistory();
+                switchAway('rep0', { mediaType: 'audio' });
+
+                expect(mediaLoadedSpy.called).to.be.false; // jshint ignore:line
+                expect(handler.getStreamStats('stream-1').pendingMedia).to.equal(1);
+            });
+
+            it('leaves another stream alone', function () {
+                triggerFragmentLoaded(makeRequest({ full: true, buffer: false, index: 0 }));
+
+                mediaLoadedSpy.resetHistory();
+                switchAway('rep0', { streamId: 'stream-2' });
+
+                expect(mediaLoadedSpy.called).to.be.false; // jshint ignore:line
+                expect(handler.getStreamStats('stream-1').pendingMedia).to.equal(1);
+            });
+
+            it('is a no-op when the queue is empty', function () {
+                mediaLoadedSpy.resetHistory();
+                switchAway('rep0');
+                expect(mediaLoadedSpy.called).to.be.false; // jshint ignore:line
+            });
+        });
     });
 
     // ABR rule disabling in registerExtensions

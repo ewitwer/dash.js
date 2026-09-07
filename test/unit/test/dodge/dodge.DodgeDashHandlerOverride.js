@@ -1,6 +1,9 @@
 import DodgeDashHandlerOverride from '../../../../src/dodge/overrides/DodgeDashHandlerOverride.js';
 import DefenseRegistry from '../../../../src/dodge/DefenseRegistry.js';
 import Debug from '../../../../src/core/Debug.js';
+import EventBus from '../../../../src/core/EventBus.js';
+import Events from '../../../../src/core/events/Events.js';
+import DodgeEvents from '../../../../src/dodge/events/DodgeEvents.js';
 import Settings from '../../../../src/core/Settings.js';
 import URLUtils from '../../../../src/streaming/utils/URLUtils.js';
 import SegmentsController from '../../../../src/dash/controllers/SegmentsController.js';
@@ -87,10 +90,11 @@ function expandTemplate(template, rep, index) {
 describe('DodgeDashHandlerOverride', function () {
     const objectsHelper = new ObjectsHelper();
 
-    let context, defenseController, override, mockParent, segmentsController, adapter, rep;
+    let context, defenseController, override, mockParent, segmentsController, adapter, rep, eventBus;
 
     beforeEach(function () {
         context = {};
+        eventBus = EventBus(context).getInstance();
         defenseController = DefenseRegistry(context).getInstance();
         defenseController.reset();
 
@@ -106,6 +110,7 @@ describe('DodgeDashHandlerOverride', function () {
             initialize: sinon.stub(),
             getStreamInfo: sinon.stub().returns({ manifestInfo: { isDynamic: false } }),
             getType: sinon.stub().returns('video'),
+            getStreamId: sinon.stub().returns('stream-1'),
         };
 
         segmentsController = {
@@ -121,6 +126,8 @@ describe('DodgeDashHandlerOverride', function () {
             { context, parent: mockParent, factory: {} },
             {
                 adapter,
+                eventBus,
+                events: Events,
                 debug: Debug(context).getInstance(),
                 urlUtils: URLUtils(context).getInstance(),
                 segmentsController,
@@ -2030,6 +2037,101 @@ describe('DodgeDashHandlerOverride', function () {
             // Covered but self-initialized: 0 is the honest answer, not "no opinion".
             const repSelfInit = representationFor('rep_selfinit');
             expect(override.getRemainingInitCycles(repSelfInit)).to.equal(0);
+        });
+    });
+
+    // StreamProcessor calls updateDefendedStreamInfo before every init and media
+    // request, and before appendInitSegmentFromCache, so it is the one point that
+    // reliably precedes anything the incoming representation appends.
+
+    describe('Representation switch announcement', function () {
+
+        let switchSpy, switchListener;
+
+        beforeEach(function () {
+            Events.extend(DodgeEvents);
+            switchSpy = sinon.spy();
+            switchListener = {};
+            eventBus.on(Events.REPRESENTATION_SWITCHED, switchSpy, switchListener);
+
+            defenseController.addExtendedManifest({
+                start: { mpd: '<MPD/>', base_uri: 'https://example.com/' },
+                streams: [
+                    { label: 'rep0', init: [{ buffer: true }], data: [{ index: 0, buffer: true }] },
+                    { label: 'rep1', init: [{ buffer: true }], data: [{ index: 0, buffer: true }] }
+                ]
+            });
+        });
+
+        afterEach(function () {
+            eventBus.off(Events.REPRESENTATION_SWITCHED, switchSpy, switchListener);
+        });
+
+        function representationFor(label) {
+            const representation = makeRepresentation();
+            representation.id = label;
+            return representation;
+        }
+
+        it('announces a change of home representation', function () {
+            override.updateDefendedStreamInfo(representationFor('rep0'));
+            expect(switchSpy.called).to.be.false; // jshint ignore:line
+
+            override.updateDefendedStreamInfo(representationFor('rep1'));
+
+            expect(switchSpy.calledOnce).to.be.true; // jshint ignore:line
+        });
+
+        it('names the representation being left', function () {
+            override.updateDefendedStreamInfo(representationFor('rep0'));
+            override.updateDefendedStreamInfo(representationFor('rep1'));
+
+            expect(switchSpy.firstCall.args[0].previousRepresentationId).to.equal('rep0');
+        });
+
+        it('scopes the announcement to its stream and media type', function () {
+            override.updateDefendedStreamInfo(representationFor('rep0'));
+            override.updateDefendedStreamInfo(representationFor('rep1'));
+
+            const payload = switchSpy.firstCall.args[0];
+            expect(payload.streamId).to.equal('stream-1');
+            expect(payload.mediaType).to.equal('video');
+        });
+
+        // Handlers run synchronously inside updateDefendedStreamInfo, so the
+        // override's own state has to be settled before the announcement goes
+        // out. Otherwise a handler that asks the override anything reads
+        // half-applied state for the switch that is still in progress.
+        it('announces only once its own state is settled', function () {
+            const observed = {};
+            const observer = () => {
+                observed.lastSegment = override.getLastSegment();
+                observed.remainingInitCycles = override.getRemainingInitCycles();
+            };
+            const observerScope = {};
+            eventBus.on(Events.REPRESENTATION_SWITCHED, observer, observerScope);
+
+            try {
+                const repLow = representationFor('rep0');
+                override.updateDefendedStreamInfo(repLow);
+                override.getInitRequest({}, repLow);
+                override.getNextSegmentRequest({}, repLow);
+                expect(override.getLastSegment()).to.not.be.null; // jshint ignore:line
+
+                override.updateDefendedStreamInfo(representationFor('rep1'));
+
+                expect(observed.lastSegment).to.be.null; // jshint ignore:line
+                expect(observed.remainingInitCycles).to.equal(1); // rep1's own count
+            } finally {
+                eventBus.off(Events.REPRESENTATION_SWITCHED, observer, observerScope);
+            }
+        });
+
+        it('stays quiet while the home representation is unchanged', function () {
+            override.updateDefendedStreamInfo(representationFor('rep0'));
+            override.updateDefendedStreamInfo(representationFor('rep0'));
+
+            expect(switchSpy.called).to.be.false; // jshint ignore:line
         });
     });
 
