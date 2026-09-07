@@ -580,6 +580,22 @@ Resets `currentMockBuffer` and `lastTimeSinceStreamEnd` to zero and delegates to
 | `dodge.DodgeBufferControllerOverride.js` | updateBufferLevel | resets mockBuffer when exiting trailing phase |
 | `dodge.DodgeBufferControllerOverride.js` | updateBufferLevel | clamps delta to zero when timeSinceStreamEnd decreases |
 
+### R5.8 - The reported buffer level is never negative
+
+The mock buffer is a *signed* correction: `onBufferCycleLoaded` adds `segmentDuration - actualDuration` per buffered cycle, which is negative whenever a segment runs longer than the MPD says (R5.6 pins that). It stays signed so it accumulates correctly across cycles.
+
+The level `BufferController._updateBufferLevel()` reports is a duration, and dash.js already clamps the real part of it. Adding a signed correction to a clamped real part is not enough: when a negative correction outweighs the real buffer the reported level goes negative, which is the state right after a seek prunes the buffer while a negative correction is still outstanding. The sum is therefore clamped as well, and `BUFFER_LEVEL_UPDATED` carries the clamped value.
+
+Only what is reported is clamped. `DodgeBufferControllerOverride` keeps its own `currentMockBuffer` signed, so a segment that overran is still paid back by the next one that underran.
+
+| File | Description | Test |
+|---|---|---|
+| `dodge.MockBufferLevel.js` | Dodge mock buffer reporting | never reports a negative level for a negative correction |
+| `dodge.MockBufferLevel.js` | Dodge mock buffer reporting | never reports a negative level for a large negative correction |
+| `dodge.MockBufferLevel.js` | Dodge mock buffer reporting | still adds a positive correction to the reported level |
+| `dodge.MockBufferLevel.js` | Dodge mock buffer reporting | reports zero when no correction is set |
+| `dodge.MockBufferLevel.js` | Dodge mock buffer reporting | announces the same non-negative level on BUFFER_LEVEL_UPDATED |
+
 ---
 
 ## 6. Quality Override Buffer Management
@@ -1780,6 +1796,8 @@ and the unit tests, fall back to this bundle's own instance.
 | R2.11 Request generation stalls without advancing on URL failure | 3 |
 | R2.12 Release in segment order | 7 |
 | R2.13 Home representation switch restarts init, resumes data | 9 |
+| R2.14 Re-requested init segment replays init cycles | 16 |
+| R2.15 Representation switch releases queued segments | 12 |
 | R3.1 Video streams | (implicit) |
 | R3.2 Audio streams | 7 |
 | R3.3 Fragmented text streams | 7 |
@@ -1803,6 +1821,7 @@ and the unit tests, fall back to this bundle's own instance.
 | R5.5 Buffer controller state reset | 2 |
 | R5.6 onBufferCycleLoaded boundary conditions | 4 |
 | R5.7 updateBufferLevel guards against missing dashHandler | 4 |
+| R5.8 Reported buffer level is never negative | 5 |
 | R6.1 Init segment sandwich for quality overrides | 8 |
 | R6.2 homeRepresentationId tagging | 5 |
 | R6.3 Dodge-owned alternate init cache, invalidated on quality switch | 8 |
@@ -1821,7 +1840,7 @@ and the unit tests, fall back to this bundle's own instance.
 | R9.1 Structural validation rejects malformed manifests | 70 |
 | R9.2 Init cycle validation | 19 |
 | R9.3 Init cycle quality validation and explicit buffer requirement | 17 |
-| R9.4 Data cycle validation, maxNoPad, and cycle.full precomputation | 22 |
+| R9.4 Data cycle validation, maxNoPad, and cycle.full precomputation | 26 |
 | R9.5 Assembled ranges leave no gap | 14 |
 | R9.6 Cycle index lookup | 4 |
 | R9.7 Registry stores and retrieves manifests | 5 |
@@ -1862,4 +1881,4 @@ and the unit tests, fall back to this bundle's own instance.
 | R12.4 Error fragment stalling | 8 |
 | R12.5 Range-ignoring origin detection | 15 |
 | R12.6 Dodge logs through the player's Debug | 3 |
-| **Total** | **720** |
+| **Total** | **757** |
