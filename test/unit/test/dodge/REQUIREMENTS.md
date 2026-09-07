@@ -460,6 +460,12 @@ its own - and each of them enters the playback buffer with its own duration, so 
 correction. R2.12 is what makes that possible: every released event carries a request, and the
 flags the gate reads describe the flush.
 
+The duration comes from `SourceBufferSink`'s measurement trace, which is stamped when a chunk is
+*enqueued*, not when it is appended. Segments enqueued before any of their appends complete
+therefore share one window, and `_onAppended` reads the same first positive delta for each of them,
+crediting every segment in the flush with the first one's increment. R6.4 is what keeps that from
+happening: releases are appended one at a time, so each segment gets a window of its own.
+
 | File | Description | Test |
 |---|---|---|
 | `dodge.DodgeBufferControllerOverride.js` | onBufferCycleLoaded | increments mockBuffer by (segmentDuration - actualDuration) and syncs to parent |
@@ -532,11 +538,11 @@ Resets `currentMockBuffer` and `lastTimeSinceStreamEnd` to zero and delegates to
 
 ### R6.1 - Init segment sandwich for quality override media segments
 
-When a media chunk carries a `homeRepresentationId` (set by `DodgeDashHandlerOverride` when a data cycle uses a `quality` override), `DodgeBufferControllerOverride._onMediaFragmentLoaded` sandwiches the media append between init segment switches: it appends the alternate representation's cached init segment, appends the media chunk, then appends the home representation's cached init segment. When `changeType()` is available (both `capabilities.supportsChangeType()` and `streaming.buffer.useChangeType` are true), each init append is preceded by a `changeType()` call to reset the MSE parser state. When `changeType()` is not available, the init-media-init sequence is still appended but without `changeType()` calls. If either init segment is missing from the cache, the override stalls (does not append) to preserve the defense. Non-override chunks delegate directly to the parent.
+When a media chunk carries a `homeRepresentationId` (set by `DodgeDashHandlerOverride` when a data cycle uses a `quality` override), `DodgeBufferControllerOverride._onMediaFragmentLoaded` sandwiches the media append between init segment switches: it appends the alternate representation's cached init segment, appends the media chunk, then appends the home representation's cached init segment. When `changeType()` is available (both `capabilities.supportsChangeType()` and `streaming.buffer.useChangeType` are true), each init append is preceded by a `changeType()` call to reset the MSE parser state. When `changeType()` is not available, the init-media-init sequence is still appended but without `changeType()` calls. If either init segment is missing from the cache, the override stalls (does not append) to preserve the defense. Non-override chunks are appended directly through the parent's `appendToBuffer`.
 
 | File | Description | Test |
 |---|---|---|
-| `dodge.DodgeBufferControllerOverride.js` | _onMediaFragmentLoaded | delegates to parent for non-override chunks |
+| `dodge.DodgeBufferControllerOverride.js` | _onMediaFragmentLoaded | appends non-override chunks through the parent appendToBuffer |
 | `dodge.DodgeBufferControllerOverride.js` | _onMediaFragmentLoaded | sandwiches quality override chunk with changeType() + init segments when both inits are cached |
 | `dodge.DodgeBufferControllerOverride.js` | _onMediaFragmentLoaded | skips changeType calls when useChangeType is disabled in settings |
 | `dodge.DodgeBufferControllerOverride.js` | _onMediaFragmentLoaded | skips changeType calls when capability is not supported |
@@ -576,13 +582,16 @@ When a media chunk carries a `homeRepresentationId` (set by `DodgeDashHandlerOve
 
 The event bus does not await its handlers, so a flush that releases several segments (R2.12) starts every `_onMediaFragmentLoaded` back to back. Because the quality override sandwich (R6.1) is asynchronous, unserialized handlers interleave: both `changeType` calls run before either append, media lands under the alternate codec rather than its own, and an ordinary segment released alongside an override is appended *inside* that override's sandwich and ahead of it in the buffer, defeating R2.12.
 
-`DodgeBufferControllerOverride` therefore chains releases on a module-level promise, so each release - override sandwich or plain delegation to the parent - completes before the next begins, and the append order is the order the events were fired in. A release that throws is caught and logged so it cannot poison the chain for subsequent segments. The chain is reset in `setup()` and `reset`.
+`DodgeBufferControllerOverride` therefore chains releases on a module-level promise, so each release - override sandwich or ordinary segment - completes before the next begins, and the append order is the order the events were fired in. A release that throws is caught and logged so it cannot poison the chain for subsequent segments. The chain is reset in `setup()` and `reset`.
+
+An ordinary segment is appended with the parent's `appendToBuffer` rather than its `_onMediaFragmentLoaded`. The two make the same append, but the handler discards the promise, so a chain built on it waits only for the append to be *enqueued*. That is enough to order the appends, since the sink drains its queue in order, but not enough for R5.1: a segment's duration is measured against a trace index stamped at enqueue time, so segments enqueued together are all credited with the first one's buffer increment. Waiting for the append to land gives each segment its own measurement window.
 
 | File | Description | Test |
 |---|---|---|
 | `dodge.DodgeBufferControllerOverride.js` | _onMediaFragmentLoaded | two overrides released together: each sandwich completes before the next begins |
 | `dodge.DodgeBufferControllerOverride.js` | _onMediaFragmentLoaded | override plus ordinary segment: the ordinary segment does not land inside the sandwich |
 | `dodge.DodgeBufferControllerOverride.js` | _onMediaFragmentLoaded | a failed sandwich does not stop the next release from being appended |
+| `dodge.DodgeBufferControllerOverride.js` | _onMediaFragmentLoaded | two ordinary segments released together: the second is not appended until the first settles |
 | `dodge.DodgeBufferControllerOverride.js` | init append serialization | an init released while a media append is in flight lands after it |
 | `dodge.DodgeBufferControllerOverride.js` | init append serialization | an init released mid-sandwich does not land inside it |
 | `dodge.DodgeBufferControllerOverride.js` | init append serialization | an init released on an idle chain still appends |
@@ -1744,7 +1753,7 @@ and the unit tests, fall back to this bundle's own instance.
 | R6.1 Init segment sandwich for quality overrides | 8 |
 | R6.2 homeRepresentationId tagging | 5 |
 | R6.3 Dodge-owned alternate init cache, invalidated on quality switch | 8 |
-| R6.4 Fragment releases are serialized | 7 |
+| R6.4 Fragment releases are serialized | 8 |
 | R7.1 Random walk delay bounded | 8 |
 | R7.2 Scheduling is scoped to correct stream processor | 3 |
 | R7.3 Suppressed events skip scheduling | 2 |
@@ -1800,4 +1809,4 @@ and the unit tests, fall back to this bundle's own instance.
 | R12.4 Error fragment stalling | 8 |
 | R12.5 Range-ignoring origin detection | 15 |
 | R12.6 Dodge logs through the player's Debug | 3 |
-| **Total** | **706** |
+| **Total** | **707** |

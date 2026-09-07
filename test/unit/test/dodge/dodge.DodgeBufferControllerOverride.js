@@ -276,14 +276,16 @@ describe('DodgeBufferControllerOverride', function () {
 
     describe('_onMediaFragmentLoaded', function () {
 
-        it('delegates to parent for non-override chunks', async function () {
+        it('appends non-override chunks through the parent appendToBuffer', async function () {
             const e = {
                 chunk: { representation: { id: 'video_1000k' }, homeRepresentationId: null },
                 request: {}
             };
             await override._onMediaFragmentLoaded(e);
-            expect(mockParent._onMediaFragmentLoaded.calledOnce).to.be.true; // jshint ignore:line
-            expect(mockParent.appendToBuffer.called).to.be.false; // jshint ignore:line
+            expect(mockParent.appendToBuffer.calledOnce).to.be.true; // jshint ignore:line
+            expect(mockParent.appendToBuffer.firstCall.args[0]).to.equal(e.chunk);
+            expect(mockParent.appendToBuffer.firstCall.args[1]).to.equal(e.request);
+            expect(mockParent._onMediaFragmentLoaded.called).to.be.false; // jshint ignore:line
         });
 
         it('sandwiches quality override chunk with changeType() + init segments when both inits are cached', async function () {
@@ -436,6 +438,9 @@ describe('DodgeBufferControllerOverride', function () {
                 order.push('changeType:' + representation.id);
                 return Promise.resolve();
             };
+            // Media no longer routes through the parent's handler. Recording it
+            // anyway means a regression to it shows up as a wrong order string
+            // rather than a missing append.
             mockParent._onMediaFragmentLoaded.callsFake(function (e) {
                 order.push('parentAppend:' + e.chunk.name);
             });
@@ -487,7 +492,7 @@ describe('DodgeBufferControllerOverride', function () {
             expect(order.join(' > ')).to.equal([
                 'changeType:video_500k', 'append:altInit', 'append:segA',
                 'changeType:video_1000k', 'append:homeInit',
-                'parentAppend:segB'
+                'append:segB'
             ].join(' > '));
         });
 
@@ -510,7 +515,42 @@ describe('DodgeBufferControllerOverride', function () {
             const pB = override._onMediaFragmentLoaded({ chunk: plainChunk, request: {} });
             await Promise.all([pA, pB]);
 
-            expect(order).to.include('parentAppend:segB');
+            expect(order).to.include('append:segB');
+        });
+
+        it('two ordinary segments released together: the second is not appended until the first settles', async function () {
+            const homeRep = { id: 'video_1000k' };
+            const order = [];
+            let settleFirst;
+            mockParent.appendToBuffer = function (chunk) {
+                order.push('append:' + chunk.name);
+                if (chunk.name === 'segA') {
+                    return new Promise((resolve) => { settleFirst = resolve; });
+                }
+                return Promise.resolve();
+            };
+
+            const pA = override._onMediaFragmentLoaded({
+                chunk: { representation: homeRep, homeRepresentationId: null, name: 'segA' },
+                request: {}
+            });
+            const pB = override._onMediaFragmentLoaded({
+                chunk: { representation: homeRep, homeRepresentationId: null, name: 'segB' },
+                request: {}
+            });
+
+            // Drain the microtask queue: everything the chain can do without segA
+            // settling has now happened.
+            await new Promise((resolve) => setTimeout(resolve, 0));
+
+            // segB must still be waiting. Two segments enqueued into the same
+            // SourceBufferSink append window share a trace index, so both would be
+            // credited with segA's buffer delta and the mock buffer would drift (R5.1).
+            expect(order).to.eql(['append:segA']);
+
+            settleFirst();
+            await Promise.all([pA, pB]);
+            expect(order).to.eql(['append:segA', 'append:segB']);
         });
     });
 
@@ -641,6 +681,7 @@ describe('DodgeBufferControllerOverride', function () {
                 order.push('changeType:' + representation.id);
                 return Promise.resolve();
             };
+            // Tripwire: see recordAppendOrder above.
             mockParent._onMediaFragmentLoaded.callsFake(function (e) {
                 order.push('parentMedia:' + e.chunk.name);
             });
@@ -663,7 +704,7 @@ describe('DodgeBufferControllerOverride', function () {
             const pInit = override._onInitFragmentLoaded({ chunk: init });
             await Promise.all([pMedia, pInit]);
 
-            expect(order.join(' > ')).to.equal('parentMedia:segA > parentInit:init2');
+            expect(order.join(' > ')).to.equal('append:segA > parentInit:init2');
         });
 
         it('an init released mid-sandwich does not land inside it', async function () {
@@ -713,7 +754,7 @@ describe('DodgeBufferControllerOverride', function () {
                 request: {}
             });
 
-            expect(order.join(' > ')).to.equal('parentMedia:segA');
+            expect(order.join(' > ')).to.equal('append:segA');
         });
     });
 });

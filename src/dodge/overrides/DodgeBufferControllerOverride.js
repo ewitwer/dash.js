@@ -66,7 +66,6 @@ function DodgeBufferControllerOverride(config) {
     const _parentSetMockBuffer = parent.setMockBuffer;
     const _parentUpdateBufferLevel = parent.updateBufferLevel;
     const _parentOnInitFragmentLoaded = parent._onInitFragmentLoaded;
-    const _parentOnMediaFragmentLoaded = parent._onMediaFragmentLoaded;
 
     const dashHandler = config.dashHandler;
     const capabilities = config.capabilities;
@@ -268,8 +267,8 @@ function DodgeBufferControllerOverride(config) {
             }
             return;
         }
-
-        _parentOnMediaFragmentLoaded.call(parent, e);
+        
+        return parent.appendToBuffer(chunk, e.request);
     }
 
     /**
