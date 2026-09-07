@@ -27,7 +27,6 @@ describe('DodgeBufferControllerOverride', function () {
             _onInitFragmentLoaded: sinon.stub(),
             _onMediaFragmentLoaded: sinon.stub(),
             appendToBuffer: sinon.stub(),
-            appendToBufferAndWait: sinon.stub().resolves(),
             changeType: sinon.stub().resolves(),
             prepareForDefaultQualitySwitch: sinon.stub().resolves(),
             getInitChunkFromCache: sinon.stub().returns(null),

@@ -688,7 +688,7 @@ No URL length equalization is performed. Wire size is normalized in full by R8.2
 
 ### R8.2 - Request padding normalizes HTTP wire size to `[paddingLengthBase, paddingLengthBase + paddingLengthRandom]`
 
-`applyRequestPadding()` measures the URL + headers wire size and extends a query parameter (configurable via `dodge.queryParam`, default `'padding'`) so that the total equals `paddingLengthBase + Math.round(Math.random() * paddingLengthRandom)`. Disabled when `paddingLengthBase ≤ 0`. When the padding query param doesn't already exist in the URL, it is added and the overhead of `?key=` / `&key=` is accounted for. Invalid URLs are handled gracefully with a warning. Both length settings are read through `resolveNumericSetting()` (R11.8), so an unusable value - negative, NaN, or a quoted number - resolves to 0 and is logged once per module load (misconfiguration is visible but not fatal). An unusable `paddingLengthBase` therefore disables padding through the same `<= 0` branch as an explicit 0, instead of falling through every guard as NaN and leaving the request unpadded but unreported.
+`applyRequestPadding()` measures the URL + headers wire size and extends a query parameter (configurable via `dodge.queryParam`, default `'padding'`) so that the total equals `paddingLengthBase + Math.round(Math.random() * paddingLengthRandom)`. Disabled when `paddingLengthBase ≤ 0`. When the padding query param doesn't already exist in the URL, it is added and the overhead of `?key=` / `&key=` is accounted for. URLs are resolved before they are measured, and one that cannot be resolved at all is reported at error level (R8.3). Both length settings are read through `resolveNumericSetting()` (R11.8), so an unusable value - negative, NaN, or a quoted number - resolves to 0 and is logged once per module load (misconfiguration is visible but not fatal). An unusable `paddingLengthBase` therefore disables padding through the same `<= 0` branch as an explicit 0, instead of falling through every guard as NaN and leaving the request unpadded but unreported.
 
 | File | Description | Test |
 |---|---|---|
@@ -708,9 +708,8 @@ No URL length equalization is performed. Wire size is normalized in full by R8.2
 | `dodge.RequestPadding.js` | applyRequestPadding | pad = 0 (already at paddingLengthBase): URL is not modified |
 | `dodge.RequestPadding.js` | applyRequestPadding | request already exceeds paddingLengthBase: warns and does not modify URL |
 | `dodge.RequestPadding.js` | applyRequestPadding | custom queryParam name: padding applied to the correct parameter |
-| `dodge.RequestPadding.js` | applyRequestPadding | invalid URL: warns and does not throw |
 
-### R8.2b - A relative request URL is resolved before it is measured and padded
+### R8.3 - A relative request URL is resolved before it is measured and padded
 
 A page may hand `attachSource` a relative manifest URL, and that request reaches the loader written
 the way the page wrote it. `applyRequestPadding` resolves every URL against `window.location.href`
@@ -726,7 +725,7 @@ request. An unpadded request is a defense failure.
 | `dodge.RequestPadding.js` | applyRequestPadding | a URL that cannot be parsed at all is reported as an error naming it |
 | `dodge.RequestPadding.js` | applyRequestPadding | a path with no scheme is resolved and padded, not treated as invalid |
 
-### R8.3 - FetchLoader applies request padding before dispatching the request
+### R8.4 - FetchLoader applies request padding before dispatching the request
 
 | File | Description | Test |
 |---|---|---|
@@ -735,7 +734,7 @@ request. An unpadded request is a defense failure.
 | `dodge.RequestPadding.js` | DodgeFetchLoaderOverride | preserves original request headers after padding |
 | `dodge.RequestPadding.js` | DodgeFetchLoaderOverride | passes through config argument to parent.load() |
 
-### R8.4 - XHRLoader applies request padding before dispatching the request
+### R8.5 - XHRLoader applies request padding before dispatching the request
 
 | File | Description | Test |
 |---|---|---|
@@ -746,7 +745,7 @@ request. An unpadded request is a defense failure.
 
 ---
 
-### R8.5 - An unset `dodge.paddingLengthBase` is reported
+### R8.6 - An unset `dodge.paddingLengthBase` is reported
 
 Wire size normalization is the only request-side defense Dodge performs, so `paddingLengthBase ≤ 0` leaves URL, `Range` header and CMCD lengths varying with the content being requested. `tryProcessExtendedManifest()` reports it alongside the side-channel scans: a warning under `'representation'` and `'manifest'`, rejection under `'max'`, and silence when `strictMode` is `false`. The default is 1024, so this fires only on a deliberate override.
 
@@ -931,7 +930,7 @@ A valid index is **normalized to a number in place**, alongside `padding`, `buff
 | `dodge.DefenseRegistry.js` | data cycle index normalization | a negative index is still rejected |
 | `dodge.DefenseRegistry.js` | data cycle index normalization | a numeric-string quality is still stored as a string |
 
-### R9.4b - Assembled byte ranges must leave no gap
+### R9.5 - Assembled byte ranges must leave no gap
 
 `DodgeHandler._concatPartialSegments` sizes the assembled segment from the lowest range start to the
 highest range end and writes each piece at its own offset. A span no cycle covers is therefore
@@ -963,7 +962,7 @@ segment that is exactly that long. Only interior holes are detectable.
 | `dodge.DefenseRegistry.js` | isValidExtendedManifest | init cycle ranges with a gap, false |
 | `dodge.DefenseRegistry.js` | isValidExtendedManifest | init cycle ranges that tile, true |
 
-### R9.5 - Cycle index lookup
+### R9.6 - Cycle index lookup
 
 `getCycleIndexBySegmentIndex()` returns the index of the first non-padding cycle matching a given segment index, or `-1` if not found. Callers resolve a playback time to a segment index through `segmentsController.getSegmentByTime()` first, since segment durations are not uniform under SegmentTimeline.
 
@@ -974,7 +973,7 @@ segment that is exactly that long. Only interior holes are detectable.
 | `dodge.DefenseRegistry.js` | getCycleIndexBySegmentIndex | returns -1 when segment index is not in the stream |
 | `dodge.DefenseRegistry.js` | getCycleIndexBySegmentIndex | skips padding cycles when searching by index |
 
-### R9.6 - Registry stores and retrieves extended manifests by label
+### R9.7 - Registry stores and retrieves extended manifests by label
 
 `addExtendedManifest()` validates and stores manifests. `getDefendedStreamInfo()` retrieves a stream entry by label. `hasContent()` reflects whether any manifests are stored. `reset()` clears all state.
 
@@ -986,7 +985,7 @@ segment that is exactly that long. Only interior holes are detectable.
 | `dodge.DefenseRegistry.js` | instance | getDefendedStreamInfo returns null for an unknown label |
 | `dodge.DefenseRegistry.js` | instance | reset clears all manifests, getDefendedStreamInfo returns null after reset |
 
-### R9.7 - Period field validation
+### R9.8 - Period field validation
 
 The optional `period` field on stream entries must be a non-negative integer when present. Null or absent values are accepted. Strings that parse to non-negative integers are coerced in place (following the same `Number()` pattern as `data[i].index`). Floats, negative numbers, and non-numeric strings are rejected.
 
@@ -999,7 +998,7 @@ The optional `period` field on stream entries must be a non-negative integer whe
 | `dodge.DefenseRegistry.js` | isValidExtendedManifest | stream with numeric string period, coerced to integer, true |
 | `dodge.DefenseRegistry.js` | isValidExtendedManifest | stream with non-numeric string period, false |
 
-### R9.8 - Period-scoped stream lookup for multi-period MPDs
+### R9.9 - Period-scoped stream lookup for multi-period MPDs
 
 `getDefendedStreamInfo(label, periodIndex)` matches streams by label and, when the stream has a `period` field, also by period index. Streams without a `period` field match any period. When no stream matches the given period, returns null. When `periodIndex` is not passed, the first label match is returned regardless of period.
 
@@ -1010,7 +1009,7 @@ The optional `period` field on stream entries must be a non-negative integer whe
 | `dodge.DefenseRegistry.js` | instance | getDefendedStreamInfo with periodIndex, stream without period field matches any period |
 | `dodge.DefenseRegistry.js` | instance | getDefendedStreamInfo without periodIndex, matches stream with period field |
 
-### R9.9 - Override passes period index to defense registry lookup
+### R9.10 - Override passes period index to defense registry lookup
 
 `updateDefendedStreamInfo(representation)` passes `representation.adaptation.period.index` to `getDefendedStreamInfo()`, enabling correct per-period defense data resolution in multi-period MPDs. When two periods share the same representation ID, each period's override instance receives its own defense data.
 
@@ -1020,7 +1019,7 @@ The optional `period` field on stream entries must be a non-negative integer whe
 | `dodge.DodgeDashHandlerOverride.js` | Multi-period support | updateDefendedStreamInfo returns false for unmatched period |
 | `dodge.DodgeDashHandlerOverride.js` | Multi-period support | stream without period field matches any period |
 
-### R9.10 - Progressive flag validation and self-contained seed requirement
+### R9.11 - Progressive flag validation and self-contained seed requirement
 
 A stream entry may carry an optional `progressive` boolean (string `'true'`/`'false'` accepted and coerced; other values rejected). When `progressive` is true, the stream's data cycles are incomplete and will be extended at runtime (progressive defense generation). The initial data (seed) in a progressive stream, in the original extended manifest, MUST be self-contained: `checkDataCycles` runs the `full` pass with the "require fully flushed" mode, so every non-padding segment index the seed introduces must be flushed within the seed. This is because later appended batches cannot flush an earlier batch's indices. A complete (non-progressive) manifest keeps the implicit end-of-stream flush.
 
@@ -1037,7 +1036,7 @@ A stream entry may carry an optional `progressive` boolean (string `'true'`/`'fa
 | `dodge.DefenseRegistry.js` | progressive flag validation | progressive stream with empty data (init-only seed), true |
 | `dodge.DefenseRegistry.js` | progressive flag validation | non-progressive counterpart of the same unflushed data is valid (implicit end-of-stream flush) |
 
-### R9.11 - Runtime append and finalize of progressive manifests
+### R9.12 - Runtime append and finalize of progressive manifests
 
 `appendDataCycles(label, period, cycles)` extends a progressive stream at runtime. The append is atomic and self-contained: the stream must exist and be progressive; every cycle is structurally validated on a clone (a failure changes nothing); `full` flags are computed over the batch alone, and every non-padding index the batch introduces must be flushed within the batch (a selective buffer array may only reference indices introduced by the batch, so a batch is a complete buffer window). On success, the cycles are appended with correct `full` flags, `maxNoPad` is recomputed, and the already-consumed prefix is never touched. Because `getDefendedStreamInfo` returns the stored stream by reference, appended cycles are visible to the override immediately. `finalizeStream(label, period, paddingCycles)` requires the stream to exist and still be progressive (a non-progressive or already-finalized stream is rejected, so a double finalize changes nothing); it appends optional trailing padding (which must be padding cycles), clears the `progressive` flag, and recomputes `maxNoPad`; after finalize, both `appendDataCycles` and a further `finalizeStream` fail.
 
@@ -1062,7 +1061,7 @@ A stream entry may carry an optional `progressive` boolean (string `'true'`/`'fa
 | `dodge.DefenseRegistry.js` | progressive append and finalize | finalizeStream returns false on a second (double) finalize, changing nothing |
 | `dodge.DefenseRegistry.js` | progressive append and finalize | finalizeStream returns false for a non-progressive (complete) stream |
 
-### R9.12 - Override stalls (does not finish) while a manifest is progressive
+### R9.13 - Override stalls (does not finish) while a manifest is progressive
 
 When `defendedStreamInfo.progressive` is true, `getNextSegmentRequest` stalls (returns `null` without setting `mediaHasFinished`, not advancing `lastCycleIndex`) when playback runs off the end of the cycles generated so far - including the empty-data case - rather than declaring the stream finished. `isLastSegmentRequested` returns `false` while progressive. This reuses the existing missing-segment stall path, so the scheduler retries once the next batch is appended. After `finalizeStream` clears the flag, the override resumes normal finish behavior (serving any trailing padding, then ending).
 
@@ -1075,7 +1074,7 @@ When `defendedStreamInfo.progressive` is true, `getNextSegmentRequest` stalls (r
 | `dodge.DodgeDashHandlerOverride.js` | Progressive manifests | after finalizeStream, getNextSegmentRequest finishes when running off the end |
 | `dodge.DodgeDashHandlerOverride.js` | Progressive manifests | after finalizeStream with trailing padding, the padding cycles are downloaded then the stream finishes |
 
-### R9.13 - `DodgeHandler` exposes progressive append/finalize via delegation
+### R9.14 - `DodgeHandler` exposes progressive append/finalize via delegation
 
 `DodgeHandler.appendDataCycles(label, period, cycles)` and `DodgeHandler.finalizeStream(label, period, paddingCycles)` are thin pass-throughs to the corresponding `DefenseRegistry` methods, returning the registry's result unchanged. They are the in-module surface for progressive defense generation; `MediaPlayer.appendDodgeDataCycles` / `MediaPlayer.finalizeDodgeStream` expose them publicly (guarded by `playbackInitialized`, returning `false` when the Dodge module is not loaded). Because the registry stores the stream by reference, an accepted append is visible to the override on the next request with no further modifications.
 
@@ -1551,7 +1550,7 @@ readers for the same settings block and both fail closed.
 
 Rejected values resolve to 0, not to the documented default, because 0 is already the
 "this defense is off" value for each of these settings and `paddingLengthBase = 0` is
-already reported by strict mode (R8.5). Falling back to the default would paper over the
+already reported by strict mode (R8.6). Falling back to the default would paper over the
 misconfiguration and leave the operator believing their value took effect.
 
 The warn-once flag belongs to the caller, not to the resolver, so that one consumer's
@@ -1726,7 +1725,7 @@ and the unit tests, fall back to this bundle's own instance.
 | R2.10 Per-cycle quality override on data cycles | 12 |
 | R2.11 Request generation stalls without advancing on URL failure | 3 |
 | R2.12 Release in segment order | 7 |
-| R2.13 Home representation switch restarts init, resumes data | 7 |
+| R2.13 Home representation switch restarts init, resumes data | 9 |
 | R3.1 Video streams | (implicit) |
 | R3.2 Audio streams | 7 |
 | R3.3 Fragmented text streams | 7 |
@@ -1760,25 +1759,25 @@ and the unit tests, fall back to this bundle's own instance.
 | R7.4 Padding event routing | 2 |
 | R7.5 Random walk delay on all scheduling paths | 11 |
 | R8.1 Every request URL carries a cache-busting query value | 6 |
-| R8.2 Request padding normalizes wire size | 17 |
-| R8.2b A relative URL is resolved before measuring | 4 |
-| R8.3 FetchLoader applies padding | 4 |
-| R8.4 XHRLoader applies padding | 4 |
-| R8.5 Unset paddingLengthBase is reported | 10 |
+| R8.2 Request padding normalizes wire size | 16 |
+| R8.3 A relative URL is resolved before measuring | 4 |
+| R8.4 FetchLoader applies padding | 4 |
+| R8.5 XHRLoader applies padding | 4 |
+| R8.6 Unset paddingLengthBase is reported | 10 |
 | R9.1 Structural validation rejects malformed manifests | 70 |
 | R9.2 Init cycle validation | 19 |
 | R9.3 Init cycle quality validation and explicit buffer requirement | 17 |
 | R9.4 Data cycle validation, maxNoPad, and cycle.full precomputation | 22 |
-| R9.4b Assembled ranges leave no gap | 14 |
-| R9.5 Cycle index lookup | 4 |
-| R9.6 Registry stores and retrieves manifests | 5 |
-| R9.7 Period field validation | 6 |
-| R9.8 Period-scoped stream lookup | 4 |
-| R9.9 Override passes period index to registry | 3 |
-| R9.10 Progressive flag validation and self-contained seed | 10 |
-| R9.11 Runtime append and finalize of progressive manifests | 18 |
-| R9.12 Override stalls (does not finish) while progressive | 6 |
-| R9.13 DodgeHandler progressive append/finalize delegation | 6 |
+| R9.5 Assembled ranges leave no gap | 14 |
+| R9.6 Cycle index lookup | 4 |
+| R9.7 Registry stores and retrieves manifests | 5 |
+| R9.8 Period field validation | 6 |
+| R9.9 Period-scoped stream lookup | 4 |
+| R9.10 Override passes period index to registry | 3 |
+| R9.11 Progressive flag validation and self-contained seed | 10 |
+| R9.12 Runtime append and finalize of progressive manifests | 18 |
+| R9.13 Override stalls (does not finish) while progressive | 6 |
+| R9.14 DodgeHandler progressive append/finalize delegation | 6 |
 | R10.1 Manifest parsing and graceful degradation | 4 |
 | R10.2 Strict mode manifest/max error firing | 6 |
 | R10.3 Non-strict mode no error | 1 |
@@ -1809,4 +1808,4 @@ and the unit tests, fall back to this bundle's own instance.
 | R12.4 Error fragment stalling | 8 |
 | R12.5 Range-ignoring origin detection | 15 |
 | R12.6 Dodge logs through the player's Debug | 3 |
-| **Total** | **707** |
+| **Total** | **720** |
