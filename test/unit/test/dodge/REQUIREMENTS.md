@@ -932,6 +932,8 @@ Padding cycles are deliberately *not* excluded from the scan, which is where the
 
 A valid index is **normalized to a number in place**, alongside `padding`, `buffer` and each element of a selective buffer array. `checkDataCycleFields` is shared by the full-manifest, `appendDataCycles` and `finalizeStream` paths, so all three normalize.
 
+The scan marks one cycle per **assembly group**, not per segment index. `DodgeHandler._concatPartialSegments` matches accumulated pieces by segment index *and* by representation, so a cycle carrying a `quality` override forms its own group; `markAssemblyGroups()` keys on `_initQualityKey(cycle) + '|' + index`, the same way `checkRangeContiguity` (R9.5) and `checkInitCycles` (R9.3) already do. Marking one cycle per index instead leaves the other group's responses accumulated in `partialSegments` and never assembled, where they stay for the life of the stream. A buffer directive still names segment indices, not qualities; what the grouping changes is only which cycles it marks for those indices.
+
 | File | Description | Test |
 |---|---|---|
 | `dodge.DefenseRegistry.js` | isValidExtendedManifest | data cycle with negative index, false |
@@ -941,6 +943,10 @@ A valid index is **normalized to a number in place**, alongside `padding`, `buff
 | `dodge.DefenseRegistry.js` | isValidExtendedManifest | precomputes cycle.full correctly with interleaved indices |
 | `dodge.DefenseRegistry.js` | isValidExtendedManifest | precomputes cycle.full: buffer = true forces full even when same index appears later |
 | `dodge.DefenseRegistry.js` | isValidExtendedManifest | precomputes cycle.full: selective buffer array forces full even when same index appears later |
+| `dodge.DefenseRegistry.js` | isValidExtendedManifest | precomputes cycle.full: a quality override forms its own assembly group |
+| `dodge.DefenseRegistry.js` | isValidExtendedManifest | precomputes cycle.full: the last cycle of each quality group is the full one |
+| `dodge.DefenseRegistry.js` | isValidExtendedManifest | precomputes cycle.full: a numeric and a string quality are separate groups |
+| `dodge.DefenseRegistry.js` | isValidExtendedManifest | precomputes cycle.full: an override group is assembled at end of stream too |
 | `dodge.DefenseRegistry.js` | isValidExtendedManifest | precomputes cycle.full: multiple buffer windows each get independent full marks |
 | `dodge.DefenseRegistry.js` | isValidExtendedManifest | precomputes cycle.full: selective buffer only marks target indices, remainder marked at next flush |
 | `dodge.DefenseRegistry.js` | isValidExtendedManifest | precomputes cycle.full: empty buffer array does not force full |

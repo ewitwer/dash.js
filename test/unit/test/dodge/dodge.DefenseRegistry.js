@@ -891,6 +891,91 @@ describe('DefenseRegistry', function () {
             expect(data[3].full).to.be.true;
         });
 
+        // The assembler in DodgeHandler._concatPartialSegments matches accumulated
+        // pieces by segment index AND representation, and checkRangeContiguity
+        // groups the same way, so a cycle carrying a quality override forms its
+        // own assembly group. A group with no full cycle is fetched and never
+        // assembled: its pieces sit in partialSegments for the life of the stream.
+        it('precomputes cycle.full: a quality override forms its own assembly group', function () {
+            const m = {
+                start: { mpd: '<MPD/>', base_uri: 'https://x.com/' },
+                streams: [{
+                    label: 'a',
+                    init: [{}],
+                    data: [
+                        { index: 0, quality: 'rep_low' }, // cycle 0: the decoy group
+                        { index: 0, buffer: true }, // cycle 1: the home group
+                    ]
+                }]
+            };
+            isValidExtendedManifest(m);
+            const data = m.streams[0].data;
+            expect(data[0].full).to.be.true; // assembles the rep_low group
+            expect(data[1].full).to.be.true; // assembles the home group
+        });
+
+        it('precomputes cycle.full: the last cycle of each quality group is the full one', function () {
+            const m = {
+                start: { mpd: '<MPD/>', base_uri: 'https://x.com/' },
+                streams: [{
+                    label: 'a',
+                    init: [{}],
+                    data: [
+                        { index: 0, quality: 'rep_low', range: '0-99' }, // cycle 0
+                        { index: 0, range: '0-99' }, // cycle 1
+                        { index: 0, quality: 'rep_low', range: '100-199' }, // cycle 2: last rep_low
+                        { index: 0, range: '100-199', buffer: true }, // cycle 3: last home
+                    ]
+                }]
+            };
+            isValidExtendedManifest(m);
+            const data = m.streams[0].data;
+            expect(data[0].full).to.be.false;
+            expect(data[1].full).to.be.false;
+            expect(data[2].full).to.be.true;
+            expect(data[3].full).to.be.true;
+        });
+
+        it('precomputes cycle.full: a numeric and a string quality are separate groups', function () {
+            const m = {
+                start: { mpd: '<MPD/>', base_uri: 'https://x.com/' },
+                streams: [{
+                    label: 'a',
+                    init: [{}],
+                    data: [
+                        { index: 0, quality: 2 }, // cycle 0
+                        { index: 0, quality: 'rep_low' }, // cycle 1
+                        { index: 0, buffer: true }, // cycle 2
+                    ]
+                }]
+            };
+            isValidExtendedManifest(m);
+            const data = m.streams[0].data;
+            // Quality 2 and 'rep_low' resolve differently at request time, so
+            // they are keyed apart the same way checkRangeContiguity keys them.
+            expect(data[0].full).to.be.true;
+            expect(data[1].full).to.be.true;
+            expect(data[2].full).to.be.true;
+        });
+
+        it('precomputes cycle.full: an override group is assembled at end of stream too', function () {
+            const m = {
+                start: { mpd: '<MPD/>', base_uri: 'https://x.com/' },
+                streams: [{
+                    label: 'a',
+                    init: [{}],
+                    data: [
+                        { index: 0, buffer: true }, // cycle 0: flushes the home group
+                        { index: 0, quality: 'rep_low' }, // cycle 1: no flush of its own
+                    ]
+                }]
+            };
+            isValidExtendedManifest(m);
+            const data = m.streams[0].data;
+            expect(data[0].full).to.be.true;
+            expect(data[1].full).to.be.true; // implicit end-of-stream flush
+        });
+
         it('precomputes cycle.full: multiple buffer windows each get independent full marks', function () {
             const m = {
                 start: { mpd: '<MPD/>', base_uri: 'https://x.com/' },

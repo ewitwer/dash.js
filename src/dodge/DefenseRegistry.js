@@ -437,14 +437,70 @@ function computeMaxNoPad(data) {
 }
 
 /**
+ * How far back a scan for the given segment indices has to reach: the earliest
+ * position among their cycles that no flush has consumed yet.
+ *
+ * @param {Map} pendingSince - Segment index to the position of its earliest
+ *        unflushed cycle.
+ * @param {Set} target - Segment indices being flushed.
+ * @returns {number} Earliest position to scan, inclusive.
+ */
+function _earliestPending(pendingSince, target) {
+    let earliest = Infinity;
+    target.forEach((index) => {
+        const since = pendingSince.get(index);
+        if (since !== undefined && since < earliest) {
+            earliest = since;
+        }
+    });
+    return earliest === Infinity ? 0 : earliest;
+}
+
+/**
+ * Mark the last cycle of every assembly group whose segment index is in
+ * `target`, scanning backwards from position `to`.
+ *
+ * `DodgeHandler._concatPartialSegments` matches accumulated pieces by segment
+ * index *and* by representation, so a cycle carrying a quality override belongs
+ * to its own group and needs its own `full` cycle. Marking one cycle per index
+ * instead leaves the other group's responses accumulated and never assembled,
+ * where they stay for the life of the stream. Grouping here mirrors
+ * `checkRangeContiguity` and `checkInitCycles`.
+ *
+ * @param {Array} data - The cycle array.
+ * @param {number} from - Earliest position to scan, inclusive.
+ * @param {number} to - Position to scan back from, inclusive.
+ * @param {Set} target - Segment indices being flushed.
+ */
+function markAssemblyGroups(data, from, to, target) {
+    const seen = new Set();
+
+    for (let j = to; j >= from; j--) {
+        const cycle = data[j];
+        if (cycle.padding || !target.has(cycle.index)) {
+            continue;
+        }
+
+        const key = _initQualityKey(cycle) + '|' + cycle.index;
+        if (seen.has(key)) {
+            continue;
+        }
+        seen.add(key);
+        cycle.full = true;
+    }
+}
+
+/**
  * Precompute the `full` flag for a contiguous run of data cycles (mutates each
  * cycle's `full`). `full` triggers segment assembly in
- * DodgeHandler._concatPartialSegments: at each buffer directive, every segment
- * index that will be flushed must have exactly one cycle marked full (the last
- * download of that index before the flush point). We scan forward; when we hit
- * a buffer directive, we scan backwards to mark the last occurrence of each
- * target index. Also validates that selective buffer arrays only reference
- * indices that have appeared (and not yet been flushed) within this run.
+ * DodgeHandler._concatPartialSegments: at each buffer directive, every assembly
+ * group that will be flushed must have exactly one cycle marked full (the last
+ * download of that group before the flush point). We scan forward; when we hit
+ * a buffer directive, markAssemblyGroups scans backwards over the cycles no
+ * earlier flush consumed. A group is a segment index at one representation, so
+ * an index fetched at more than one quality has a full cycle per quality. Also
+ * validates that selective buffer arrays only reference indices that have
+ * appeared (and not yet been flushed) within this run.
  *
  * @param {Array} data - The cycle array (a whole stream or a single append batch).
  * @param {boolean} requireFullyFlushed - When true (progressive seed / incremental
@@ -462,12 +518,18 @@ function computeDataCycleFull(data, requireFullyFlushed, label, logger) {
     }
 
     const pendingIndices = new Set();
+    // Segment index -> position of its earliest cycle not yet consumed by a
+    // flush, which is how far back a scan for that index has to reach.
+    const pendingSince = new Map();
 
     for (let i = 0; i < data.length; i++) {
         const cycle = data[i];
         cycle.full = false;
 
         if (!cycle.padding) {
+            if (!pendingIndices.has(cycle.index)) {
+                pendingSince.set(cycle.index, i);
+            }
             pendingIndices.add(cycle.index);
         }
 
@@ -491,19 +553,15 @@ function computeDataCycleFull(data, requireFullyFlushed, label, logger) {
                 }
             }
 
-            const needed = new Set(target);
-            for (let j = i; j >= 0 && needed.size > 0; j--) {
-                if (!data[j].padding && !data[j].full && needed.has(data[j].index)) {
-                    data[j].full = true;
-                    needed.delete(data[j].index);
-                }
-            }
+            markAssemblyGroups(data, _earliestPending(pendingSince, target), i, target);
 
             if (cycle.buffer === true) {
                 pendingIndices.clear();
+                pendingSince.clear();
             } else {
                 for (let k = 0; k < cycle.buffer.length; k++) {
                     pendingIndices.delete(cycle.buffer[k]);
+                    pendingSince.delete(cycle.buffer[k]);
                 }
             }
         }
@@ -522,13 +580,7 @@ function computeDataCycleFull(data, requireFullyFlushed, label, logger) {
 
     // Complete manifest: mark remaining unflushed indices (implicit flush at
     // end of stream).
-    const remaining = new Set(pendingIndices);
-    for (let i = data.length - 1; i >= 0 && remaining.size > 0; i--) {
-        if (!data[i].padding && !data[i].full && remaining.has(data[i].index)) {
-            data[i].full = true;
-            remaining.delete(data[i].index);
-        }
-    }
+    markAssemblyGroups(data, _earliestPending(pendingSince, pendingIndices), data.length - 1, pendingIndices);
 
     return true;
 }
