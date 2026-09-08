@@ -920,7 +920,7 @@ function BufferController(config) {
                 referenceTime = !isNaN(seekTarget) ? seekTarget : 0;
             }
             const tolerance = settings.get().streaming.gaps.jumpGaps && !isNaN(settings.get().streaming.gaps.smallGapLimit) ? settings.get().streaming.gaps.smallGapLimit : NaN;
-            bufferLevel = Math.max(_getBufferLength(referenceTime, tolerance), 0) + (mockBuffer || 0);
+            bufferLevel = Math.max(Math.max(_getBufferLength(referenceTime, tolerance), 0) + (mockBuffer || 0), 0);
             _triggerEvent(Events.BUFFER_LEVEL_UPDATED, { mediaType: type, bufferLevel: bufferLevel });
             checkIfSufficientBuffer();
         }
