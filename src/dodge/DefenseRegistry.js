@@ -233,19 +233,14 @@ function checkSharedCycleFields(label, cycle, i, isInit, logger) {
             return reject('range ' + JSON.stringify(range) +
                 ' omits its start, which HTTP reads as a suffix range');
         }
-
+        
         const rangeTokens = range.split('-');
-        if (rangeTokens.length != 2 || isNaN(rangeTokens[0]) || isNaN(rangeTokens[1])) {
+        if (rangeTokens.length !== 2 || !/^\d+$/.test(rangeTokens[0]) || !/^\d*$/.test(rangeTokens[1])) {
             return reject('invalid range');
         }
-        let rs = parseInt(rangeTokens[0], 10);
-        let re = parseInt(rangeTokens[1], 10);
-        if (isNaN(rs)) {
-            rs = 0;
-        }
-        if (isNaN(re)) {
-            re = Number.MAX_SAFE_INTEGER;
-        }
+        const rs = parseInt(rangeTokens[0], 10);
+        // An omitted end runs to the end of the resource.
+        const re = rangeTokens[1] === '' ? Number.MAX_SAFE_INTEGER : parseInt(rangeTokens[1], 10);
 
         // Range start MUST NOT exceed range end.
         if (rs > re) {

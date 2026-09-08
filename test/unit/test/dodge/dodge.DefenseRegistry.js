@@ -206,6 +206,49 @@ describe('DefenseRegistry', function () {
             };
             expect(isValidExtendedManifest(m)).to.be.true; // jshint ignore:line
         });
+        
+        describe('a range must be plain decimal digits', function () {
+
+            function withRange(range) {
+                return {
+                    start: { mpd: '<MPD/>', base_uri: 'https://x.com/' },
+                    streams: [{ label: 'a', init: [{ range: range }], data: [{ index: 0, buffer: true }] }]
+                };
+            }
+
+            [
+                ['hexadecimal', '0x10-0x20'],
+                ['exponent notation', '1e3-2e3'],
+                ['a fractional bound', '1.5-9.5'],
+                ['a leading space', ' 100-200'],
+                ['an explicit plus sign', '+5-9'],
+                ['Infinity', 'Infinity-9'],
+                ['binary notation', '0b11-100']
+            ].forEach(function (entry) {
+                it(entry[0] + ' is rejected', function () {
+                    expect(isValidExtendedManifest(withRange(entry[1]))).to.be.false; // jshint ignore:line
+                });
+            });
+
+            // parseInt truncates both bounds to the same integer, so the
+            // existing start > end check cannot see that these run backwards.
+            [
+                ['a fractional backwards range', '9.9-9.1'],
+                ['an exponent backwards range', '5e1-5']
+            ].forEach(function (entry) {
+                it(entry[0] + ' is rejected', function () {
+                    expect(isValidExtendedManifest(withRange(entry[1]))).to.be.false; // jshint ignore:line
+                });
+            });
+
+            it('plain digits are still accepted', function () {
+                expect(isValidExtendedManifest(withRange('0-855'))).to.be.true; // jshint ignore:line
+            });
+
+            it('an omitted end is still accepted', function () {
+                expect(isValidExtendedManifest(withRange('44-'))).to.be.true; // jshint ignore:line
+            });
+        });
 
         it('init cycle buffer flag on non-last cycle is allowed (per-run termination)', function () {
             const m = {

@@ -914,6 +914,8 @@ The gate reads the setting through `resolveNumericSetting()` (R11.8) rather than
 
 `checkInitCycles()` validates that each init cycle has a valid range string (`"start-end"` where start ≤ end) or absent, with an **explicit start**, that `padding` is a boolean (or a string parseable to boolean) or absent, that `buffer` is a boolean (or a string parseable to boolean) or absent (array buffer is never valid on init cycles). Buffer flags are allowed on non-last init cycles (per-run termination semantics).
 
+Both bounds must be **plain decimal digits**, the end optionally empty.
+
 | File | Description | Test |
 |---|---|---|
 | `dodge.DefenseRegistry.js` | isValidExtendedManifest | init cycle with non-string range, false |
@@ -935,6 +937,17 @@ The gate reads the setting through `resolveNumericSetting()` (R11.8) rather than
 | `dodge.DefenseRegistry.js` | isValidExtendedManifest | init cycle with non-parseable string padding, false |
 | `dodge.DefenseRegistry.js` | isValidExtendedManifest | init cycle with non-boolean padding (number), false |
 | `dodge.DefenseRegistry.js` | isValidExtendedManifest | init cycle with an empty range, false |
+| `dodge.DefenseRegistry.js` | isValidExtendedManifest, a range must be plain decimal digits | hexadecimal is rejected |
+| `dodge.DefenseRegistry.js` | isValidExtendedManifest, a range must be plain decimal digits | exponent notation is rejected |
+| `dodge.DefenseRegistry.js` | isValidExtendedManifest, a range must be plain decimal digits | a fractional bound is rejected |
+| `dodge.DefenseRegistry.js` | isValidExtendedManifest, a range must be plain decimal digits | a leading space is rejected |
+| `dodge.DefenseRegistry.js` | isValidExtendedManifest, a range must be plain decimal digits | an explicit plus sign is rejected |
+| `dodge.DefenseRegistry.js` | isValidExtendedManifest, a range must be plain decimal digits | Infinity is rejected |
+| `dodge.DefenseRegistry.js` | isValidExtendedManifest, a range must be plain decimal digits | binary notation is rejected |
+| `dodge.DefenseRegistry.js` | isValidExtendedManifest, a range must be plain decimal digits | a fractional backwards range is rejected |
+| `dodge.DefenseRegistry.js` | isValidExtendedManifest, a range must be plain decimal digits | an exponent backwards range is rejected |
+| `dodge.DefenseRegistry.js` | isValidExtendedManifest, a range must be plain decimal digits | plain digits are still accepted |
+| `dodge.DefenseRegistry.js` | isValidExtendedManifest, a range must be plain decimal digits | an omitted end is still accepted |
 
 ### R9.3 - Init cycle quality validation and explicit buffer requirement
 
@@ -1839,7 +1852,7 @@ and the unit tests, fall back to this bundle's own instance.
 | R8.5 XHRLoader applies padding | 4 |
 | R8.6 Unset paddingLengthBase is reported | 10 |
 | R9.1 Structural validation rejects malformed manifests | 70 |
-| R9.2 Init cycle validation | 19 |
+| R9.2 Init cycle validation | 30 |
 | R9.3 Init cycle quality validation and explicit buffer requirement | 17 |
 | R9.4 Data cycle validation, maxNoPad, and cycle.full precomputation | 26 |
 | R9.5 Assembled ranges leave no gap | 14 |
@@ -1882,4 +1895,4 @@ and the unit tests, fall back to this bundle's own instance.
 | R12.4 Error fragment stalling | 8 |
 | R12.5 Range-ignoring origin detection | 15 |
 | R12.6 Dodge logs through the player's Debug | 3 |
-| **Total** | **758** |
+| **Total** | **769** |
