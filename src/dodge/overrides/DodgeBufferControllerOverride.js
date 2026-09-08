@@ -30,8 +30,6 @@
  */
 
 import { getDodgeDebug } from '../utils/DodgeDebug.js';
-import EventBus from '../../core/EventBus.js';
-import MediaPlayerEvents from '../../streaming/MediaPlayerEvents.js';
 
 /**
  * Dodge override, adds mock buffer support to BufferController.
@@ -71,11 +69,7 @@ function DodgeBufferControllerOverride(config) {
     const playbackController = config.playbackController;
 
     const debug = getDodgeDebug(context);
-    const eventBus = EventBus(context).getInstance();
     const settings = config.settings;
-    const mediaType = parent.getType ? parent.getType() : null;
-
-    const listenerScope = {};
 
     let logger,
         currentMockBuffer,
@@ -89,29 +83,14 @@ function DodgeBufferControllerOverride(config) {
         lastTimeSinceStreamEnd = 0;
         altInitCache = new Map();
         appendChain = Promise.resolve();
-        eventBus.on(MediaPlayerEvents.QUALITY_CHANGE_REQUESTED, _onQualityChangeRequested, listenerScope);
     }
-    
+
     function reset(errored, keepBuffers) {
-        eventBus.off(MediaPlayerEvents.QUALITY_CHANGE_REQUESTED, _onQualityChangeRequested, listenerScope);
         currentMockBuffer = 0;
         lastTimeSinceStreamEnd = 0;
         altInitCache.clear();
         appendChain = Promise.resolve();
         _parentReset.call(parent, errored, keepBuffers);
-    }
-
-    /**
-     * Clear the Dodge-owned alternate init cache when the home representation
-     * changes. Scoped to this override's mediaType so a quality change on a
-     * different track doesn't wipe our entries. Next media fragment load will
-     * either use freshly cached alternates (from the new home's synthesized
-     * init cycles) or stall to preserve the defense.
-     */
-    function _onQualityChangeRequested(e) {
-        if (!mediaType || !e || e.mediaType === mediaType) {
-            altInitCache.clear();
-        }
     }
 
     /**

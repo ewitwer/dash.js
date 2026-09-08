@@ -631,9 +631,16 @@ When a media chunk carries a `homeRepresentationId` (set by `DodgeDashHandlerOve
 | `dodge.DodgeDashHandlerOverride.js` | Per-cycle quality override | getSegmentRequestForTime sets homeRepresentationId when quality override is active |
 | `dodge.DodgeDashHandlerOverride.js` | Per-cycle quality override | getSegmentRequestForTime does not set homeRepresentationId when no quality override |
 
-### R6.3 - Dodge-owned alternate init cache, invalidated on quality switch
+### R6.3 - Dodge-owned alternate init cache, cleared only by `reset`
 
-`DodgeBufferControllerOverride` maintains a local `Map<representationId, chunk>` for alternate-representation init segments (identified by `chunk.homeRepresentationId` being set). These are stored unconditionally - not subject to `streaming.cacheInitSegments` - and are cleared when the override receives `QUALITY_CHANGE_REQUESTED` scoped to its `mediaType`, and on `reset`. The sandwich looks up the alternate init from this local cache (with parent `InitCache` as a fallback) and the home init from the parent `InitCache`.
+`DodgeBufferControllerOverride` maintains a local `Map<representationId, chunk>` for alternate-representation init segments (identified by `chunk.homeRepresentationId` being set). These are stored unconditionally - not subject to `streaming.cacheInitSegments` - and are cleared only by `reset`. The sandwich looks up the alternate init from this local cache (with parent `InitCache` as a fallback) and the home init from the parent `InitCache`.
+
+A home representation switch does **not** clear it. The cache is keyed by `Representation@id`, which DASH
+requires to be unique within a Period, and one override is built per period and per media type, so an
+entry's init bytes stay correct for the life of the cache and no switch can make one wrong. It is read
+only when a segment is appended, never when one is requested, so its contents cannot affect the wire
+pattern: the init cycles are replayed on every home switch regardless, because `updateDefendedStreamInfo`
+resets the init counter and `ScheduleController` then takes the init path (R2.13, R2.14).
 
 | File | Description | Test |
 |---|---|---|
@@ -642,8 +649,8 @@ When a media chunk carries a `homeRepresentationId` (set by `DodgeDashHandlerOve
 | `dodge.DodgeBufferControllerOverride.js` | _onInitFragmentLoaded | home init is both cached locally and delegated to parent |
 | `dodge.DodgeBufferControllerOverride.js` | _onInitFragmentLoaded | sandwich retrieves alternate init from the local cache (parent cache never consulted for alt) |
 | `dodge.DodgeBufferControllerOverride.js` | _onInitFragmentLoaded | local cache does not depend on streaming.cacheInitSegments - sandwich succeeds regardless |
-| `dodge.DodgeBufferControllerOverride.js` | _onInitFragmentLoaded | QUALITY_CHANGE_REQUESTED for this mediaType clears the local cache |
-| `dodge.DodgeBufferControllerOverride.js` | _onInitFragmentLoaded | QUALITY_CHANGE_REQUESTED for a different mediaType does not clear the local cache |
+| `dodge.DodgeBufferControllerOverride.js` | _onInitFragmentLoaded | a quality override segment queued before a home representation switch is still appended |
+| `dodge.DodgeBufferControllerOverride.js` | _onInitFragmentLoaded | a cached alternate init stays usable across repeated home representation switches |
 | `dodge.DodgeBufferControllerOverride.js` | _onInitFragmentLoaded | reset clears the local cache |
 
 ### R6.4 - Fragment releases are serialized
@@ -1882,7 +1889,7 @@ ignored by the request generator, which keeps blocking undefended representation
 | R5.8 Reported buffer level is never negative | 5 |
 | R6.1 Init segment sandwich for quality overrides | 8 |
 | R6.2 homeRepresentationId tagging | 5 |
-| R6.3 Dodge-owned alternate init cache, invalidated on quality switch | 8 |
+| R6.3 Dodge-owned alternate init cache, cleared only by reset | 8 |
 | R6.4 Fragment releases are serialized | 8 |
 | R7.1 Random walk delay bounded | 8 |
 | R7.2 Scheduling is scoped to correct stream processor | 3 |

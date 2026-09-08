@@ -610,32 +610,34 @@ describe('DodgeBufferControllerOverride', function () {
             expect(mockParent.appendToBuffer.callCount).to.equal(3);
         });
 
-        it('QUALITY_CHANGE_REQUESTED for this mediaType clears the local cache', async function () {
+        it('a quality override segment queued before a home representation switch is still appended', async function () {
             const alternateInit = { representation: { id: 'video_500k' }, homeRepresentationId: 'video_1000k' };
             const homeInit = { representation: { id: 'video_1000k' } };
+            mockParent.getInitChunkFromCache.withArgs('video_500k').returns(null);
             mockParent.getInitChunkFromCache.withArgs('video_1000k').returns(homeInit);
 
             override._onInitFragmentLoaded({ chunk: alternateInit });
 
             EventBus(context).getInstance().trigger(MediaPlayerEvents.QUALITY_CHANGE_REQUESTED, { mediaType: 'video' });
 
-            await override._onMediaFragmentLoaded({
-                chunk: { representation: { id: 'video_500k' }, homeRepresentationId: 'video_1000k' },
-                request: {}
-            });
+            const mediaChunk = { representation: { id: 'video_500k' }, homeRepresentationId: 'video_1000k' };
+            await override._onMediaFragmentLoaded({ chunk: mediaChunk, request: {} });
 
-            // Cache was cleared: stalls (no appends).
-            expect(mockParent.appendToBuffer.called).to.be.false; // jshint ignore:line
+            expect(mockParent.appendToBuffer.callCount).to.equal(3);
+            expect(mockParent.appendToBuffer.getCall(1).args[0]).to.equal(mediaChunk);
         });
 
-        it('QUALITY_CHANGE_REQUESTED for a different mediaType does not clear the local cache', async function () {
+        it('a cached alternate init stays usable across repeated home representation switches', async function () {
             const alternateInit = { representation: { id: 'video_500k' }, homeRepresentationId: 'video_1000k' };
             const homeInit = { representation: { id: 'video_1000k' } };
+            mockParent.getInitChunkFromCache.withArgs('video_500k').returns(null);
             mockParent.getInitChunkFromCache.withArgs('video_1000k').returns(homeInit);
 
             override._onInitFragmentLoaded({ chunk: alternateInit });
 
-            EventBus(context).getInstance().trigger(MediaPlayerEvents.QUALITY_CHANGE_REQUESTED, { mediaType: 'audio' });
+            const bus = EventBus(context).getInstance();
+            bus.trigger(MediaPlayerEvents.QUALITY_CHANGE_REQUESTED, { mediaType: 'video' });
+            bus.trigger(MediaPlayerEvents.QUALITY_CHANGE_REQUESTED, { mediaType: 'video' });
 
             await override._onMediaFragmentLoaded({
                 chunk: { representation: { id: 'video_500k' }, homeRepresentationId: 'video_1000k' },
