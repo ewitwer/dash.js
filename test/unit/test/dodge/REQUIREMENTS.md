@@ -1007,7 +1007,8 @@ The scan marks one cycle per **assembly group**, not per segment index. `DodgeHa
 | `dodge.DefenseRegistry.js` | isValidExtendedManifest | precomputes cycle.full: a quality override forms its own assembly group |
 | `dodge.DefenseRegistry.js` | isValidExtendedManifest | precomputes cycle.full: the last cycle of each quality group is the full one |
 | `dodge.DefenseRegistry.js` | isValidExtendedManifest | precomputes cycle.full: a numeric and a string quality are separate groups |
-| `dodge.DefenseRegistry.js` | isValidExtendedManifest | precomputes cycle.full: an override group is assembled at end of stream too |
+| `dodge.DefenseRegistry.js` | isValidExtendedManifest | precomputes cycle.full: an override group flushed by a later directive |
+| `dodge.DefenseRegistry.js` | isValidExtendedManifest | rejects an override group fetched after its index was flushed |
 | `dodge.DefenseRegistry.js` | isValidExtendedManifest | precomputes cycle.full: multiple buffer windows each get independent full marks |
 | `dodge.DefenseRegistry.js` | isValidExtendedManifest | precomputes cycle.full: selective buffer only marks target indices, remainder marked at next flush |
 | `dodge.DefenseRegistry.js` | isValidExtendedManifest | precomputes cycle.full: empty buffer array does not force full |
@@ -1115,7 +1116,7 @@ The optional `period` field on stream entries must be a non-negative integer whe
 
 ### R9.11 - Progressive flag validation and self-contained seed requirement
 
-A stream entry may carry an optional `progressive` boolean (string `'true'`/`'false'` accepted and coerced; other values rejected). When `progressive` is true, the stream's data cycles are incomplete and will be extended at runtime (progressive defense generation). The initial data (seed) in a progressive stream, in the original extended manifest, MUST be self-contained: `checkDataCycles` runs the `full` pass with the "require fully flushed" mode, so every non-padding segment index the seed introduces must be flushed within the seed. This is because later appended batches cannot flush an earlier batch's indices. A complete (non-progressive) manifest keeps the implicit end-of-stream flush.
+A stream entry may carry an optional `progressive` boolean (string `'true'`/`'false'` accepted and coerced; other values rejected). When `progressive` is true, the stream's data cycles are incomplete and will be extended at runtime (progressive defense generation). The initial data (seed) in a progressive stream, in the original extended manifest, MUST be self-contained: every non-padding segment index the seed introduces must be flushed within the seed, because later appended batches cannot flush an earlier batch's indices. R9.16 holds a complete manifest to the same rule for its own reason, so what `progressive` changes here is only how a leftover index is described in the rejection.
 
 | File | Description | Test |
 |---|---|---|
@@ -1128,7 +1129,7 @@ A stream entry may carry an optional `progressive` boolean (string `'true'`/`'fa
 | `dodge.DefenseRegistry.js` | progressive flag validation | progressive stream with self-contained data (all introduced indices flushed), true |
 | `dodge.DefenseRegistry.js` | progressive flag validation | progressive stream leaving an introduced index unflushed, false |
 | `dodge.DefenseRegistry.js` | progressive flag validation | progressive stream with empty data (init-only seed), true |
-| `dodge.DefenseRegistry.js` | progressive flag validation | non-progressive counterpart of the same unflushed data is valid (implicit end-of-stream flush) |
+| `dodge.DefenseRegistry.js` | progressive flag validation | a complete manifest is held to the same rule as a progressive batch |
 
 ### R9.12 - Runtime append and finalize of progressive manifests
 
@@ -1204,6 +1205,42 @@ because finalizing is what decides where the content ends.
 | `dodge.DodgeDashHandlerOverride.js` | a batch ending in padding is not the trailing phase | padding left over from a batch becomes trailing once the stream is finalized |
 | `dodge.DodgeDashHandlerOverride.js` | a batch ending in padding is not the trailing phase | padding already fetched before finalizeStream keeps trail false |
 | `dodge.DodgeDashHandlerOverride.js` | a batch ending in padding is not the trailing phase | a seek onto the last generated content cycle does not enter the trailing phase |
+
+### R9.16 - Every segment index is flushed by a buffer directive
+
+`cycle.full` assembles the pieces accumulated for an assembly group. What releases the assembled
+chunk to the SourceBuffer is the buffer directive, and there is no end-of-stream flush anywhere in
+`DodgeHandler`: the only two things that drain `pendingInit` and `pendingMedia` are a later cycle
+whose buffer directive is active (R2.9) and a home representation switch (R2.15). A segment index
+still pending when a stream's data cycles run out is therefore downloaded, assembled, and parked
+in `pendingMedia` for the life of the stream, holding its bytes and reaching no buffer.
+
+`computeDataCycleFull` rejects the manifest instead. This covers both shapes it can take, which fail
+differently but fail the same way:
+
+- The index is the stream's own content and no directive ever names it. Playback stops short of the
+  end with nothing logged, which is the worse of the two because it looks like a stall.
+- The index was flushed earlier and a later cycle fetches it again at another quality. Nothing is
+  missing from playback, but the sibling's bytes are assembled and then held for nothing.
+
+The second shape is the one a defense might actually want, and the way to express it is a padding
+cycle, whose response is never accumulated (R2.2). `padding` and `quality` compose, so a decoy fetch
+of a sibling's segment costs no accumulation, no assembly, and no queue entry.
+
+| File | Description | Test |
+|---|---|---|
+| `dodge.DefenseRegistry.js` | every segment index is flushed | a stream whose last content index is never flushed, false |
+| `dodge.DefenseRegistry.js` | every segment index is flushed | a stream that flushes nothing at all, false |
+| `dodge.DefenseRegistry.js` | every segment index is flushed | a selective buffer that never names an index it introduced, false |
+| `dodge.DefenseRegistry.js` | every segment index is flushed | names every unflushed index in the rejection message |
+| `dodge.DefenseRegistry.js` | every segment index is flushed | a stream whose last content cycle carries the buffer flag, true |
+| `dodge.DefenseRegistry.js` | every segment index is flushed | trailing padding after the last flush does not leave an index pending, true |
+| `dodge.DefenseRegistry.js` | every segment index is flushed | a padding cycle carrying the buffer flag closes the window, true |
+| `dodge.DefenseRegistry.js` | every segment index is flushed | a post-flush decoy expressed as a padding cycle, true |
+| `dodge.DefenseRegistry.js` | every segment index is flushed | a stream with no data cycles at all, true |
+| `dodge.DefenseRegistry.js` | every segment index is flushed | an index refetched and reflushed in a later window, true |
+| `dodge.DefenseRegistry.js` | isValidExtendedManifest | rejects an override group fetched after its index was flushed |
+| `dodge.DefenseRegistry.js` | progressive flag validation | a complete manifest is held to the same rule as a progressive batch |
 
 ---
 

@@ -163,7 +163,7 @@ describe('DefenseRegistry', function () {
         it('stream with empty init array (self-initializing stream), true', function () {
             const m = {
                 start: { mpd: '<MPD/>', base_uri: 'https://x.com/' },
-                streams: [{ label: 'a', init: [], data: [{ index: 0, range: '0-999' }] }]
+                streams: [{ label: 'a', init: [], data: [{ index: 0, range: '0-999', buffer: true }] }]
             };
             expect(isValidExtendedManifest(m)).to.be.true; // jshint ignore:line
         });
@@ -370,7 +370,7 @@ describe('DefenseRegistry', function () {
         it('data cycle with buffer = [0, 2] (array of non-negative integers), true', function () {
             const m = {
                 start: { mpd: '<MPD/>', base_uri: 'https://x.com/' },
-                streams: [{ label: 'a', init: [{}], data: [{ index: 0 }, { index: 1 }, { index: 2, buffer: [0, 2] }] }]
+                streams: [{ label: 'a', init: [{}], data: [{ index: 0 }, { index: 1 }, { index: 2, buffer: [0, 2] }, { index: 1, buffer: [1] }] }]
             };
             expect(isValidExtendedManifest(m)).to.be.true; // jshint ignore:line
         });
@@ -378,7 +378,7 @@ describe('DefenseRegistry', function () {
         it('data cycle with buffer = [] (empty array), true', function () {
             const m = {
                 start: { mpd: '<MPD/>', base_uri: 'https://x.com/' },
-                streams: [{ label: 'a', init: [{}], data: [{ index: 0, buffer: [] }] }]
+                streams: [{ label: 'a', init: [{}], data: [{ index: 0, buffer: [] }, { index: 0, buffer: true }] }]
             };
             expect(isValidExtendedManifest(m)).to.be.true; // jshint ignore:line
         });
@@ -437,7 +437,7 @@ describe('DefenseRegistry', function () {
         it('data cycle with buffer string "false", true', function () {
             const m = {
                 start: { mpd: '<MPD/>', base_uri: 'https://x.com/' },
-                streams: [{ label: 'a', init: [{}], data: [{ index: 0, buffer: 'false' }] }]
+                streams: [{ label: 'a', init: [{}], data: [{ index: 0, buffer: 'false' }, { index: 0, buffer: true }] }]
             };
             expect(isValidExtendedManifest(m)).to.be.true; // jshint ignore:line
         });
@@ -1006,7 +1006,10 @@ describe('DefenseRegistry', function () {
             expect(data[2].full).to.be.true;
         });
 
-        it('precomputes cycle.full: an override group is assembled at end of stream too', function () {
+        it('rejects an override group fetched after its index was flushed', function () {
+            // Nothing releases what cycle 1 assembles: its index was already
+            // flushed, so no later buffer directive names it. A decoy fetch of a
+            // sibling's segment is a padding cycle, which is never accumulated.
             const m = {
                 start: { mpd: '<MPD/>', base_uri: 'https://x.com/' },
                 streams: [{
@@ -1018,10 +1021,25 @@ describe('DefenseRegistry', function () {
                     ]
                 }]
             };
+            expect(isValidExtendedManifest(m)).to.be.false; // jshint ignore:line
+        });
+
+        it('precomputes cycle.full: an override group flushed by a later directive', function () {
+            const m = {
+                start: { mpd: '<MPD/>', base_uri: 'https://x.com/' },
+                streams: [{
+                    label: 'a',
+                    init: [{}],
+                    data: [
+                        { index: 0 }, // cycle 0: home group
+                        { index: 0, quality: 'rep_low', buffer: true }, // cycle 1: flushes both groups
+                    ]
+                }]
+            };
             isValidExtendedManifest(m);
             const data = m.streams[0].data;
             expect(data[0].full).to.be.true;
-            expect(data[1].full).to.be.true; // implicit end-of-stream flush
+            expect(data[1].full).to.be.true;
         });
 
         it('precomputes cycle.full: multiple buffer windows each get independent full marks', function () {
@@ -1304,9 +1322,86 @@ describe('DefenseRegistry', function () {
             expect(isValidExtendedManifest(progressiveManifest([]))).to.be.true; // jshint ignore:line
         });
 
-        it('non-progressive counterpart of the same unflushed data is valid (implicit end-of-stream flush)', function () {
+        it('a complete manifest is held to the same rule as a progressive batch', function () {
             const m = { start: { mpd: '<MPD/>', base_uri: 'https://x.com/' }, streams: [{ label: 'a', init: [{}], data: [{ index: 0 }] }] };
-            expect(isValidExtendedManifest(m)).to.be.true; // jshint ignore:line
+            expect(isValidExtendedManifest(m)).to.be.false; // jshint ignore:line
+        });
+    });
+
+    // every segment index is flushed
+
+    describe('every segment index is flushed', function () {
+
+        function manifest(data) {
+            return {
+                start: { mpd: '<MPD/>', base_uri: 'https://x.com/' },
+                streams: [{ label: 'a', init: [{}], data }]
+            };
+        }
+
+        function rejectionFor(data) {
+            const logged = [];
+            const accepted = isValidExtendedManifest(manifest(data), {
+                error: (m) => logged.push(m),
+                warn: () => {}
+            });
+            return { accepted, messages: logged };
+        }
+
+        it('a stream whose last content index is never flushed, false', function () {
+            expect(rejectionFor([{ index: 0, buffer: true }, { index: 1 }]).accepted).to.be.false; // jshint ignore:line
+        });
+
+        it('a stream that flushes nothing at all, false', function () {
+            expect(rejectionFor([{ index: 0 }, { index: 1 }]).accepted).to.be.false; // jshint ignore:line
+        });
+
+        it('a selective buffer that never names an index it introduced, false', function () {
+            expect(rejectionFor([{ index: 0 }, { index: 1, buffer: [0] }]).accepted).to.be.false; // jshint ignore:line
+        });
+
+        it('names every unflushed index in the rejection message', function () {
+            const messages = rejectionFor([{ index: 3 }, { index: 4 }]).messages;
+            expect(messages.length).to.equal(1);
+            expect(messages[0]).to.include('3');
+            expect(messages[0]).to.include('4');
+        });
+
+        it('a stream whose last content cycle carries the buffer flag, true', function () {
+            expect(rejectionFor([{ index: 0 }, { index: 1, buffer: true }]).accepted).to.be.true; // jshint ignore:line
+        });
+
+        it('trailing padding after the last flush does not leave an index pending, true', function () {
+            expect(rejectionFor([
+                { index: 0, buffer: true },
+                { index: 0, padding: true },
+                { index: 0, padding: true }
+            ]).accepted).to.be.true; // jshint ignore:line
+        });
+
+        it('a padding cycle carrying the buffer flag closes the window, true', function () {
+            expect(rejectionFor([{ index: 0 }, { index: 0, padding: true, buffer: true }]).accepted).to.be.true; // jshint ignore:line
+        });
+
+        it('a post-flush decoy expressed as a padding cycle, true', function () {
+            // The supported way to fetch a sibling's segment after the real one
+            // has been appended: padding responses are never accumulated, so
+            // there is nothing to assemble and nothing to release.
+            expect(rejectionFor([
+                { index: 0, buffer: true },
+                { index: 0, quality: 'rep_low', padding: true }
+            ]).accepted).to.be.true; // jshint ignore:line
+        });
+
+        it('a stream with no data cycles at all, true', function () {
+            expect(rejectionFor([]).accepted).to.be.true; // jshint ignore:line
+        });
+
+        it('an index refetched and reflushed in a later window, true', function () {
+            expect(rejectionFor([
+                { index: 0, buffer: true },
+                { index: 0, buffer: true }
+            ]).accepted).to.be.true; // jshint ignore:line
         });
     });
 

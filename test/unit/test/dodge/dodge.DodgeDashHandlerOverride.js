@@ -652,6 +652,7 @@ describe('DodgeDashHandlerOverride', function () {
                         { index: 0 }, // cycle 0
                         { index: 1, buffer: [0] }, // cycle 1, selective buffer
                         { index: 2, buffer: [] }, // cycle 2, empty array
+                        { index: 2, buffer: true }, // cycle 3, closes the window on 1 and 2
                     ]
                 }]
             };
@@ -724,7 +725,7 @@ describe('DodgeDashHandlerOverride', function () {
                     data: [
                         { index: 0 }, // cycle 0, no override
                         { index: 1, quality: 'rep_low' }, // cycle 1, string override
-                        { index: 2, quality: 1 }, // cycle 2, integer override -> rep_mid
+                        { index: 2, quality: 1, buffer: true }, // cycle 2, integer override -> rep_mid
                     ]
                 }]
             };
@@ -773,7 +774,7 @@ describe('DodgeDashHandlerOverride', function () {
                 streams: [{
                     label: 'rep0',
                     init: [{ range: '0-855', buffer: true }],
-                    data: [{ index: 0, quality: 99 }]
+                    data: [{ index: 0, quality: 99, buffer: true }]
                 }]
             });
             override.updateDefendedStreamInfo(rep);
@@ -789,7 +790,7 @@ describe('DodgeDashHandlerOverride', function () {
                 streams: [{
                     label: 'rep0',
                     init: [{ range: '0-855', buffer: true }],
-                    data: [{ index: 0, quality: 'rep_nonexistent' }]
+                    data: [{ index: 0, quality: 'rep_nonexistent', buffer: true }]
                 }]
             });
             override.updateDefendedStreamInfo(rep);
@@ -805,7 +806,7 @@ describe('DodgeDashHandlerOverride', function () {
                 streams: [{
                     label: 'rep0',
                     init: [{ range: '0-855', buffer: true }],
-                    data: [{ index: 0, quality: 'rep_low' }]
+                    data: [{ index: 0, quality: 'rep_low', buffer: true }]
                 }]
             });
             override.updateDefendedStreamInfo(rep);
@@ -828,7 +829,7 @@ describe('DodgeDashHandlerOverride', function () {
                     init: [{ range: '0-855', buffer: true }],
                     data: [
                         { index: 0, quality: 'rep_nonexistent' },
-                        { index: 1 },
+                        { index: 1, buffer: true },
                     ]
                 }]
             });
@@ -853,7 +854,7 @@ describe('DodgeDashHandlerOverride', function () {
                     init: [{ range: '0-855', buffer: true }],
                     data: [
                         { index: 0, range: '0-999', quality: 'rep_low' },
-                        { index: 0, range: '1000-' },
+                        { index: 0, range: '1000-', buffer: true },
                     ]
                 }]
             });
@@ -874,7 +875,7 @@ describe('DodgeDashHandlerOverride', function () {
                 streams: [{
                     label: 'rep0',
                     init: [{ range: '0-855', buffer: true }],
-                    data: [{ index: 0, quality: 'rep_nonexistent' }]
+                    data: [{ index: 0, quality: 'rep_nonexistent', buffer: true }]
                 }]
             });
             override.updateDefendedStreamInfo(rep);
@@ -893,7 +894,7 @@ describe('DodgeDashHandlerOverride', function () {
                     init: [{ range: '0-855', buffer: true }],
                     data: [
                         { index: 0 },
-                        { index: 1, quality: 'rep_low' },
+                        { index: 1, quality: 'rep_low', buffer: true },
                     ]
                 }]
             });
@@ -952,7 +953,7 @@ describe('DodgeDashHandlerOverride', function () {
                     init: [{ range: '0-855', buffer: true }],
                     data: [
                         { index: 0 },
-                        { index: 1, quality: 'rep_low' },
+                        { index: 1, quality: 'rep_low', buffer: true },
                     ]
                 }]
             });
@@ -972,7 +973,7 @@ describe('DodgeDashHandlerOverride', function () {
                     init: [{ range: '0-855', buffer: true }],
                     data: [
                         { index: 0 },
-                        { index: 1, quality: 'rep_low' },
+                        { index: 1, quality: 'rep_low', buffer: true },
                     ]
                 }]
             });
@@ -990,7 +991,7 @@ describe('DodgeDashHandlerOverride', function () {
                 streams: [{
                     label: 'rep0',
                     init: [{ range: '0-855', buffer: true }],
-                    data: [{ index: 0, quality: 'rep_low' }]
+                    data: [{ index: 0, quality: 'rep_low', buffer: true }]
                 }]
             });
             override.updateDefendedStreamInfo(rep);

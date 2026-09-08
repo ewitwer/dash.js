@@ -497,17 +497,17 @@ function markAssemblyGroups(data, from, to, target) {
  * validates that selective buffer arrays only reference indices that have
  * appeared (and not yet been flushed) within this run.
  *
+ * Every non-padding index the run introduces MUST also be flushed within it.
+ *
  * @param {Array} data - The cycle array (a whole stream or a single append batch).
- * @param {boolean} requireFullyFlushed - When true (progressive seed / incremental
- *        append batch), every non-padding index introduced MUST be flushed
- *        within this run; any leftover pending index is a rejection. When false
- *        (complete manifest), leftover indices get their last occurrence marked
- *        full (implicit end-of-stream flush).
+ * @param {boolean} isProgressiveBatch - True for a progressive seed or an
+ *        incremental append batch, which only changes how a leftover index is
+ *        described in the rejection message.
  * @param {string} label - Stream label, for error messages.
  * @param {Object} [logger] - Optional logger for rejection messages.
  * @returns {boolean} True on success.
  */
-function computeDataCycleFull(data, requireFullyFlushed, label, logger) {
+function computeDataCycleFull(data, isProgressiveBatch, label, logger) {
     for (let i = 0; i < data.length; i++) {
         data[i].full = false;
     }
@@ -562,20 +562,17 @@ function computeDataCycleFull(data, requireFullyFlushed, label, logger) {
         }
     }
 
-    // Every index a progressive batch introduces MUST be flushed within that same batch.
-    if (requireFullyFlushed) {
-        if (pendingIndices.size > 0) {
-            if (logger) {
-                logger.error('Extended manifest rejected: defended stream info with label ' + label + ', progressive batch leaves segment index(es) ' + Array.from(pendingIndices).join(', ') + ' unbuffered; every index a progressive batch introduces must be flushed within the same batch');
-            }
-            return false;
+    // Every index the run introduces MUST be flushed before the run ends.
+    if (pendingIndices.size > 0) {
+        if (logger) {
+            logger.error('Extended manifest rejected: defended stream info with label ' + label + ', ' +
+                (isProgressiveBatch ? 'progressive batch' : 'data cycles') + ' leave(s) segment index(es) ' +
+                Array.from(pendingIndices).join(', ') + ' unbuffered; every segment index must be flushed ' +
+                'by a buffer directive within the cycles that introduce it, and bytes that are not meant ' +
+                'to be played belong in a padding cycle');
         }
-        return true;
+        return false;
     }
-
-    // Complete manifest: mark remaining unflushed indices (implicit flush at
-    // end of stream).
-    markAssemblyGroups(data, _earliestPending(pendingSince, pendingIndices), data.length - 1, pendingIndices);
 
     return true;
 }
