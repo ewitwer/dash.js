@@ -486,6 +486,9 @@ Two complementary mechanisms prevent spurious seeks during the trailing phase:
 
 ### R4.4 - `getIsTrailing()` correctly reflects the trailing phase
 
+The phase begins one cycle earlier than `request.trail` does: as soon as the last content cycle has
+been requested, because every cycle after it is padding. A progressive stream is excepted, see R9.15.
+
 | File | Description | Test |
 |---|---|---|
 | `dodge.DodgeDashHandlerOverride.js` | Defended behavior with extended manifest | getIsTrailing() returns false before any cycles are consumed |
@@ -1170,6 +1173,30 @@ When `defendedStreamInfo.progressive` is true, `getNextSegmentRequest` stalls (r
 | `dodge.DodgeHandler.js` | progressive append and finalize delegation | finalizeStream clears the progressive flag and returns true |
 | `dodge.DodgeHandler.js` | progressive append and finalize delegation | finalizeStream appends trailing padding cycles |
 | `dodge.DodgeHandler.js` | progressive append and finalize delegation | appendDataCycles returns false after finalizeStream |
+
+### R9.15 - A progressive stream is never in the trailing phase
+
+`request.trail` and `getIsTrailing()` both ask whether a cycle sits past all playable content, and
+both answer it from `maxNoPad` and the length of `data`. On a progressive stream those describe the
+cycles generated so far, not the cycles the defense will end up with, so neither can answer the
+question until `finalizeStream` runs. Both therefore report false while `progressive` is set,
+the same guard `getNextSegmentRequest` and `isLastSegmentRequested` already apply (R9.13).
+
+What `finalizeStream` moves is the flag, not `maxNoPad`. It appends padding cycles only, and
+`computeMaxNoPad` advances on non-padding cycles alone. Padding sitting at the end of the
+generated data is therefore trailing or not according to when it is fetched: `trail` is false while
+the stream is progressive and true for that same cycle once it has been finalized. Both are right,
+because finalizing is what decides where the content ends.
+
+| File | Description | Test |
+|---|---|---|
+| `dodge.DodgeDashHandlerOverride.js` | a batch ending in padding is not the trailing phase | a padding cycle at the end of the generated data does not set trail |
+| `dodge.DodgeDashHandlerOverride.js` | a batch ending in padding is not the trailing phase | getIsTrailing() is false at the end of the generated data |
+| `dodge.DodgeDashHandlerOverride.js` | a batch ending in padding is not the trailing phase | an appended batch that ends in padding still does not set trail |
+| `dodge.DodgeDashHandlerOverride.js` | a batch ending in padding is not the trailing phase | finalizeStream turns the trailing phase back on |
+| `dodge.DodgeDashHandlerOverride.js` | a batch ending in padding is not the trailing phase | padding left over from a batch becomes trailing once the stream is finalized |
+| `dodge.DodgeDashHandlerOverride.js` | a batch ending in padding is not the trailing phase | padding already fetched before finalizeStream keeps trail false |
+| `dodge.DodgeDashHandlerOverride.js` | a batch ending in padding is not the trailing phase | a seek onto the last generated content cycle does not enter the trailing phase |
 
 ---
 
@@ -1865,6 +1892,7 @@ and the unit tests, fall back to this bundle's own instance.
 | R9.12 Runtime append and finalize of progressive manifests | 18 |
 | R9.13 Override stalls (does not finish) while progressive | 6 |
 | R9.14 DodgeHandler progressive append/finalize delegation | 6 |
+| R9.15 A progressive stream is never in the trailing phase | 7 |
 | R10.1 Manifest parsing and graceful degradation | 4 |
 | R10.2 Strict mode manifest/max error firing | 6 |
 | R10.3 Non-strict mode no error | 1 |
@@ -1895,4 +1923,4 @@ and the unit tests, fall back to this bundle's own instance.
 | R12.4 Error fragment stalling | 8 |
 | R12.5 Range-ignoring origin detection | 15 |
 | R12.6 Dodge logs through the player's Debug | 3 |
-| **Total** | **769** |
+| **Total** | **776** |

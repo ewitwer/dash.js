@@ -297,6 +297,23 @@ function DodgeDashHandlerOverride(config) {
     }
 
     /**
+     * Whether the cycle at `position` sits past all playable content.
+     *
+     * A progressive stream cannot answer this yet. `maxNoPad` and the length of
+     * `data` describe the cycles generated so far rather than the ones the
+     * defense will end up with, so a batch ending in padding, which is an
+     * ordinary shape, would read as the trailing phase while content is still
+     * being generated. `finalizeStream` settles it, the same way it settles
+     * `isLastSegmentRequested`.
+     *
+     * @param {number} position - Cycle position within `data`.
+     * @returns {boolean} True when the cycle is trailing padding.
+     */
+    function _isTrailingCycle(position) {
+        return !defendedStreamInfo['progressive'] && position > defendedStreamInfo['maxNoPad'];
+    }
+
+    /**
      * Resolve a segment by its index.
      *
      * SegmentsController routes SegmentTimeline to a getter that takes no index
@@ -480,7 +497,7 @@ function DodgeDashHandlerOverride(config) {
         request.full = !!cycle.full;
         request.buffer = Array.isArray(cycle.buffer) ? cycle.buffer : !!cycle.buffer;
         request.padding = !!cycle.padding;
-        request.trail = cycleIndex > defendedStreamInfo['maxNoPad'];
+        request.trail = _isTrailingCycle(cycleIndex);
         return request;
     }
 
@@ -576,7 +593,7 @@ function DodgeDashHandlerOverride(config) {
         request.full = !!cycle.full;
         request.buffer = Array.isArray(cycle.buffer) ? cycle.buffer : !!cycle.buffer;
         request.padding = !!cycle.padding;
-        request.trail = cycleIndex > defendedStreamInfo['maxNoPad'];
+        request.trail = _isTrailingCycle(cycleIndex);
         return request;
     }
 
@@ -783,8 +800,13 @@ function DodgeDashHandlerOverride(config) {
         return !!defendedStreamInfo;
     }
 
+    // Reads one cycle earlier than _isTrailingCycle: the phase begins as soon as
+    // the last content cycle has been requested, because what follows it is
+    // padding. The progressive guard is the same one, and for the same reason.
     function getIsTrailing() {
-        return !!(defendedStreamInfo && lastCycleIndex >= defendedStreamInfo['maxNoPad'] && lastCycleIndex < defendedStreamInfo['data'].length - 1);
+        return !!(defendedStreamInfo && !defendedStreamInfo['progressive'] &&
+            lastCycleIndex >= defendedStreamInfo['maxNoPad'] &&
+            lastCycleIndex < defendedStreamInfo['data'].length - 1);
     }
 
     setup();

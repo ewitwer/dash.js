@@ -243,6 +243,124 @@ describe('DodgeDashHandlerOverride', function () {
             expect(off).to.be.null; // jshint ignore:line
             expect(override.isLastSegmentRequested(rep, NaN)).to.be.true; // jshint ignore:line
         });
+
+        // A batch that ends in padding is an ordinary shape: fetch the pieces,
+        // then a padding cycle that also carries the flush. Until finalizeStream
+        // runs, maxNoPad and data.length describe only what has been generated,
+        // so neither can say where the content ends.
+        describe('a batch ending in padding is not the trailing phase', function () {
+
+            it('a padding cycle at the end of the generated data does not set trail', function () {
+                addProgressive([
+                    { index: 0 },
+                    { index: 1 },
+                    { index: 2, padding: true, buffer: true }
+                ]);
+                override.getNextSegmentRequest({}, rep); // cycle 0
+                override.getNextSegmentRequest({}, rep); // cycle 1
+                const pad = override.getNextSegmentRequest({}, rep); // cycle 2, padding
+
+                expect(pad.padding).to.be.true; // jshint ignore:line
+                expect(pad.trail).to.be.false; // jshint ignore:line
+            });
+
+            it('getIsTrailing() is false at the end of the generated data', function () {
+                addProgressive([
+                    { index: 0 },
+                    { index: 1 },
+                    { index: 2, padding: true, buffer: true }
+                ]);
+                override.getNextSegmentRequest({}, rep); // cycle 0
+                override.getNextSegmentRequest({}, rep); // cycle 1
+
+                expect(override.getIsTrailing()).to.be.false; // jshint ignore:line
+
+                override.getNextSegmentRequest({}, rep); // cycle 2, padding
+                expect(override.getIsTrailing()).to.be.false; // jshint ignore:line
+            });
+
+            it('an appended batch that ends in padding still does not set trail', function () {
+                addProgressive([{ index: 0, buffer: true }]);
+                override.getNextSegmentRequest({}, rep); // cycle 0
+                defenseController.appendDataCycles('rep0', 0, [
+                    { index: 1 },
+                    { index: 2, padding: true, buffer: true }
+                ]);
+                override.getNextSegmentRequest({}, rep); // cycle 1
+                const pad = override.getNextSegmentRequest({}, rep); // cycle 2, padding
+
+                expect(pad.trail).to.be.false; // jshint ignore:line
+                expect(override.getIsTrailing()).to.be.false; // jshint ignore:line
+            });
+
+            it('finalizeStream turns the trailing phase back on', function () {
+                addProgressive([{ index: 0, buffer: true }]);
+                override.getNextSegmentRequest({}, rep); // cycle 0
+                defenseController.finalizeStream('rep0', 0, [
+                    { index: 1, padding: true },
+                    { index: 2, padding: true }
+                ]);
+                const pad = override.getNextSegmentRequest({}, rep); // cycle 1, padding
+
+                expect(pad.trail).to.be.true; // jshint ignore:line
+                expect(override.getIsTrailing()).to.be.true; // jshint ignore:line
+            });
+
+            // finalizeStream appends padding only, so it cannot move maxNoPad.
+            // What moves is the progressive flag, which is what decides whether
+            // the padding already sitting at the end of the data is trailing.
+            it('padding left over from a batch becomes trailing once the stream is finalized', function () {
+                addProgressive([{ index: 0, buffer: true }]);
+                defenseController.appendDataCycles('rep0', 0, [
+                    { index: 1 },
+                    { index: 1, padding: true, buffer: true }
+                ]);
+                override.getNextSegmentRequest({}, rep); // cycle 0
+                override.getNextSegmentRequest({}, rep); // cycle 1
+
+                const before = defenseController.getDefendedStreamInfo('rep0', 0).maxNoPad;
+                defenseController.finalizeStream('rep0', 0); // no further padding
+                const after = defenseController.getDefendedStreamInfo('rep0', 0).maxNoPad;
+
+                expect(after).to.equal(before);
+
+                const pad = override.getNextSegmentRequest({}, rep); // cycle 2, padding
+                expect(pad.trail).to.be.true; // jshint ignore:line
+            });
+
+            it('padding already fetched before finalizeStream keeps trail false', function () {
+                addProgressive([{ index: 0, buffer: true }]);
+                defenseController.appendDataCycles('rep0', 0, [
+                    { index: 1 },
+                    { index: 1, padding: true, buffer: true }
+                ]);
+                override.getNextSegmentRequest({}, rep); // cycle 0
+                override.getNextSegmentRequest({}, rep); // cycle 1
+                const pad = override.getNextSegmentRequest({}, rep); // cycle 2, while progressive
+                expect(pad.trail).to.be.false; // jshint ignore:line
+
+                defenseController.finalizeStream('rep0', 0);
+
+                // Nothing is left to fetch, so the stream finishes rather than
+                // re-entering the trailing phase for a cycle already consumed.
+                expect(override.getIsTrailing()).to.be.false; // jshint ignore:line
+                expect(override.getNextSegmentRequest({}, rep)).to.be.null; // jshint ignore:line
+                expect(override.isLastSegmentRequested(rep, NaN)).to.be.true; // jshint ignore:line
+            });
+
+            it('a seek onto the last generated content cycle does not enter the trailing phase', function () {
+                addProgressive([
+                    { index: 0 },
+                    { index: 1, padding: true, buffer: true }
+                ]);
+                segmentsController.getSegmentByTime.returns(makeSegment(rep, 0));
+
+                const request = override.getSegmentRequestForTime({}, rep, 0);
+
+                expect(request).to.exist; // jshint ignore:line
+                expect(override.getIsTrailing()).to.be.false; // jshint ignore:line
+            });
+        });
     });
 
     // Defended behavior with extended manifest
