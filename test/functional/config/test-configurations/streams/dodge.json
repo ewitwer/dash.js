@@ -141,6 +141,14 @@
       "includedTestfiles": [
         "dodge/quality-switch"
       ]
+    },
+    {
+      "name": "BBB Progressive (3 seeded segments, generated at runtime)",
+      "type": "vod",
+      "url": "/base/test/functional/content/dodge/bbb_30fps_progressive.exmfst.json",
+      "includedTestfiles": [
+        "dodge/progressive"
+      ]
     }
   ]
 }

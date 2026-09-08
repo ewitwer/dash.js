@@ -729,6 +729,61 @@ class DashJsAdapter {
         }
     }
 
+    // Progressive defense generation.
+    appendDodgeDataCycles(label, periodIndex, cycles) {
+        return this.player.appendDodgeDataCycles(label, periodIndex, cycles);
+    }
+
+    finalizeDodgeStream(label, periodIndex, paddingCycles) {
+        return this.player.finalizeDodgeStream(label, periodIndex, paddingCycles);
+    }
+
+    _dodgeTrafficEntry(request) {
+        return {
+            type: request.type,
+            mediaType: request.mediaType,
+            url: request.url,
+            index: request.index,
+            range: request.range || null,
+            full: request.full,
+            buffer: request.buffer,
+            padding: request.padding,
+            trail: request.trail,
+            representationId: request.representation ? request.representation.id : null,
+            homeRepresentationId: request.homeRepresentationId || null,
+            requestRef: request,
+            timestamp: Date.now()
+        };
+    }
+
+    /**
+     * Record Dodge traffic into a log that can be read at any point, rather than
+     * awaited as one batch. Progressive generation is a loop of append, observe,
+     * append, so a test has to see what has been requested so far while
+     * playback is still going.
+     */
+    startDodgeTrafficLog() {
+        this.stopDodgeTrafficLog();
+        this.dodgeTrafficLog = [];
+        this.dodgeTrafficListener = (e) => {
+            if (e && e.request) {
+                this.dodgeTrafficLog.push(this._dodgeTrafficEntry(e.request));
+            }
+        };
+        this.player.on(MediaPlayer.events.FRAGMENT_LOADING_STARTED, this.dodgeTrafficListener);
+    }
+
+    getDodgeTrafficLog() {
+        return this.dodgeTrafficLog ? this.dodgeTrafficLog.slice() : [];
+    }
+
+    stopDodgeTrafficLog() {
+        if (this.dodgeTrafficListener) {
+            this.player.off(MediaPlayer.events.FRAGMENT_LOADING_STARTED, this.dodgeTrafficListener);
+            this.dodgeTrafficListener = null;
+        }
+    }
+
     collectDodgeTraffic(timeoutValue, minRequests = Infinity) {
         return new Promise((resolve) => {
             const traffic = [];
@@ -742,21 +797,7 @@ class DashJsAdapter {
 
             const _onStarted = (e) => {
                 if (e && e.request) {
-                    traffic.push({
-                        type: e.request.type,
-                        mediaType: e.request.mediaType,
-                        url: e.request.url,
-                        index: e.request.index,
-                        range: e.request.range || null,
-                        full: e.request.full,
-                        buffer: e.request.buffer,
-                        padding: e.request.padding,
-                        trail: e.request.trail,
-                        representationId: e.request.representation ? e.request.representation.id : null,
-                        homeRepresentationId: e.request.homeRepresentationId || null,
-                        requestRef: e.request,
-                        timestamp: Date.now()
-                    });
+                    traffic.push(this._dodgeTrafficEntry(e.request));
                     if (traffic.length >= minRequests) {
                         _done();
                     }
