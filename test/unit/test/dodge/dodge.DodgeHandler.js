@@ -11,6 +11,7 @@ import Settings from '../../../../src/core/Settings.js';
 import { getDodgeSettings } from '../../../../src/dodge/utils/DodgeSettings.js';
 import Debug from '../../../../src/core/Debug.js';
 import DodgeScheduleControllerOverride from '../../../../src/dodge/overrides/DodgeScheduleControllerOverride.js';
+import { createDodgeContext, releaseDodgeContexts } from '../../helpers/DodgeContexts.js';
 
 import sinon from 'sinon';
 import { expect } from 'chai';
@@ -43,7 +44,7 @@ describe('DodgeHandler', function () {
     let context, dodgeHandler;
 
     beforeEach(function () {
-        context = {};
+        context = createDodgeContext();
 
         const eventBus = EventBus(context).getInstance();
         const settings = Settings(context).getInstance();
@@ -59,6 +60,7 @@ describe('DodgeHandler', function () {
 
     afterEach(function () {
         dodgeHandler.reset();
+        releaseDodgeContexts();
     });
 
     // tryProcessExtendedManifest
@@ -217,7 +219,7 @@ describe('DodgeHandler', function () {
         });
 
         it('strictMode false: warns that strict mode is disabled', function () {
-            const ctx = {};
+            const ctx = createDodgeContext();
             const eventBus = EventBus(ctx).getInstance();
             const settings = Settings(ctx).getInstance();
             settings.update({ debug: { dispatchEvent: true, logLevel: Debug.LOG_LEVEL_WARNING } });
@@ -333,7 +335,7 @@ describe('DodgeHandler', function () {
         let eventBus, settings, logMessages, testListener;
 
         beforeEach(function () {
-            context = {};
+            context = createDodgeContext();
             eventBus = EventBus(context).getInstance();
             settings = Settings(context).getInstance();
             settings.update({ debug: { dispatchEvent: true, logLevel: Debug.LOG_LEVEL_WARNING } });
@@ -1786,7 +1788,7 @@ describe('DodgeHandler', function () {
         let eventBus, settings, logMessages, testListener;
 
         beforeEach(function () {
-            context = {};
+            context = createDodgeContext();
             eventBus = EventBus(context).getInstance();
             settings = Settings(context).getInstance();
             settings.update({ debug: { dispatchEvent: true, logLevel: Debug.LOG_LEVEL_WARNING } });
@@ -1854,7 +1856,7 @@ describe('DodgeHandler', function () {
         let eventBus, settings;
 
         beforeEach(function () {
-            context = {};
+            context = createDodgeContext();
             eventBus = EventBus(context).getInstance();
             settings = Settings(context).getInstance();
             if (!Events.KEY_SESSION_CREATED) {
@@ -1944,7 +1946,7 @@ describe('DodgeHandler', function () {
         let eventBus, settings, logMessages, testListener;
 
         beforeEach(function () {
-            context = {};
+            context = createDodgeContext();
             eventBus = EventBus(context).getInstance();
             settings = Settings(context).getInstance();
             settings.update({ debug: { dispatchEvent: true, logLevel: Debug.LOG_LEVEL_WARNING } });
@@ -2010,7 +2012,7 @@ describe('DodgeHandler', function () {
         let eventBus, settings, logMessages, testListener;
 
         beforeEach(function () {
-            context = {};
+            context = createDodgeContext();
             eventBus = EventBus(context).getInstance();
             settings = Settings(context).getInstance();
             settings.update({ debug: { dispatchEvent: true, logLevel: Debug.LOG_LEVEL_WARNING } });
@@ -2078,7 +2080,7 @@ describe('DodgeHandler', function () {
         let eventBus, settings, logMessages, testListener;
 
         beforeEach(function () {
-            context = {};
+            context = createDodgeContext();
             eventBus = EventBus(context).getInstance();
             settings = Settings(context).getInstance();
             settings.update({ debug: { dispatchEvent: true, logLevel: Debug.LOG_LEVEL_WARNING } });
@@ -3792,7 +3794,7 @@ describe('DodgeHandler', function () {
         }
 
         function createHandler(mediaPlayer) {
-            const ctx = {};
+            const ctx = createDodgeContext();
             const ctxSettings = Settings(ctx).getInstance();
             ctxSettings.update({ dodge: { strictMode: 'manifest' } });
             return DodgeHandler(ctx).create({
@@ -3818,8 +3820,8 @@ describe('DodgeHandler', function () {
         });
 
         it('records the player\'s Settings for the loader overrides', function () {
-            const ctx = {};
-            const playerSettings = Settings({}).getInstance();
+            const ctx = createDodgeContext();
+            const playerSettings = Settings(createDodgeContext()).getInstance();
             expect(playerSettings).to.not.equal(Settings(ctx).getInstance());
 
             const handler = DodgeHandler(ctx).create({
@@ -3848,7 +3850,7 @@ describe('DodgeHandler', function () {
         });
 
         it('falls back to the context Debug when the player exposes none', function () {
-            const ctx = {};
+            const ctx = createDodgeContext();
             const logger = {
                 fatal: sinon.spy(), error: sinon.spy(), warn: sinon.spy(),
                 info: sinon.spy(), debug: sinon.spy()

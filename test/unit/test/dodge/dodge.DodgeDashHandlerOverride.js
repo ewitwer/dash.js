@@ -12,6 +12,7 @@ import DashConstants from '../../../../src/dash/constants/DashConstants.js';
 import Constants from '../../../../src/streaming/constants/Constants.js';
 import ObjectsHelper from '../../helpers/ObjectsHelper.js';
 import VoHelper from '../../helpers/VOHelper.js';
+import { createDodgeContext, releaseDodgeContexts } from '../../helpers/DodgeContexts.js';
 
 import sinon from 'sinon';
 import { expect } from 'chai';
@@ -93,7 +94,7 @@ describe('DodgeDashHandlerOverride', function () {
     let context, defenseController, override, mockParent, segmentsController, adapter, rep, eventBus;
 
     beforeEach(function () {
-        context = {};
+        context = createDodgeContext();
         eventBus = EventBus(context).getInstance();
         defenseController = DefenseRegistry(context).getInstance();
         defenseController.reset();
@@ -123,6 +124,10 @@ describe('DodgeDashHandlerOverride', function () {
         };
 
         override = buildOverride(Settings(context).getInstance());
+    });
+
+    afterEach(function () {
+        releaseDodgeContexts();
     });
 
     // The override must read the Settings it is handed rather than resolve one
@@ -167,7 +172,7 @@ describe('DodgeDashHandlerOverride', function () {
             playerSettings = Settings(context).getInstance();
             // A separate context yields an independent Settings instance, which
             // is exactly the situation the separate bundle creates.
-            foreignSettings = Settings({}).getInstance();
+            foreignSettings = Settings(createDodgeContext()).getInstance();
         });
 
         afterEach(function () {
@@ -1105,7 +1110,7 @@ describe('DodgeDashHandlerOverride', function () {
         it('media URL identical to the BaseURL: request carries the cache-busting query parameter', function () {
             // The single-file shape, where the resolved media URL is the BaseURL
             // itself and the resolution branch is skipped for a second reason.
-            const ctx = {};
+            const ctx = createDodgeContext();
             Debug(ctx).getInstance();
             const registry = DefenseRegistry(ctx).getInstance();
             registry.reset();
@@ -1175,7 +1180,7 @@ describe('DodgeDashHandlerOverride', function () {
             const sharedBaseURL = { url: 'https://example.com/', serviceLocation: 'example.com', queryParams: {} };
             const stableBaseURLController = { resolve: () => sharedBaseURL };
 
-            const ctx = {};
+            const ctx = createDodgeContext();
             Debug(ctx).getInstance();
             const registry = DefenseRegistry(ctx).getInstance();
             registry.reset();
@@ -1231,7 +1236,7 @@ describe('DodgeDashHandlerOverride', function () {
             const sharedBaseURL = { url: 'https://example.com/', serviceLocation: 'example.com', queryParams: {} };
             const stableBaseURLController = { resolve: () => sharedBaseURL };
 
-            const ctx = {};
+            const ctx = createDodgeContext();
             Debug(ctx).getInstance();
             const registry = DefenseRegistry(ctx).getInstance();
             registry.reset();
@@ -1288,7 +1293,7 @@ describe('DodgeDashHandlerOverride', function () {
             const sharedBaseURL = { url: 'https://example.com/', serviceLocation: 'example.com', queryParams: {} };
             const stableBaseURLController = { resolve: () => sharedBaseURL };
 
-            const ctx = {};
+            const ctx = createDodgeContext();
             Debug(ctx).getInstance();
             const registry = DefenseRegistry(ctx).getInstance();
             registry.reset();

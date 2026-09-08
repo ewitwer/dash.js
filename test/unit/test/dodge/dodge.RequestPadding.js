@@ -4,6 +4,7 @@ import DodgeXHRLoaderOverride from '../../../../src/dodge/overrides/DodgeXHRLoad
 import Debug from '../../../../src/core/Debug.js';
 import Settings from '../../../../src/core/Settings.js';
 import { setDodgeSettings } from '../../../../src/dodge/utils/DodgeSettings.js';
+import { createDodgeContext, releaseDodgeContexts } from '../../helpers/DodgeContexts.js';
 
 import sinon from 'sinon';
 import { expect } from 'chai';
@@ -304,10 +305,14 @@ describe('DodgeFetchLoaderOverride', function () {
     let context, settings;
 
     beforeEach(function () {
-        context = {};
+        context = createDodgeContext();
         Debug(context).getInstance();
         settings = Settings(context).getInstance();
         settings.update({ dodge: { paddingLengthBase: 0, paddingLengthRandom: 0, queryParam: 'padding' } });
+    });
+
+    afterEach(function () {
+        releaseDodgeContexts();
     });
 
     it('delegates to parent.load()', function () {
@@ -351,17 +356,18 @@ describe('Loader overrides read the injected Settings', function () {
     let context, contextSettings, playerSettings;
 
     beforeEach(function () {
-        context = {};
+        context = createDodgeContext();
         Debug(context).getInstance();
         contextSettings = Settings(context).getInstance();
         contextSettings.update({ dodge: { paddingLengthBase: 0, paddingLengthRandom: 0, queryParam: 'padding' } });
-        playerSettings = Settings({}).getInstance();
+        playerSettings = Settings(createDodgeContext()).getInstance();
         playerSettings.update({ dodge: { paddingLengthBase: 900, paddingLengthRandom: 0, queryParam: 'padding' } });
     });
 
     afterEach(function () {
         contextSettings.reset();
         playerSettings.reset();
+        releaseDodgeContexts();
     });
 
     [['DodgeXHRLoaderOverride', DodgeXHRLoaderOverride], ['DodgeFetchLoaderOverride', DodgeFetchLoaderOverride]].forEach(([name, Override]) => {
@@ -383,10 +389,14 @@ describe('DodgeXHRLoaderOverride', function () {
     let context, settings;
 
     beforeEach(function () {
-        context = {};
+        context = createDodgeContext();
         Debug(context).getInstance();
         settings = Settings(context).getInstance();
         settings.update({ dodge: { paddingLengthBase: 0, paddingLengthRandom: 0, queryParam: 'padding' } });
+    });
+
+    afterEach(function () {
+        releaseDodgeContexts();
     });
 
     it('delegates to parent.load()', function () {

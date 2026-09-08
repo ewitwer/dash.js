@@ -3,6 +3,7 @@ import DefenseRegistry, {
     getCycleIndexBySegmentIndex
 } from '../../../../src/dodge/DefenseRegistry.js';
 import Debug from '../../../../src/core/Debug.js';
+import { createDodgeContext, releaseDodgeContexts } from '../../helpers/DodgeContexts.js';
 
 import { expect } from 'chai';
 
@@ -22,6 +23,10 @@ function makeValidManifest() {
 }
 
 describe('DefenseRegistry', function () {
+
+    afterEach(function () {
+        releaseDodgeContexts();
+    });
 
     // isValidExtendedManifest
 
@@ -1446,7 +1451,7 @@ describe('DefenseRegistry', function () {
             let context, registry;
 
             beforeEach(function () {
-                context = {};
+                context = createDodgeContext();
                 Debug(context).getInstance();
                 registry = DefenseRegistry(context).getInstance();
                 registry.reset();
@@ -1537,7 +1542,7 @@ describe('DefenseRegistry', function () {
         let context, registry;
 
         beforeEach(function () {
-            context = {};
+            context = createDodgeContext();
             Debug(context).getInstance();
             registry = DefenseRegistry(context).getInstance();
             registry.reset();

@@ -1,5 +1,6 @@
 import DodgeScheduleControllerOverride from '../../../../src/dodge/overrides/DodgeScheduleControllerOverride.js';
 import Debug from '../../../../src/core/Debug.js';
+import { createDodgeContext, releaseDodgeContexts } from '../../helpers/DodgeContexts.js';
 
 import sinon from 'sinon';
 import { expect } from 'chai';
@@ -9,6 +10,10 @@ import { expect } from 'chai';
 // ************************************************************************
 
 describe('DodgeScheduleControllerOverride', function () {
+
+    afterEach(function () {
+        releaseDodgeContexts();
+    });
 
     function makeOverride({ parentResult, isTrailing, hasDashHandler = true, isDefended = false, scheduleWaitBase = 100, scheduleWaitRandom = 50 }) {
         const parentShouldClearStub = sinon.stub().returns(parentResult);
@@ -28,7 +33,7 @@ describe('DodgeScheduleControllerOverride', function () {
         // Fresh context per call so the Debug singleton (and therefore the
         // logger the factory creates) is isolated. Stub getLogger on that
         // singleton to return a spy we can assert against.
-        const context = {};
+        const context = createDodgeContext();
         const loggerSpy = { fatal: sinon.spy(), error: sinon.spy(), warn: sinon.spy(), info: sinon.spy(), debug: sinon.spy() };
         sinon.stub(Debug(context).getInstance(), 'getLogger').returns(loggerSpy);
 

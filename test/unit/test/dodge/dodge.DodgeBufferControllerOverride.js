@@ -3,6 +3,7 @@ import Debug from '../../../../src/core/Debug.js';
 import EventBus from '../../../../src/core/EventBus.js';
 import Settings from '../../../../src/core/Settings.js';
 import MediaPlayerEvents from '../../../../src/streaming/MediaPlayerEvents.js';
+import { createDodgeContext, releaseDodgeContexts } from '../../helpers/DodgeContexts.js';
 
 import sinon from 'sinon';
 import { expect } from 'chai';
@@ -15,7 +16,7 @@ describe('DodgeBufferControllerOverride', function () {
     let context, override, mockParent, dashHandler, playbackController, capabilities;
 
     beforeEach(function () {
-        context = {};
+        context = createDodgeContext();
 
         // Debug must be present because the override calls Debug(context).getInstance()
         Debug(context).getInstance();
@@ -49,6 +50,10 @@ describe('DodgeBufferControllerOverride', function () {
             { context, parent: mockParent, factory: {} },
             { dashHandler, playbackController, capabilities, settings: Settings(context).getInstance() }
         );
+    });
+
+    afterEach(function () {
+        releaseDodgeContexts();
     });
 
     // onBufferCycleLoaded
