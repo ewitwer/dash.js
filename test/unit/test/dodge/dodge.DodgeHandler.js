@@ -3691,6 +3691,46 @@ describe('DodgeHandler', function () {
         // The error itself is deliberately left alone: FRAGMENT_LOADING_COMPLETED is
         // a public event and an application listening for download failures must
         // still see them.
+        it('errored Dodge request records the stall for its stream and media type', function () {
+            expect(handler.isStalled('stream-1', 'video')).to.be.false; // jshint ignore:line
+            triggerFragmentLoaded(makeRequest(), { code: 1 });
+            expect(handler.isStalled('stream-1', 'video')).to.be.true; // jshint ignore:line
+        });
+
+        it('the stall is scoped to the media type that failed', function () {
+            triggerFragmentLoaded(makeRequest(), { code: 1 });
+            expect(handler.isStalled('stream-1', 'audio')).to.be.false; // jshint ignore:line
+            expect(handler.isStalled('stream-1', 'text')).to.be.false; // jshint ignore:line
+        });
+
+        it('the stall is scoped to the stream that failed', function () {
+            triggerFragmentLoaded(makeRequest(), { code: 1 });
+            expect(handler.isStalled('stream-2', 'video')).to.be.false; // jshint ignore:line
+        });
+
+        it('a text download failure records the stall like any other media type', function () {
+            const request = makeRequest({ mediaType: 'text' });
+            request.representation.mediaInfo.type = 'text';
+            triggerFragmentLoaded(request, { code: 1 });
+            expect(handler.isStalled('stream-1', 'text')).to.be.true; // jshint ignore:line
+        });
+
+        it('a successful Dodge request records no stall', function () {
+            triggerFragmentLoaded(makeRequest());
+            expect(handler.isStalled('stream-1', 'video')).to.be.false; // jshint ignore:line
+        });
+
+        it('an errored vanilla request records no stall', function () {
+            triggerFragmentLoaded(makeRequest({ full: undefined, padding: undefined }), { code: 1 });
+            expect(handler.isStalled('stream-1', 'video')).to.be.false; // jshint ignore:line
+        });
+
+        it('reset clears the recorded stalls', function () {
+            triggerFragmentLoaded(makeRequest(), { code: 1 });
+            handler.reset();
+            expect(handler.isStalled('stream-1', 'video')).to.be.false; // jshint ignore:line
+        });
+
         it('errored Dodge request leaves e.error intact for application listeners', function () {
             const e = triggerFragmentLoaded(
                 makeRequest({ full: true, serviceLocation: 'https://example.com/' }),

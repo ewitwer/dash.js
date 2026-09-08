@@ -54,6 +54,8 @@ function DodgeScheduleControllerOverride(config) {
 
     const dashHandler = config.dashHandler;
     const settings = config.settings;
+    const streamInfo = config.streamInfo;
+    const type = config.type;
 
     const logger = getDodgeDebug(context).getLogger({ __dashjs_factory_name: 'DodgeScheduleControllerOverride' });
     let warnedScheduleRandom = false;
@@ -74,7 +76,30 @@ function DodgeScheduleControllerOverride(config) {
         return base.value + Math.round(Math.random() * random.value);
     }
 
+    /**
+     * True when a download failure has permanently stalled this stream.
+     *
+     * Reached through the DodgeHandler the player registered on the context,
+     * the same way DodgeGapControllerOverride reaches it. Absent when the
+     * module is not registered, which is the vanilla case.
+     */
+    function _isStalled() {
+        const dodgeHandler = context._dodgeHandler;
+        return !!(dodgeHandler && dodgeHandler.isStalled && streamInfo &&
+            dodgeHandler.isStalled(streamInfo.id, type));
+    }
+
     function _shouldClearScheduleTimer() {
+        // A stalled stream is finished, so this outranks both the parent's
+        // verdict and the trailing keep-alive below. `_schedule` consults this
+        // before it generates anything, so clearing here is what stops the next
+        // cycle from going out. Enforcing it at the point of failure instead
+        // would not hold: StreamProcessor restarts the timer for text on every
+        // fragment completion, without reading the error or the sender.
+        if (_isStalled()) {
+            return true;
+        }
+
         const parentResult = _parentShouldClearScheduleTimer.call(parent);
         if (!parentResult) {
             return false;

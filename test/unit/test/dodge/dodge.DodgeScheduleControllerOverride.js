@@ -15,7 +15,7 @@ describe('DodgeScheduleControllerOverride', function () {
         releaseDodgeContexts();
     });
 
-    function makeOverride({ parentResult, isTrailing, hasDashHandler = true, isDefended = false, scheduleWaitBase = 100, scheduleWaitRandom = 50 }) {
+    function makeOverride({ parentResult, isTrailing, hasDashHandler = true, isDefended = false, scheduleWaitBase = 100, scheduleWaitRandom = 50, isStalled = null }) {
         const parentShouldClearStub = sinon.stub().returns(parentResult);
         const parentStartScheduleTimerStub = sinon.stub();
         const getIsTrailingStub = sinon.stub().returns(isTrailing);
@@ -37,12 +37,20 @@ describe('DodgeScheduleControllerOverride', function () {
         const loggerSpy = { fatal: sinon.spy(), error: sinon.spy(), warn: sinon.spy(), info: sinon.spy(), debug: sinon.spy() };
         sinon.stub(Debug(context).getInstance(), 'getLogger').returns(loggerSpy);
 
+        // The override reads the stall through the DodgeHandler the player
+        // registered on the context, the same way the GapController override
+        // reaches it. A null one stands for the module not being registered.
+        const isStalledStub = sinon.stub().returns(!!isStalled);
+        if (isStalled !== null) {
+            context._dodgeHandler = { isStalled: isStalledStub };
+        }
+
         const override = DodgeScheduleControllerOverride.call(
             { context, parent, factory: {} },
-            { dashHandler, settings }
+            { dashHandler, settings, streamInfo: { id: 'stream-1' }, type: 'text' }
         );
 
-        return { override, parentShouldClearStub, parentStartScheduleTimerStub, getIsTrailingStub, getIsDefendedStub, loggerSpy };
+        return { override, parentShouldClearStub, parentStartScheduleTimerStub, getIsTrailingStub, getIsDefendedStub, isStalledStub, loggerSpy };
     }
 
     describe('_shouldClearScheduleTimer', function () {
@@ -73,6 +81,31 @@ describe('DodgeScheduleControllerOverride', function () {
 
         it('dashHandler absent: falls back to parent result without crashing', function () {
             const { override } = makeOverride({ parentResult: true, isTrailing: false, hasDashHandler: false });
+            expect(override._shouldClearScheduleTimer()).to.be.true; // jshint ignore:line
+        });
+
+        // A stream that gave up on a download must not be scheduled again. The
+        // stall reaches here rather than being enforced where it is detected,
+        // because StreamProcessor restarts the timer for text on every fragment
+        // completion, before it reads anything DodgeHandler can null.
+        it('a stalled stream clears the timer even when the parent would keep it', function () {
+            const { override, isStalledStub } = makeOverride({ parentResult: false, isTrailing: false, isStalled: true });
+            expect(override._shouldClearScheduleTimer()).to.be.true; // jshint ignore:line
+            expect(isStalledStub.calledWith('stream-1', 'text')).to.be.true; // jshint ignore:line
+        });
+
+        it('a stalled stream clears the timer even during trailing', function () {
+            const { override } = makeOverride({ parentResult: true, isTrailing: true, isStalled: true });
+            expect(override._shouldClearScheduleTimer()).to.be.true; // jshint ignore:line
+        });
+
+        it('an unstalled stream is unaffected, trailing still keeps the timer', function () {
+            const { override } = makeOverride({ parentResult: true, isTrailing: true, isStalled: false });
+            expect(override._shouldClearScheduleTimer()).to.be.false; // jshint ignore:line
+        });
+
+        it('no DodgeHandler on the context: falls back to parent result without crashing', function () {
+            const { override } = makeOverride({ parentResult: true, isTrailing: false });
             expect(override._shouldClearScheduleTimer()).to.be.true; // jshint ignore:line
         });
     });

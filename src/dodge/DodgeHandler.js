@@ -884,6 +884,23 @@ function DodgeHandler(config) {
     }
 
     /**
+     * True when a download failure has permanently stalled this stream and
+     * media type, so nothing further should be scheduled for it.
+     *
+     * Read by DodgeScheduleControllerOverride, which is where the stall has to
+     * be enforced: the paths that restart the schedule timer do not all consult
+     * the fields `_onFragmentLoadingCompleted` clears.
+     *
+     * @param {string} streamId - Stream the request belonged to.
+     * @param {string} mediaType - Media type the request belonged to.
+     * @returns {boolean}
+     */
+    function isStalled(streamId, mediaType) {
+        const state = streamState.get(streamId);
+        return !!state && state.stalled.has(mediaType);
+    }
+
+    /**
      * True when at least one active stream processor is running a Dodge
      * defense. False when the module is loaded but no extended manifest is
      * active, or when all stream processors fell back to vanilla DASH.
@@ -1104,6 +1121,7 @@ function DodgeHandler(config) {
                 partialSegments: [],
                 pendingInit: [],
                 pendingMedia: [],
+                stalled: new Set(),
             });
         }
         return streamState.get(streamId);
@@ -1158,6 +1176,18 @@ function DodgeHandler(config) {
             // So drop the service location too.
             e.sender = null;
             e.request.serviceLocation = null;
+
+            // Neither is enough for text. The same handler restarts the schedule
+            // timer whenever `currentMediaInfo.isText`, before it reads the error
+            // or the sender, so a fragmented text stream would carry on to the
+            // next cycle. The cycle cursor advanced when this request was built,
+            // so carrying on skips the failed cycle rather than retrying it.
+            //
+            // Record the stall so DodgeScheduleControllerOverride can decline to
+            // schedule anything further for this stream and media type. The flag
+            // lives with the rest of the per-stream state, so a teardown, a reset,
+            // or a new extended manifest clears it along with everything else.
+            _getStreamState(strInfo.id).stalled.add(request.mediaType);
             logger.error(request.mediaType + ' download failed after all retries; stalling to preserve defense pattern. URL: ' + request.url);
             return;
         }
@@ -1535,6 +1565,7 @@ function DodgeHandler(config) {
         getStreamStats,
         isDodgeActive,
         isDodgeTrailing,
+        isStalled,
         appendDataCycles,
         finalizeStream,
         reset,

@@ -474,7 +474,7 @@ Two complementary mechanisms prevent spurious seeks during the trailing phase:
 
 ### R4.3 - Schedule timer continues during trailing; player appears to be buffering
 
-`_shouldClearScheduleTimer()` returns `false` when the parent would clear the timer but `dashHandler.getIsTrailing()` is true, keeping the schedule loop alive so padding cycles continue to be requested.
+`_shouldClearScheduleTimer()` returns `false` when the parent would clear the timer but `dashHandler.getIsTrailing()` is true, keeping the schedule loop alive so padding cycles continue to be requested. R12.8 outranks this: a stream stalled by a download failure stops scheduling, padding included.
 
 | File | Description | Test |
 |---|---|---|
@@ -1812,6 +1812,9 @@ Dodge-specific fields) pass through unchanged.
 `e.error` is deliberately left intact. `FRAGMENT_LOADING_COMPLETED` is a public event and an
 application listening for download failures must still see them.
 
+Nulling those two fields is not on its own enough to make the stall permanent; R12.8 covers what
+restarts the schedule timer without reading either.
+
 | File | Description | Test |
 |---|---|---|
 | `dodge.DodgeHandler.js` | Error fragment stalling, _onFragmentLoadingCompleted | errored Dodge request does not fire any Dodge events |
@@ -1896,6 +1899,34 @@ ignored by the request generator, which keeps blocking undefended representation
 | `dodge.RequestPadding.js` | Loader overrides read the injected Settings | DodgeXHRLoaderOverride pads to the injected paddingLengthBase, not the one it would resolve |
 | `dodge.RequestPadding.js` | Loader overrides read the injected Settings | DodgeFetchLoaderOverride pads to the injected paddingLengthBase, not the one it would resolve |
 | `dodge.DodgeHandler.js` | logger wiring | records the player's Settings for the loader overrides |
+
+### R12.8 - A stalled stream is never scheduled again
+
+R12.4 stalls an errored Dodge request by nulling `e.sender` and `e.request.serviceLocation`, which
+stops everything that reads either. `StreamProcessor._onFragmentLoadingCompleted` reads neither
+before it restarts the schedule timer for `currentMediaInfo.isText`.
+
+The failure is therefore recorded against the stream and media type, and enforced in
+`DodgeScheduleControllerOverride._shouldClearScheduleTimer()`, which `_schedule()` consults before it
+generates anything. It outranks both the parent's verdict and the trailing keep-alive of R4.3: a
+stream that gave up is finished, padding included. The override reaches the flag through the
+`DodgeHandler` on the context, as `DodgeGapControllerOverride` does, so nothing outside `src/dodge`
+changes. The flag lives with the rest of the per-stream state, so a teardown, a `reset()`, or a new
+extended manifest clears it; nothing else does, matching the permanence R12.4 specifies.
+
+| File | Description | Test |
+|---|---|---|
+| `dodge.DodgeHandler.js` | Error fragment stalling, _onFragmentLoadingCompleted | errored Dodge request records the stall for its stream and media type |
+| `dodge.DodgeHandler.js` | Error fragment stalling, _onFragmentLoadingCompleted | the stall is scoped to the media type that failed |
+| `dodge.DodgeHandler.js` | Error fragment stalling, _onFragmentLoadingCompleted | the stall is scoped to the stream that failed |
+| `dodge.DodgeHandler.js` | Error fragment stalling, _onFragmentLoadingCompleted | a text download failure records the stall like any other media type |
+| `dodge.DodgeHandler.js` | Error fragment stalling, _onFragmentLoadingCompleted | a successful Dodge request records no stall |
+| `dodge.DodgeHandler.js` | Error fragment stalling, _onFragmentLoadingCompleted | an errored vanilla request records no stall |
+| `dodge.DodgeHandler.js` | Error fragment stalling, _onFragmentLoadingCompleted | reset clears the recorded stalls |
+| `dodge.DodgeScheduleControllerOverride.js` | _shouldClearScheduleTimer | a stalled stream clears the timer even when the parent would keep it |
+| `dodge.DodgeScheduleControllerOverride.js` | _shouldClearScheduleTimer | a stalled stream clears the timer even during trailing |
+| `dodge.DodgeScheduleControllerOverride.js` | _shouldClearScheduleTimer | an unstalled stream is unaffected, trailing still keeps the timer |
+| `dodge.DodgeScheduleControllerOverride.js` | _shouldClearScheduleTimer | no DodgeHandler on the context: falls back to parent result without crashing |
 
 ---
 
@@ -2005,4 +2036,5 @@ ignored by the request generator, which keeps blocking undefended representation
 | R12.5 Range-ignoring origin detection | 15 |
 | R12.6 Dodge logs through the player's Debug | 3 |
 | R12.7 Every Dodge module reads the player's Settings | 5 |
-| **Total** | **784** |
+| R12.8 A stalled stream is never scheduled again | 11 |
+| **Total** | **795** |
