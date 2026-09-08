@@ -152,6 +152,7 @@ function DodgeHandler(config) {
         eventBus.on(events.MEDIA_FRAGMENT_PARTIAL, _onPartialSegment, instance);
         eventBus.on(events.PADDING_LOADED, _onPaddingLoaded, instance);
         eventBus.on(events.REPRESENTATION_SWITCHED, _onRepresentationSwitched, instance);
+        eventBus.on(events.STREAM_TEARDOWN_COMPLETE, _onStreamTeardownComplete, instance);
         // NEED_KEY is observed for diagnostics only.
         if (events.NEED_KEY) {
             eventBus.on(events.NEED_KEY, _onNeedKey, instance);
@@ -931,6 +932,15 @@ function DodgeHandler(config) {
     function finalizeStream(label, periodIndex, paddingCycles) {
         return defenseRegistry.finalizeStream(label, periodIndex, paddingCycles);
     }
+    
+    function _onStreamTeardownComplete() {
+        if (!defenseRegistry.hasContent() && streamState.size === 0) {
+            return;
+        }
+        logger.debug('Source torn down, dropping the defense set it was loaded with');
+        defenseRegistry.reset();
+        streamState.clear();
+    }
 
     function reset() {
         eventBus.off(events.FRAGMENT_LOADING_COMPLETED, _onFragmentLoadingCompleted, instance);
@@ -938,6 +948,7 @@ function DodgeHandler(config) {
         eventBus.off(events.MEDIA_FRAGMENT_PARTIAL, _onPartialSegment, instance);
         eventBus.off(events.PADDING_LOADED, _onPaddingLoaded, instance);
         eventBus.off(events.REPRESENTATION_SWITCHED, _onRepresentationSwitched, instance);
+        eventBus.off(events.STREAM_TEARDOWN_COMPLETE, _onStreamTeardownComplete, instance);
         if (events.NEED_KEY) {
             eventBus.off(events.NEED_KEY, _onNeedKey, instance);
         }

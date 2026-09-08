@@ -122,6 +122,62 @@ describe('DodgeHandler', function () {
 
                 expect(registryFor().getDefendedStreamInfo('video_A')).to.exist; // jshint ignore:line
             });
+
+            // Tearing the source down is the one point where "not an extended
+            // manifest" means a different source rather than a refresh of this
+            // one. Without it the registry outlives the source it describes, and
+            // the next source is either blocked outright (strictMode blocks every
+            // representation it cannot find an entry for, while hasContent stays
+            // true) or, on a label collision, silently shaped by the old
+            // defense's byte ranges.
+            it('tearing down the source drops the defense set', function () {
+                dodgeHandler.registerEvents();
+                dodgeHandler.tryProcessExtendedManifest(manifestWithStream('video_A', '0-499'));
+
+                EventBus(context).getInstance().trigger(Events.STREAM_TEARDOWN_COMPLETE);
+
+                expect(registryFor().hasContent()).to.be.false; // jshint ignore:line
+                expect(registryFor().getDefendedStreamInfo('video_A')).to.be.null; // jshint ignore:line
+            });
+
+            it('tearing down the source drops what the partial segment queues hold', function () {
+                dodgeHandler.registerEvents();
+                dodgeHandler.tryProcessExtendedManifest(manifestWithStream('video_A', '0-499'));
+
+                // A partial cycle: accumulated, awaiting the full cycle that
+                // would assemble it. That is what a torn-down source leaves.
+                const bus = EventBus(context).getInstance();
+                bus.trigger(Events.FRAGMENT_LOADING_COMPLETED, {
+                    sender: { context: 'test' },
+                    response: new ArrayBuffer(8),
+                    error: null,
+                    request: {
+                        full: false, padding: false, buffer: false, trail: false,
+                        index: 0, mediaType: 'video', type: 'MediaSegment',
+                        originalRange: null, range: null,
+                        isInitializationRequest: () => false,
+                        representation: { id: 'rep0', mediaInfo: { streamInfo: { id: 'stream-1' } } }
+                    }
+                }, { streamId: 'stream-1' });
+                expect(dodgeHandler.getStreamStats('stream-1').partialSegments).to.equal(1);
+
+                bus.trigger(Events.STREAM_TEARDOWN_COMPLETE);
+
+                expect(dodgeHandler.getStreamStats('stream-1').partialSegments).to.equal(0);
+            });
+
+            // A refresh re-enters the same code path with a payload that is not
+            // an extended manifest, and must not be mistaken for a new source.
+            // Only a teardown drops the defense.
+            it('a refresh-shaped reload without a teardown keeps the defense', function () {
+                dodgeHandler.registerEvents();
+                dodgeHandler.tryProcessExtendedManifest(manifestWithStream('video_A', '0-499'));
+
+                dodgeHandler.tryProcessExtendedManifest('<MPD/>');
+                dodgeHandler.tryProcessExtendedManifest('<MPD/>');
+
+                expect(registryFor().getDefendedStreamInfo('video_A')).to.exist; // jshint ignore:line
+            });
         });
 
         it('valid extended manifest JSON returns { mpd, baseUri } matching embedded values', function () {

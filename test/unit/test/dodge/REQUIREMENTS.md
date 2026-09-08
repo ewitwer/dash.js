@@ -1460,7 +1460,24 @@ diagnostic for the same source.
 
 `tryProcessExtendedManifest` resets the registry and clears `streamState` once the payload has
 parsed as JSON, before the manifest is stored. *After* the parse, so it only fires for something
-that is actually an extended manifest.
+that is actually an extended manifest. That deliberately leaves a payload which is **not** an
+extended manifest alone, because a manifest refresh re-enters this same path and must not be
+mistaken for a new source.
+
+A source whose manifest is a plain MPD never parses as JSON, so it never
+reaches the reset, and the previous source's registry outlives it. `hasContent()` stays true, so
+under any strict mode every representation of the new source is blocked - none of them has an entry
+- and the scheduler retries forever with nothing reported to the application. Under `strictMode: false`
+it is worse: a representation id that happens to match an entry from the previous source is shaped by
+that entry's byte ranges, which describe different content.
+
+`_onStreamTeardownComplete` closes that half. `STREAM_TEARDOWN_COMPLETE` means the player has torn
+the current source down and nothing else: `StreamController.reset()` is the only thing that fires
+it, and `MediaPlayer._resetPlaybackControllers()` is that method's only caller, reached from
+`attachSource()`, `attachView()` and `MediaPlayer.reset()`. A manifest refresh does not go
+through it, so the refresh case above is untouched. `Events.extend(MediaPlayerEvents)` runs in
+`MediaPlayer.setup()`, long before `_detectDodge()`, so the constant is always defined and the
+listener is never registered against `undefined`.
 
 | File | Description | Test |
 |---|---|---|
@@ -1469,6 +1486,9 @@ that is actually an extended manifest.
 | `dodge.DodgeHandler.js` | a new source replaces the defense set | the new source's own streams still resolve |
 | `dodge.DodgeHandler.js` | a new source replaces the defense set | an invalid extended manifest does not leave the previous defense in place |
 | `dodge.DodgeHandler.js` | a new source replaces the defense set | a payload that is not an extended manifest leaves the defense intact |
+| `dodge.DodgeHandler.js` | a new source replaces the defense set | tearing down the source drops the defense set |
+| `dodge.DodgeHandler.js` | a new source replaces the defense set | tearing down the source drops what the partial segment queues hold |
+| `dodge.DodgeHandler.js` | a new source replaces the defense set | a refresh-shaped reload without a teardown keeps the defense |
 
 ### R10.15 - The extended manifest's references into the MPD are verified at load
 
@@ -1930,7 +1950,7 @@ ignored by the request generator, which keeps blocking undefended representation
 | R10.11 Dynamic MPD rejected after parsing, every strict mode | 18 |
 | R10.12 Byte-range discovery representations reported | 16 |
 | R10.13 Single post-parse gate exposed to the core | 5 |
-| R10.14 A new source replaces the defense set | 5 |
+| R10.14 A new source replaces the defense set | 8 |
 | R10.15 Extended manifest verified against the MPD | 15 |
 | R10.16 A refusal is reported to the application | 4 |
 | R11.1 strictMode = representation enforcement | 8 |
@@ -1948,4 +1968,4 @@ ignored by the request generator, which keeps blocking undefended representation
 | R12.5 Range-ignoring origin detection | 15 |
 | R12.6 Dodge logs through the player's Debug | 3 |
 | R12.7 Every Dodge module reads the player's Settings | 5 |
-| **Total** | **781** |
+| **Total** | **784** |

@@ -15,7 +15,8 @@
         "dodge/strict-mode-allows-exmfst",
         "dodge/seek",
         "dodge/seek-backward",
-        "dodge/request-padding"
+        "dodge/request-padding",
+        "dodge/source-switch"
       ]
     },
     {
