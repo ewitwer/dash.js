@@ -402,6 +402,7 @@ These tests drive a real `SegmentsController` and a real `TimelineSegmentsGetter
 | `dodge.DodgeDashHandlerOverride.js` | SegmentTimeline content | a cycle that jumps backward resolves to the earlier segment index |
 | `dodge.DodgeDashHandlerOverride.js` | SegmentTimeline content | a padding cycle repeating an earlier index resolves to that segment |
 | `dodge.DodgeDashHandlerOverride.js` | SegmentTimeline content | representation.segmentDuration tracks the resolved segment, including on repeat lookups |
+| `dodge.DodgeDashHandlerOverride.js` | SegmentTimeline content | representation.segmentDuration tracks the resolved segment when a cycle repeats the last index |
 | `dodge.DodgeDashHandlerOverride.js` | SegmentTimeline content | an index past the end of the timeline stalls without advancing |
 
 ### R3.11 - Media URL tokens are expanded by the upstream template processor
@@ -1807,7 +1808,7 @@ and the unit tests, fall back to this bundle's own instance.
 | R3.7 Muxed audio/video streams | 2 |
 | R3.8 _generateInitRequest construction | 5 |
 | R3.9 _getRequestForSegment construction | 6 |
-| R3.10 SegmentTimeline content is addressed by index | 5 |
+| R3.10 SegmentTimeline content is addressed by index | 6 |
 | R3.11 Media URL tokens use the upstream template processor | 6 |
 | R3.12 Index lookups never request partial segments | 4 |
 | R4.1 No spurious seeks during trailing | 4 |
@@ -1881,4 +1882,4 @@ and the unit tests, fall back to this bundle's own instance.
 | R12.4 Error fragment stalling | 8 |
 | R12.5 Range-ignoring origin detection | 15 |
 | R12.6 Dodge logs through the player's Debug | 3 |
-| **Total** | **757** |
+| **Total** | **758** |

@@ -553,6 +553,10 @@ function DodgeDashHandlerOverride(config) {
             return null;
         }
 
+        if (canReuseLast) {
+            effectiveRep.segmentDuration = segment.duration;
+        }
+
         // Determine whether a quality override changed the representation.
         const homeRep = (effectiveRep.id !== representation.id) ? representation : null;
 

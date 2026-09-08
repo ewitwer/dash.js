@@ -2565,6 +2565,24 @@ describe('DodgeDashHandlerOverride', function () {
             timelineOverride.getNextSegmentRequest({}, timelineRep); // index 0, already resolved
             expect(timelineRep.segmentDuration).to.be.closeTo(LONG_DURATION, 1e-9);
         });
+        
+        it('representation.segmentDuration tracks the resolved segment when a cycle repeats the last index', function () {
+            defenseController.addExtendedManifest(makeTimelineManifest([
+                { index: 0 },
+                { index: 3, padding: true },
+                { index: 0, buffer: true },
+            ]));
+            timelineOverride.updateDefendedStreamInfo(timelineRep);
+
+            timelineOverride.getNextSegmentRequest({}, timelineRep); // index 0, long
+            timelineOverride.getNextSegmentRequest({}, timelineRep); // index 3, short, padding
+            expect(timelineRep.segmentDuration).to.be.closeTo(SHORT_DURATION, 1e-9);
+
+            const repeat = timelineOverride.getNextSegmentRequest({}, timelineRep);
+
+            expect(repeat.index).to.equal(0);
+            expect(timelineRep.segmentDuration).to.be.closeTo(LONG_DURATION, 1e-9);
+        });
 
         it('an index past the end of the timeline stalls without advancing', function () {
             defenseController.addExtendedManifest(makeTimelineManifest([
