@@ -30,7 +30,7 @@
  */
 
 import { getDodgeDebug } from '../utils/DodgeDebug.js';
-import Settings from '../../core/Settings.js';
+import { getDodgeSettings } from '../utils/DodgeSettings.js';
 import { applyRequestPadding } from '../utils/RequestPadding.js';
 
 /**
@@ -47,7 +47,7 @@ function DodgeXHRLoaderOverride() {
     const parent = this.parent;
     const _parentLoad = parent.load;
 
-    const settings = Settings(context).getInstance();
+    const settings = getDodgeSettings(context);
     const logger = getDodgeDebug(context).getLogger(this);
 
     /**

@@ -31,7 +31,6 @@
 
 import { getDodgeDebug } from '../utils/DodgeDebug.js';
 import EventBus from '../../core/EventBus.js';
-import Settings from '../../core/Settings.js';
 import MediaPlayerEvents from '../../streaming/MediaPlayerEvents.js';
 
 /**
@@ -73,7 +72,7 @@ function DodgeBufferControllerOverride(config) {
 
     const debug = getDodgeDebug(context);
     const eventBus = EventBus(context).getInstance();
-    const settings = Settings(context).getInstance();
+    const settings = config.settings;
     const mediaType = parent.getType ? parent.getType() : null;
 
     const listenerScope = {};

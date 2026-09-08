@@ -14,7 +14,8 @@
         "dodge/defense-verification",
         "dodge/strict-mode-allows-exmfst",
         "dodge/seek",
-        "dodge/seek-backward"
+        "dodge/seek-backward",
+        "dodge/request-padding"
       ]
     },
     {

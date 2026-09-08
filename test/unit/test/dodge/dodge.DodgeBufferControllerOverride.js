@@ -47,7 +47,7 @@ describe('DodgeBufferControllerOverride', function () {
 
         override = DodgeBufferControllerOverride.call(
             { context, parent: mockParent, factory: {} },
-            { dashHandler, playbackController, capabilities }
+            { dashHandler, playbackController, capabilities, settings: Settings(context).getInstance() }
         );
     });
 
@@ -182,7 +182,7 @@ describe('DodgeBufferControllerOverride', function () {
             // Create override without dashHandler
             const noDashOverride = DodgeBufferControllerOverride.call(
                 { context, parent: mockParent, factory: {} },
-                { dashHandler: undefined, playbackController, capabilities }
+                { dashHandler: undefined, playbackController, capabilities, settings: Settings(context).getInstance() }
             );
             mockParent.setMockBuffer.reset();
             mockParent.updateBufferLevel.reset();

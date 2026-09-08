@@ -45,6 +45,7 @@ import DodgeConstants from './constants/DodgeConstants.js';
 import DashConstants from '../dash/constants/DashConstants.js';
 import DashManifestModel from '../dash/models/DashManifestModel.js';
 import { getDodgeDebug, setDodgeDebug } from './utils/DodgeDebug.js';
+import { setDodgeSettings } from './utils/DodgeSettings.js';
 import { createStrictModeReader, resolveNumericSetting } from './utils/StrictMode.js';
 import FactoryMaker from '../core/FactoryMaker.js';
 import EventBus from '../core/EventBus.js';
@@ -93,6 +94,8 @@ function DodgeHandler(config) {
     if (mediaPlayer && mediaPlayer.getDebug) {
         setDodgeDebug(context, mediaPlayer.getDebug());
     }
+    
+    setDodgeSettings(context, settings);
     const debug = getDodgeDebug(context);
     let logger,
         defenseRegistry,

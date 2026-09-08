@@ -1816,6 +1816,23 @@ and the unit tests, fall back to this bundle's own instance.
 | `dodge.DodgeHandler.js` | logger wiring | the defense registry logs through that same instance |
 | `dodge.DodgeHandler.js` | logger wiring | falls back to the context Debug when the player exposes none |
 
+### R12.7 - Every Dodge module reads the player's own `Settings` instance
+
+The bundle split described in R12.6 applies to `Settings` too. A `Settings(context).getInstance()`
+call made from inside `dash.dodge` builds a fresh instance holding nothing but defaults, so every
+`dodge.*` value a deployer configures is discarded. A deployer who raises `paddingLengthBase` because
+their URLs are long keeps the default 1024, and every request above that then goes out with no padding
+at all, announcing its real size, with only a warning to say so. `strictMode: false` is likewise
+ignored by the request generator, which keeps blocking undefended representations.
+
+| File | Description | Test |
+|---|---|---|
+| `dodge.DodgeDashHandlerOverride.js` | reads the Settings it is given, not one it resolves itself | honours strictMode from the given Settings |
+| `dodge.DodgeDashHandlerOverride.js` | reads the Settings it is given, not one it resolves itself | honours queryParam from the given Settings |
+| `dodge.RequestPadding.js` | Loader overrides read the injected Settings | DodgeXHRLoaderOverride pads to the injected paddingLengthBase, not the one it would resolve |
+| `dodge.RequestPadding.js` | Loader overrides read the injected Settings | DodgeFetchLoaderOverride pads to the injected paddingLengthBase, not the one it would resolve |
+| `dodge.DodgeHandler.js` | logger wiring | records the player's Settings for the loader overrides |
+
 ---
 
 ## Summary
@@ -1923,4 +1940,5 @@ and the unit tests, fall back to this bundle's own instance.
 | R12.4 Error fragment stalling | 8 |
 | R12.5 Range-ignoring origin detection | 15 |
 | R12.6 Dodge logs through the player's Debug | 3 |
-| **Total** | **776** |
+| R12.7 Every Dodge module reads the player's Settings | 5 |
+| **Total** | **781** |

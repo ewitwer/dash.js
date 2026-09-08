@@ -3,6 +3,7 @@ import DodgeFetchLoaderOverride from '../../../../src/dodge/overrides/DodgeFetch
 import DodgeXHRLoaderOverride from '../../../../src/dodge/overrides/DodgeXHRLoaderOverride.js';
 import Debug from '../../../../src/core/Debug.js';
 import Settings from '../../../../src/core/Settings.js';
+import { setDodgeSettings } from '../../../../src/dodge/utils/DodgeSettings.js';
 
 import sinon from 'sinon';
 import { expect } from 'chai';
@@ -343,6 +344,38 @@ describe('DodgeFetchLoaderOverride', function () {
         const config = { timeout: 5000 };
         override.load({ url: 'https://example.com/seg.m4s', headers: {} }, config);
         expect(parentLoad.firstCall.args[1]).to.equal(config);
+    });
+});
+
+describe('Loader overrides read the injected Settings', function () {
+    let context, contextSettings, playerSettings;
+
+    beforeEach(function () {
+        context = {};
+        Debug(context).getInstance();
+        contextSettings = Settings(context).getInstance();
+        contextSettings.update({ dodge: { paddingLengthBase: 0, paddingLengthRandom: 0, queryParam: 'padding' } });
+        playerSettings = Settings({}).getInstance();
+        playerSettings.update({ dodge: { paddingLengthBase: 900, paddingLengthRandom: 0, queryParam: 'padding' } });
+    });
+
+    afterEach(function () {
+        contextSettings.reset();
+        playerSettings.reset();
+    });
+
+    [['DodgeXHRLoaderOverride', DodgeXHRLoaderOverride], ['DodgeFetchLoaderOverride', DodgeFetchLoaderOverride]].forEach(([name, Override]) => {
+        it(name + ' pads to the injected paddingLengthBase, not the one it would resolve', function () {
+            setDodgeSettings(context, playerSettings);
+            const parentLoad = sinon.stub();
+            const override = Override.call({ context, parent: { load: parentLoad }, factory: {} });
+            const req = { url: 'https://example.com/seg.m4s?padding=abc', headers: {} };
+
+            override.load(req, {});
+
+            // The context instance says 0, which disables padding entirely.
+            expect(req.url.length).to.equal(900);
+        });
     });
 });
 

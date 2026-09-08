@@ -122,13 +122,20 @@ describe('DodgeDashHandlerOverride', function () {
             getVoRepresentations: sinon.stub().returns([]),
         };
 
-        override = DodgeDashHandlerOverride.call(
+        override = buildOverride(Settings(context).getInstance());
+    });
+
+    // The override must read the Settings it is handed rather than resolve one
+    // itself. See the settings-source describe below for why.
+    function buildOverride(settings) {
+        return DodgeDashHandlerOverride.call(
             { context, parent: mockParent, factory: {} },
             {
                 adapter,
                 eventBus,
                 events: Events,
                 debug: Debug(context).getInstance(),
+                settings: Settings(context).getInstance(),
                 urlUtils: URLUtils(context).getInstance(),
                 segmentsController,
                 baseURLController: objectsHelper.getDummyBaseURLController(),
@@ -137,8 +144,65 @@ describe('DodgeDashHandlerOverride', function () {
                     getTimeSinceStreamEnd: sinon.stub().returns(0),
                     getStreamEndTime: sinon.stub().returns(100),
                 },
+                settings,
             }
         );
+    }
+
+    // Settings source
+
+    // Dodge ships as its own webpack bundle with no externals, so it carries a
+    // private copy of FactoryMaker. A Settings(context).getInstance() call made
+    // from inside that bundle looks up a registry the player never wrote to and
+    // gets a fresh instance holding nothing but defaults, which is how every
+    // dodge.* setting a deployer configures came to be ignored here. A unit test
+    // cannot reproduce that, because the unit bundle has one FactoryMaker and
+    // both lookups return the same object. What it can pin is the mechanism: the
+    // override must honour the Settings it is handed. A foreign instance stands
+    // in for the player's.
+    describe('reads the Settings it is given, not one it resolves itself', function () {
+        let playerSettings, foreignSettings, foreignOverride;
+
+        beforeEach(function () {
+            playerSettings = Settings(context).getInstance();
+            // A separate context yields an independent Settings instance, which
+            // is exactly the situation the separate bundle creates.
+            foreignSettings = Settings({}).getInstance();
+        });
+
+        afterEach(function () {
+            playerSettings.reset();
+            foreignSettings.reset();
+        });
+
+        it('honours strictMode from the given Settings', function () {
+            playerSettings.update({ dodge: { strictMode: 'representation' } });
+            foreignSettings.update({ dodge: { strictMode: false } });
+            defenseController.addExtendedManifest(makeManifest());
+            foreignOverride = buildOverride(foreignSettings);
+            foreignOverride.updateDefendedStreamInfo({ ...rep, id: 'unknown_rep' });
+
+            // strictMode false lets an undefended representation through to the
+            // parent. Reading the other instance would block it instead.
+            const result = foreignOverride.getInitRequest({}, { ...rep, id: 'unknown_rep' });
+
+            expect(mockParent.getInitRequest.calledOnce).to.be.true; // jshint ignore:line
+            expect(result).to.deep.equal({ parentInit: true });
+        });
+
+        it('honours queryParam from the given Settings', function () {
+            playerSettings.update({ dodge: { queryParam: 'padding' } });
+            foreignSettings.update({ dodge: { queryParam: 'zzprobe' } });
+            defenseController.addExtendedManifest(makeManifest());
+            foreignOverride = buildOverride(foreignSettings);
+            foreignOverride.updateDefendedStreamInfo(rep);
+
+            const request = foreignOverride.getInitRequest({}, rep);
+
+            expect(request).to.exist; // jshint ignore:line
+            expect(Object.keys(request.queryParams)).to.include('zzprobe');
+            expect(Object.keys(request.queryParams)).to.not.include('padding');
+        });
     });
 
     // Fallback with no extended manifest
@@ -988,6 +1052,7 @@ describe('DodgeDashHandlerOverride', function () {
                 {
                     adapter: { getVoRepresentations: sinon.stub().returns([]) },
                     debug: Debug(paddingContext).getInstance(),
+                    settings: Settings(paddingContext).getInstance(),
                     urlUtils: URLUtils(paddingContext).getInstance(),
                     segmentsController: templateSegmentsController,
                     baseURLController: realBaseURLController,
@@ -1065,6 +1130,7 @@ describe('DodgeDashHandlerOverride', function () {
                 {
                     adapter: { getVoRepresentations: sinon.stub().returns([]) },
                     debug: Debug(ctx).getInstance(),
+                    settings: Settings(ctx).getInstance(),
                     urlUtils: URLUtils(ctx).getInstance(),
                     segmentsController: localSegmentsController,
                     baseURLController: {
@@ -1134,6 +1200,7 @@ describe('DodgeDashHandlerOverride', function () {
                 {
                     adapter: { getVoRepresentations: sinon.stub().returns([]) },
                     debug: Debug(ctx).getInstance(),
+                    settings: Settings(ctx).getInstance(),
                     urlUtils: URLUtils(ctx).getInstance(),
                     segmentsController: localSegmentsController,
                     baseURLController: stableBaseURLController,
@@ -1189,6 +1256,7 @@ describe('DodgeDashHandlerOverride', function () {
                 {
                     adapter: { getVoRepresentations: sinon.stub().returns([]) },
                     debug: Debug(ctx).getInstance(),
+                    settings: Settings(ctx).getInstance(),
                     urlUtils: URLUtils(ctx).getInstance(),
                     segmentsController: localSegmentsController,
                     baseURLController: stableBaseURLController,
@@ -1245,6 +1313,7 @@ describe('DodgeDashHandlerOverride', function () {
                 {
                     adapter: { getVoRepresentations: sinon.stub().returns([]) },
                     debug: Debug(ctx).getInstance(),
+                    settings: Settings(ctx).getInstance(),
                     urlUtils: URLUtils(ctx).getInstance(),
                     segmentsController: localSegmentsController,
                     baseURLController: stableBaseURLController,
@@ -1883,6 +1952,7 @@ describe('DodgeDashHandlerOverride', function () {
                 {
                     adapter: { getVoRepresentations: sinon.stub().returns([]) },
                     debug: Debug(context).getInstance(),
+                    settings: Settings(context).getInstance(),
                     urlUtils: URLUtils(context).getInstance(),
                     segmentsController: {
                         getSegmentByIndex: sinon.stub().callsFake((r, idx) => makeSegment(r, idx)),
@@ -2407,6 +2477,7 @@ describe('DodgeDashHandlerOverride', function () {
                 {
                     adapter,
                     debug: Debug(context).getInstance(),
+                    settings: Settings(context).getInstance(),
                     urlUtils: URLUtils(context).getInstance(),
                     segmentsController: segBaseSegmentsController,
                     baseURLController: segBaseURLController,
@@ -2599,6 +2670,7 @@ describe('DodgeDashHandlerOverride', function () {
                 {
                     adapter,
                     debug: Debug(context).getInstance(),
+                    settings: Settings(context).getInstance(),
                     urlUtils: URLUtils(context).getInstance(),
                     segmentsController: realSegmentsController,
                     baseURLController: {
@@ -2782,6 +2854,7 @@ describe('DodgeDashHandlerOverride', function () {
                 {
                     adapter,
                     debug: Debug(context).getInstance(),
+                    settings: Settings(context).getInstance(),
                     urlUtils: URLUtils(context).getInstance(),
                     segmentsController,
                     baseURLController: segBaseURLController,
@@ -2877,6 +2950,7 @@ describe('DodgeDashHandlerOverride', function () {
                 {
                     adapter,
                     debug: Debug(context).getInstance(),
+                    settings: Settings(context).getInstance(),
                     urlUtils: URLUtils(context).getInstance(),
                     segmentsController: segBaseSegCtrl,
                     baseURLController: segBaseURLController,
@@ -3065,6 +3139,7 @@ describe('DodgeDashHandlerOverride', function () {
                 {
                     adapter,
                     debug: Debug(context).getInstance(),
+                    settings: Settings(context).getInstance(),
                     urlUtils: URLUtils(context).getInstance(),
                     segmentsController: realCtrl,
                     baseURLController: {

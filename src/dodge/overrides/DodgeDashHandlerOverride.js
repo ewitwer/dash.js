@@ -33,7 +33,6 @@ import DefenseRegistry, { getCycleIndexBySegmentIndex } from '../DefenseRegistry
 import DashConstants from '../../dash/constants/DashConstants.js';
 import DodgeConstants from '../constants/DodgeConstants.js';
 import { createStrictModeReader } from '../utils/StrictMode.js';
-import Settings from '../../core/Settings.js';
 import { processUriTemplate } from '../../dash/utils/SegmentsUtils.js';
 import FragmentRequest from '../../streaming/vo/FragmentRequest.js';
 import {HTTPRequest} from '../../streaming/vo/metrics/HTTPRequest.js';
@@ -57,7 +56,7 @@ function DodgeDashHandlerOverride(config) {
     const _parentIsLastSegmentRequested = parent.isLastSegmentRequested;
 
     const defenseRegistry = DefenseRegistry(context).getInstance();
-    const settings = Settings(context).getInstance();
+    const settings = config.settings;
     const adapter = config.adapter;
     const baseURLController = config.baseURLController;
     const urlUtils = config.urlUtils;

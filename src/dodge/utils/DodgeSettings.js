@@ -29,38 +29,34 @@
  *  POSSIBILITY OF SUCH DAMAGE.
  */
 
-import { getDodgeDebug } from '../utils/DodgeDebug.js';
-import { getDodgeSettings } from '../utils/DodgeSettings.js';
-import { applyRequestPadding } from '../utils/RequestPadding.js';
+
+import Settings from '../../core/Settings.js';
 
 /**
- * Overrides FetchLoader.load() to apply request-level padding for Dodge
- * requests before delegating to the parent implementation.
- *
- * When `dodge.paddingLengthBase` is set, all Dodge requests are padded so
- * the approximate HTTP/1.1 wire size (URL + all request headers) falls in
- * `[paddingLengthBase, paddingLengthBase + paddingLengthRandom]`.
+ * Where the Dodge loader overrides get their settings.
  */
-function DodgeFetchLoaderOverride() {
+const injected = new WeakMap();
 
-    const context = this.context;
-    const parent = this.parent;
-    const _parentLoad = parent.load;
-
-    const settings = getDodgeSettings(context);
-    const logger = getDodgeDebug(context).getLogger(this);
-
-    /**
-     * Apply request padding and delegate to the parent FetchLoader.
-     * @param {CommonMediaRequest} commonMediaRequest
-     * @param {CommonMediaResponse} commonMediaResponse
-     */
-    function load(commonMediaRequest, commonMediaResponse) {
-        applyRequestPadding(commonMediaRequest, settings, logger);
-        return _parentLoad.call(parent, commonMediaRequest, commonMediaResponse);
-    }
-
-    return { load };
+/**
+ * Record the player's Settings instance for this context.
+ * @param {Object} context - The MediaPlayer context Dodge was created with.
+ * @param {Object} settings - The player's Settings instance.
+ */
+export function setDodgeSettings(context, settings) {
+    injected.set(context, settings);
 }
 
-export default DodgeFetchLoaderOverride;
+/**
+ * The Settings instance the Dodge loader overrides should read.
+ *
+ * Falls back to this bundle's own, which is correct only where there is one
+ * module graph, as in the unit tests. In a real player the fallback would be the
+ * defaults-only instance described above, so DodgeHandler is required to inject,
+ * and a unit test pins that it does.
+ *
+ * @param {Object} context - The MediaPlayer context.
+ * @returns {Object} The Settings instance to read.
+ */
+export function getDodgeSettings(context) {
+    return injected.get(context) || Settings(context).getInstance();
+}

@@ -8,6 +8,7 @@ import EventBus from '../../../../src/core/EventBus.js';
 import Events from '../../../../src/core/events/Events.js';
 import MediaPlayerEvents from '../../../../src/streaming/MediaPlayerEvents.js';
 import Settings from '../../../../src/core/Settings.js';
+import { getDodgeSettings } from '../../../../src/dodge/utils/DodgeSettings.js';
 import Debug from '../../../../src/core/Debug.js';
 import DodgeScheduleControllerOverride from '../../../../src/dodge/overrides/DodgeScheduleControllerOverride.js';
 
@@ -3758,6 +3759,23 @@ describe('DodgeHandler', function () {
             handler.tryProcessExtendedManifest('<MPD/>', 'https://example.com/source.mpd');
 
             expect(errorsMatching(recording.logger, 'Dodge strict mode is enabled')).to.have.lengthOf(1);
+        });
+
+        it('records the player\'s Settings for the loader overrides', function () {
+            const ctx = {};
+            const playerSettings = Settings({}).getInstance();
+            expect(playerSettings).to.not.equal(Settings(ctx).getInstance());
+
+            const handler = DodgeHandler(ctx).create({
+                eventBus: EventBus(ctx).getInstance(),
+                events: Events,
+                settings: playerSettings,
+                streamController: null,
+                mediaPlayer: { extend: () => {}, getDebug: () => Debug(ctx).getInstance() }
+            });
+
+            expect(handler).to.exist; // jshint ignore:line
+            expect(getDodgeSettings(ctx)).to.equal(playerSettings);
         });
 
         it('the defense registry logs through that same instance', function () {

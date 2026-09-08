@@ -784,6 +784,77 @@ class DashJsAdapter {
         }
     }
 
+    /**
+     * Record what actually leaves the browser, by wrapping XMLHttpRequest.
+     *
+     * Dodge normalizes request wire size in its FetchLoader/XHRLoader overrides,
+     * which run after HTTPLoader has merged queryParams and CMCD, set the Range
+     * header, and applied any application request interceptor. The request
+     * carried by FRAGMENT_LOADING_STARTED is the state before all of that, so
+     * collectDodgeTraffic cannot see the padded request. xhr.open and
+     * xhr.setRequestHeader are the last point before the wire.
+     *
+     * Only XMLHttpRequest is wrapped. HTTPLoader._getLoader picks FetchLoader
+     * only for low-latency streams (availabilityTimeComplete false), so static
+     * VoD never reaches it. A test asserts it captured requests, so a change
+     * that moved segments onto fetch would fail here.
+     */
+    startWireRequestLog() {
+        this.stopWireRequestLog();
+        this.wireRequestLog = [];
+
+        const log = this.wireRequestLog;
+        const proto = XMLHttpRequest.prototype;
+        const original = { open: proto.open, setRequestHeader: proto.setRequestHeader, send: proto.send };
+        this.wireRequestOriginal = original;
+
+        proto.open = function (method, url, ...rest) {
+            this.dodgeWireRecord = { url: String(url), headerBytes: 0 };
+            return original.open.call(this, method, url, ...rest);
+        };
+
+        proto.setRequestHeader = function (key, value) {
+            // applyRequestPadding skips falsy header values, so this must too.
+            if (this.dodgeWireRecord && value) {
+                this.dodgeWireRecord.headerBytes += key.length + String(value).length + 4;
+            }
+            return original.setRequestHeader.call(this, key, value);
+        };
+
+        proto.send = function (...args) {
+            const record = this.dodgeWireRecord;
+            if (record) {
+                log.push({
+                    url: record.url,
+                    urlLength: record.url.length,
+                    headerBytes: record.headerBytes,
+                    size: record.url.length + record.headerBytes
+                });
+            }
+            return original.send.apply(this, args);
+        };
+    }
+
+    getWireRequestLog() {
+        return this.wireRequestLog ? this.wireRequestLog.slice() : [];
+    }
+
+    clearWireRequestLog() {
+        if (this.wireRequestLog) {
+            this.wireRequestLog.length = 0;
+        }
+    }
+
+    stopWireRequestLog() {
+        if (this.wireRequestOriginal) {
+            const proto = XMLHttpRequest.prototype;
+            proto.open = this.wireRequestOriginal.open;
+            proto.setRequestHeader = this.wireRequestOriginal.setRequestHeader;
+            proto.send = this.wireRequestOriginal.send;
+            this.wireRequestOriginal = null;
+        }
+    }
+
     collectDodgeTraffic(timeoutValue, minRequests = Infinity) {
         return new Promise((resolve) => {
             const traffic = [];
