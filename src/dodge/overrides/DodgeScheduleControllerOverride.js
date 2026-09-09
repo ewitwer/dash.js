@@ -53,6 +53,7 @@ function DodgeScheduleControllerOverride(config) {
     const _parentStartScheduleTimer = parent.startScheduleTimer;
 
     const dashHandler = config.dashHandler;
+    const bufferController = config.bufferController;
     const settings = config.settings;
     const streamInfo = config.streamInfo;
     const type = config.type;
@@ -98,6 +99,15 @@ function DodgeScheduleControllerOverride(config) {
         // fragment completion, without reading the error or the sender.
         if (_isStalled()) {
             return true;
+        }
+
+        // Refresh the reported buffer level before anything reads it. The mock
+        // buffer only reaches the scheduler through BUFFER_LEVEL_UPDATED, which
+        // BufferController fires from its own _updateBufferLevel, and the only
+        // callers of that are appends and the element's timeupdate.
+        if (dashHandler && dashHandler.getIsDefended && dashHandler.getIsDefended() &&
+                bufferController && bufferController.updateBufferLevel) {
+            bufferController.updateBufferLevel();
         }
 
         const parentResult = _parentShouldClearScheduleTimer.call(parent);

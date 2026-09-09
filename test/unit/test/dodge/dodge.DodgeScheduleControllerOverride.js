@@ -45,21 +45,22 @@ describe('DodgeScheduleControllerOverride', function () {
             context._dodgeHandler = { isStalled: isStalledStub };
         }
 
+        const updateBufferLevelStub = sinon.stub();
+        const bufferController = { updateBufferLevel: updateBufferLevelStub };
+
         const override = DodgeScheduleControllerOverride.call(
             { context, parent, factory: {} },
-            { dashHandler, settings, streamInfo: { id: 'stream-1' }, type: 'text' }
+            { dashHandler, settings, bufferController, streamInfo: { id: 'stream-1' }, type: 'text' }
         );
 
-        return { override, parentShouldClearStub, parentStartScheduleTimerStub, getIsTrailingStub, getIsDefendedStub, isStalledStub, loggerSpy };
+        return { override, parentShouldClearStub, parentStartScheduleTimerStub, getIsTrailingStub, getIsDefendedStub, isStalledStub, updateBufferLevelStub, loggerSpy };
     }
 
     describe('_shouldClearScheduleTimer', function () {
 
-        it('parent returns false (keep timer), not trailing: returns false without checking trailing state', function () {
-            const { override, getIsTrailingStub } = makeOverride({ parentResult: false, isTrailing: false });
+        it('parent returns false (keep timer), not trailing: returns false', function () {
+            const { override } = makeOverride({ parentResult: false, isTrailing: false });
             expect(override._shouldClearScheduleTimer()).to.be.false; // jshint ignore:line
-            // Trailing check is irrelevant when parent already says keep timer
-            expect(getIsTrailingStub.called).to.be.false; // jshint ignore:line
         });
 
         it('parent returns false (keep timer), during trailing: still returns false', function () {
@@ -248,4 +249,43 @@ describe('DodgeScheduleControllerOverride', function () {
             expect(parentStartScheduleTimerStub.firstCall.args[0]).to.equal(0);
         });
     });
+
+    describe('refreshing the buffer level during the trailing phase', function () {
+
+        // The mock buffer only reaches the scheduler through
+        // BUFFER_LEVEL_UPDATED, which BufferController fires from
+        // _updateBufferLevel().
+        it('refreshes the buffer level during the trailing phase', function () {
+            const { override, updateBufferLevelStub } = makeOverride({ parentResult: true, isTrailing: true, isDefended: true });
+            expect(override._shouldClearScheduleTimer()).to.be.false; // jshint ignore:line
+            expect(updateBufferLevelStub.calledOnce).to.be.true; // jshint ignore:line
+        });
+
+        it('refreshes on every tick of the phase, not only the first', function () {
+            const { override, updateBufferLevelStub } = makeOverride({ parentResult: true, isTrailing: true, isDefended: true });
+            override._shouldClearScheduleTimer();
+            override._shouldClearScheduleTimer();
+            override._shouldClearScheduleTimer();
+            expect(updateBufferLevelStub.callCount).to.equal(3);
+        });
+
+        it('leaves the buffer level alone during ordinary defended playback', function () {
+            const { override, updateBufferLevelStub } = makeOverride({ parentResult: false, isTrailing: false, isDefended: true });
+            override._shouldClearScheduleTimer();
+            expect(updateBufferLevelStub.called).to.be.false; // jshint ignore:line
+        });
+
+        it('leaves the buffer level alone when no defense is active', function () {
+            const { override, updateBufferLevelStub } = makeOverride({ parentResult: false, isTrailing: false, isDefended: false });
+            override._shouldClearScheduleTimer();
+            expect(updateBufferLevelStub.called).to.be.false; // jshint ignore:line
+        });
+
+        it('does not refresh a stalled stream, which is finished', function () {
+            const { override, updateBufferLevelStub } = makeOverride({ parentResult: true, isTrailing: true, isDefended: true, isStalled: true });
+            expect(override._shouldClearScheduleTimer()).to.be.true; // jshint ignore:line
+            expect(updateBufferLevelStub.called).to.be.false; // jshint ignore:line
+        });
+    });
+
 });

@@ -1,6 +1,7 @@
 import Constants from '../../src/Constants.js';
 import {expect} from 'chai';
 import Utils from '../../src/Utils.js';
+import MediaPlayerEvents from '../../../../src/streaming/MediaPlayerEvents.js';
 
 import {
     checkIsPlaying,
@@ -16,6 +17,13 @@ Utils.getTestvectorsForTestcase(TESTCASE).forEach((item) => {
 
     describe(`${TESTCASE} - ${item.name} - ${mpd}`, () => {
         let playerAdapter;
+        let endedBeforeSeek = 0;
+        let seekedAt = 0;
+        // Trailing requests, recorded as they are issued. isDodgeTrailing() is
+        // a transient: the phase can open and close inside one polling interval,
+        // and by the time a later test looks the cursor is already past the last
+        // cycle. What the phase leaves behind is its padding on the wire.
+        const trailingRequests = [];
 
         before(() => {
             playerAdapter = initializeDashJsAdapter(item, mpd, {
@@ -23,6 +31,12 @@ Utils.getTestvectorsForTestcase(TESTCASE).forEach((item) => {
                     abr: {
                         autoSwitchBitrate: { video: false, audio: false }
                     }
+                }
+            });
+            playerAdapter.registerEvent(MediaPlayerEvents.PLAYBACK_ENDED);
+            playerAdapter.registerEvent(MediaPlayerEvents.FRAGMENT_LOADING_STARTED, (e) => {
+                if (e && e.request && e.request.trail === true) {
+                    trailingRequests.push({ mediaType: e.request.mediaType, time: Date.now() });
                 }
             });
         })
@@ -66,6 +80,11 @@ Utils.getTestvectorsForTestcase(TESTCASE).forEach((item) => {
         })
 
         it(`Seek backward during trailing does not crash`, async () => {
+            // PlaybackController may already have ended the stream during this
+            // first trailing phase, so record the count now: the assertion at the
+            // end needs a *new* PLAYBACK_ENDED, not the one from before the seek.
+            endedBeforeSeek = playerAdapter.getEventTriggerCount(MediaPlayerEvents.PLAYBACK_ENDED);
+            seekedAt = Date.now();
             playerAdapter.seek(0);
             await playerAdapter.sleep(2000);
             expect(playerAdapter.isDodgeActive()).to.be.true;
@@ -91,6 +110,49 @@ Utils.getTestvectorsForTestcase(TESTCASE).forEach((item) => {
             // progression check would time out. Explicitly resume playback.
             playerAdapter.play();
             await checkIsProgressing(playerAdapter);
+        })
+
+        it(`The defense sends its trailing padding again after the seek`, async () => {
+            // Seeking backward rewinds the cycle cursor into the data cycles, so
+            // the defense has to walk forward to its trailing padding a second
+            // time. The buffering completion deferral is armed per phase for
+            // exactly this reason: on a defense whose cycles cover the whole
+            // presentation the period is fully buffered again by the time the
+            // second phase starts, and a deferral that only armed once would let
+            // ScheduleController refuse to arm its timer, so no padding would go
+            // out at all.
+            const timeout = 60000;
+            const start = Date.now();
+            let afterSeek = [];
+            while (Date.now() - start < timeout) {
+                afterSeek = trailingRequests.filter((r) => r.time > seekedAt);
+                if (afterSeek.length >= 2) {
+                    break;
+                }
+                await playerAdapter.sleep(250);
+            }
+            expect(afterSeek.length,
+                'Expected the trailing padding cycles to be requested again after seeking back into the content cycles, ' +
+                'saw ' + afterSeek.length)
+                .to.be.at.least(2);
+        })
+
+        it(`Playback still finishes after a seek out of the trailing phase`, async () => {
+            // The deferral has to be handed back at the end of the second phase
+            // too. If it is only released once per session the stream stays
+            // alive forever after a seek: the padding goes out, the cycles run
+            // out, and nothing ever ends the media source.
+            const timeout = 60000;
+            const start = Date.now();
+            let ended = false;
+            while (Date.now() - start < timeout) {
+                ended = playerAdapter.getEventTriggerCount(MediaPlayerEvents.PLAYBACK_ENDED) > endedBeforeSeek;
+                if (ended) {
+                    break;
+                }
+                await playerAdapter.sleep(250);
+            }
+            expect(ended, 'Expected a new PLAYBACK_ENDED after the trailing phase that followed the seek; the deferred buffering completion was never released a second time').to.be.true;
         })
 
         it(`Expect no critical errors to be thrown`, () => {

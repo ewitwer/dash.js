@@ -480,7 +480,7 @@ Two complementary mechanisms prevent spurious seeks during the trailing phase:
 |---|---|---|
 | `dodge.DodgeScheduleControllerOverride.js` | _shouldClearScheduleTimer | parent returns true (clear timer), during trailing: returns false (keeps timer for padding downloads) |
 | `dodge.DodgeScheduleControllerOverride.js` | _shouldClearScheduleTimer | parent returns true (clear timer), not trailing: returns true (clears normally) |
-| `dodge.DodgeScheduleControllerOverride.js` | _shouldClearScheduleTimer | parent returns false (keep timer), not trailing: returns false without checking trailing state |
+| `dodge.DodgeScheduleControllerOverride.js` | _shouldClearScheduleTimer | parent returns false (keep timer), not trailing: returns false |
 | `dodge.DodgeScheduleControllerOverride.js` | _shouldClearScheduleTimer | parent returns false (keep timer), during trailing: still returns false |
 | `dodge.DodgeScheduleControllerOverride.js` | _shouldClearScheduleTimer | dashHandler absent: falls back to parent result without crashing |
 
@@ -493,6 +493,51 @@ been requested, because every cycle after it is padding. A progressive stream is
 |---|---|---|
 | `dodge.DodgeDashHandlerOverride.js` | Defended behavior with extended manifest | getIsTrailing() returns false before any cycles are consumed |
 | `dodge.DodgeDashHandlerOverride.js` | Defended behavior with extended manifest | getIsTrailing() returns true when lastCycleIndex == maxNoPad and trailing cycles remain |
+
+### R4.5 - Buffering completion is deferred until the trailing cycles are done
+
+`BufferController` concludes that the period is fully buffered as soon as the buffered range reaches
+the period end, which happens when the last content segment is appended. On a defense whose data
+cycles cover the whole presentation that is *before* any trailing padding has gone out, and
+`ScheduleController.startScheduleTimer()` refuses to arm a timer on a completed buffer, so the phase
+would never start. `getIsBufferingCompleted()` therefore answers `false` for the length of the phase.
+`Stream` reads the same getter, so `mediaSource.endOfStream()` is held back with it.
+
+The deferral outlives `getIsTrailing()`, which goes false when the *last* trailing cycle is
+requested rather than when its response lands, and a seek out of the phase does not lift it. Only
+the release in R4.6 does. `reset()` clears it. R4.3 keeps the timer alive once it is armed; this
+requirement is what lets it be armed at all.
+
+| File | Description | Test |
+|---|---|---|
+| `dodge.DodgeBufferControllerOverride.js` | getIsBufferingCompleted | reports the parent answer verbatim when the defense never trails |
+| `dodge.DodgeBufferControllerOverride.js` | getIsBufferingCompleted | hides the parent completion while the trailing phase is running |
+| `dodge.DodgeBufferControllerOverride.js` | getIsBufferingCompleted | keeps hiding it after the last trailing cycle is requested, while its response is in flight |
+| `dodge.DodgeBufferControllerOverride.js` | getIsBufferingCompleted | a seek out of the trailing phase does not lift the deferral |
+| `dodge.DodgeBufferControllerOverride.js` | getIsBufferingCompleted | reset() clears the deferral a finished trailing phase left behind |
+| `dodge.DodgeBufferControllerOverride.js` | onPaddingLoaded releasing the deferred completion | defers again when a second trailing phase begins after the first one finished |
+
+### R4.6 - The final trailing padding response hands buffering completion back
+
+`BufferController._checkIfBufferingCompleted` fires `BUFFERING_COMPLETED` only on the transition of
+its own private flag, and that transition already happened while R4.5 was hiding it. Nothing fires it
+a second time, so `Stream` would never re-evaluate and the stream would never end. A trailing padding
+response arriving after the handler has left the trailing phase is the last one, and it re-asserts
+the value the parent already holds so the event fires again. It re-asserts once per phase, only when
+the parent had in fact completed, and never for a defense that did not trail. A phase entered after a
+seek is released the same way. A release that only fired once per session would leave the stream
+alive forever after a seek: the padding goes out, the cycles run out, and nothing ends the media
+source.
+
+| File | Description | Test |
+|---|---|---|
+| `dodge.DodgeBufferControllerOverride.js` | getIsBufferingCompleted | reports the parent answer once the final trailing padding has landed |
+| `dodge.DodgeBufferControllerOverride.js` | onPaddingLoaded releasing the deferred completion | re-asserts the parent completion on the final trailing padding so the stream can end |
+| `dodge.DodgeBufferControllerOverride.js` | onPaddingLoaded releasing the deferred completion | does not re-assert on a trailing padding that is not the last one |
+| `dodge.DodgeBufferControllerOverride.js` | onPaddingLoaded releasing the deferred completion | does not re-assert when the parent never completed buffering |
+| `dodge.DodgeBufferControllerOverride.js` | onPaddingLoaded releasing the deferred completion | re-asserts only once even if further trailing padding lands |
+| `dodge.DodgeBufferControllerOverride.js` | onPaddingLoaded releasing the deferred completion | does not re-assert when the defense never trailed at all |
+| `dodge.DodgeBufferControllerOverride.js` | onPaddingLoaded releasing the deferred completion | releases again at the end of a second trailing phase so the stream can still end |
 
 ---
 
@@ -762,6 +807,32 @@ After scheduling, `_onPaddingLoaded` calls `onPaddingLoaded()` on the stream pro
 | `dodge.DodgeScheduleControllerOverride.js` | startScheduleTimer | defended with a non-numeric scheduleWaitRandom: clamps to scheduleWaitBase |
 | `dodge.DodgeScheduleControllerOverride.js` | startScheduleTimer | defended with undefined value: treats as 0 and enforces minimum delay |
 | `dodge.DodgeScheduleControllerOverride.js` | startScheduleTimer | dashHandler absent: passes value through to parent unchanged |
+
+### R7.6 - The reported buffer level is refreshed on every schedule tick of the trailing phase
+
+The mock buffer only reaches the scheduler through `BUFFER_LEVEL_UPDATED`, which `BufferController`
+fires from its own `_updateBufferLevel`. The callers of that are appends and the media element's
+`timeupdate`, and both stop once the real content has been consumed. During the trailing phase,
+the level the scheduler compares against its target would therefore be whatever was recorded before
+playback ended, which is near zero, so every tick would decide to fetch and the padding cycles would
+go out back to back at the random walk floor instead of at content pace. `_shouldClearScheduleTimer`
+runs at the top of every tick, which is where the decision is made, so it refreshes the level there.
+
+Only during the phase. Outside it `timeupdate` is still firing several times a second, so there is
+nothing stale to correct, and each extra call is another opportunity to read a `SourceBuffer` that is
+being torn down: `SourceBufferSink.getAllBufferRanges` catches that and reports it at error level,
+which a functional run asserts against. A stalled stream is finished and is not refreshed either.
+
+Consulting the phase here means `_shouldClearScheduleTimer` reads `getIsTrailing()` before it asks
+the parent, where it used to short-circuit. R4.3 covers the verdicts, which are unchanged.
+
+| File | Description | Test |
+|---|---|---|
+| `dodge.DodgeScheduleControllerOverride.js` | refreshing the buffer level during the trailing phase | refreshes the buffer level during the trailing phase |
+| `dodge.DodgeScheduleControllerOverride.js` | refreshing the buffer level during the trailing phase | refreshes on every tick of the phase, not only the first |
+| `dodge.DodgeScheduleControllerOverride.js` | refreshing the buffer level during the trailing phase | leaves the buffer level alone during ordinary defended playback |
+| `dodge.DodgeScheduleControllerOverride.js` | refreshing the buffer level during the trailing phase | leaves the buffer level alone when no defense is active |
+| `dodge.DodgeScheduleControllerOverride.js` | refreshing the buffer level during the trailing phase | does not refresh a stalled stream, which is finished |
 
 ---
 
@@ -2007,6 +2078,8 @@ and needs the same enforcement.
 | R4.2 Segment downloading not complete early | 2 |
 | R4.3 Schedule timer continues (buffering icon) | 5 |
 | R4.4 getIsTrailing correct | 2 |
+| R4.5 Buffering completion deferred through trailing | 6 |
+| R4.6 Final trailing padding hands completion back | 7 |
 | R5.1 Mock buffer accumulates duration variance | 3 |
 | R5.2 Mock buffer incremented only for trailing padding | 4 |
 | R5.3 Mock buffer drains during trailing | 3 |
@@ -2025,6 +2098,7 @@ and needs the same enforcement.
 | R7.3 Suppressed events skip scheduling | 2 |
 | R7.4 Padding event routing | 2 |
 | R7.5 Random walk delay on all scheduling paths | 11 |
+| R7.6 Buffer level refreshed on every schedule tick | 5 |
 | R8.1 Every request URL carries a cache-busting query value | 6 |
 | R8.2 Request padding normalizes wire size | 16 |
 | R8.3 A relative URL is resolved before measuring | 4 |
@@ -2034,7 +2108,7 @@ and needs the same enforcement.
 | R9.1 Structural validation rejects malformed manifests | 70 |
 | R9.2 Init cycle validation | 30 |
 | R9.3 Init cycle quality validation and explicit buffer requirement | 17 |
-| R9.4 Data cycle validation, maxNoPad, and cycle.full precomputation | 26 |
+| R9.4 Data cycle validation, maxNoPad, and cycle.full precomputation | 27 |
 | R9.5 Assembled ranges leave no gap | 14 |
 | R9.6 Cycle index lookup | 4 |
 | R9.7 Registry stores and retrieves manifests | 5 |
@@ -2046,6 +2120,7 @@ and needs the same enforcement.
 | R9.13 Override stalls (does not finish) while progressive | 6 |
 | R9.14 DodgeHandler progressive append/finalize delegation | 6 |
 | R9.15 A progressive stream is never in the trailing phase | 7 |
+| R9.16 Every segment index is flushed by a buffer directive | 12 |
 | R10.1 Manifest parsing and graceful degradation | 4 |
 | R10.2 Strict mode manifest/max error firing | 6 |
 | R10.3 Non-strict mode no error | 1 |
@@ -2078,4 +2153,4 @@ and needs the same enforcement.
 | R12.6 Dodge logs through the player's Debug | 3 |
 | R12.7 Every Dodge module reads the player's Settings | 5 |
 | R12.8 A stalled stream is never scheduled again | 11 |
-| **Total** | **805** |
+| **Total** | **836** |

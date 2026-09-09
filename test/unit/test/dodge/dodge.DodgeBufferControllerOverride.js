@@ -32,6 +32,8 @@ describe('DodgeBufferControllerOverride', function () {
             prepareForDefaultQualitySwitch: sinon.stub().resolves(),
             getInitChunkFromCache: sinon.stub().returns(null),
             getType: sinon.stub().returns('video'),
+            getIsBufferingCompleted: sinon.stub().returns(false),
+            setIsBufferingCompleted: sinon.stub(),
         };
 
         dashHandler = {
@@ -830,6 +832,174 @@ describe('DodgeBufferControllerOverride', function () {
             });
 
             expect(order.join(' > ')).to.equal('append:segA');
+        });
+    });
+
+    // ************************************************************************
+    // BUFFERING COMPLETION DURING THE TRAILING PHASE
+    // ************************************************************************
+
+    describe('getIsBufferingCompleted', function () {
+
+        // Drive the override the way BufferController._onAppended does: it calls
+        // updateBufferLevel() before it calls _checkIfBufferingCompleted(), so a
+        // trailing phase that has started has always been observed by then.
+        function enterTrailing() {
+            dashHandler.getIsTrailing.returns(true);
+            override.updateBufferLevel();
+        }
+
+        it('reports the parent answer verbatim when the defense never trails', function () {
+            mockParent.getIsBufferingCompleted.returns(true);
+            expect(override.getIsBufferingCompleted()).to.be.true; // jshint ignore:line
+
+            mockParent.getIsBufferingCompleted.returns(false);
+            expect(override.getIsBufferingCompleted()).to.be.false; // jshint ignore:line
+        });
+
+        it('hides the parent completion while the trailing phase is running', function () {
+            // The period buffers to its end as soon as the last content segment is
+            // appended, so the parent completes while the padding cycles still have
+            // to go out. ScheduleController.startScheduleTimer() refuses to arm on a
+            // completed buffer, which would end the phase before it started.
+            mockParent.getIsBufferingCompleted.returns(true);
+            enterTrailing();
+            expect(override.getIsBufferingCompleted()).to.be.false; // jshint ignore:line
+        });
+
+        it('keeps hiding it after the last trailing cycle is requested, while its response is in flight', function () {
+            mockParent.getIsBufferingCompleted.returns(true);
+            enterTrailing();
+
+            // getIsTrailing() goes false when the last cycle is requested, not when
+            // its response lands.
+            dashHandler.getIsTrailing.returns(false);
+            expect(override.getIsBufferingCompleted()).to.be.false; // jshint ignore:line
+        });
+
+        it('reports the parent answer once the final trailing padding has landed', function () {
+            mockParent.getIsBufferingCompleted.returns(true);
+            enterTrailing();
+            dashHandler.getIsTrailing.returns(false);
+
+            override.onPaddingLoaded({ trail: true, buffer: true, representation: { segmentDuration: 4 } });
+
+            expect(override.getIsBufferingCompleted()).to.be.true; // jshint ignore:line
+        });
+
+        it('a seek out of the trailing phase does not lift the deferral', function () {
+            mockParent.getIsBufferingCompleted.returns(true);
+            enterTrailing();
+
+            // A seek back into content leaves the trailing phase without finishing
+            // the cycles. Reporting completion here would end the stream early.
+            dashHandler.getIsTrailing.returns(false);
+            override.onPaddingLoaded({ trail: false, buffer: false, representation: { segmentDuration: 4 } });
+
+            expect(override.getIsBufferingCompleted()).to.be.false; // jshint ignore:line
+        });
+
+        it('reset() clears the deferral a finished trailing phase left behind', function () {
+            mockParent.getIsBufferingCompleted.returns(true);
+            enterTrailing();
+            dashHandler.getIsTrailing.returns(false);
+            expect(override.getIsBufferingCompleted()).to.be.false; // jshint ignore:line
+
+            override.reset();
+
+            expect(override.getIsBufferingCompleted()).to.be.true; // jshint ignore:line
+        });
+    });
+
+    describe('onPaddingLoaded releasing the deferred completion', function () {
+
+        function enterTrailing() {
+            dashHandler.getIsTrailing.returns(true);
+            override.updateBufferLevel();
+        }
+
+        it('re-asserts the parent completion on the final trailing padding so the stream can end', function () {
+            // BufferController._checkIfBufferingCompleted is one-shot on its own
+            // private flag, so nothing fires BUFFERING_COMPLETED a second time.
+            // Without this re-assert Stream never re-evaluates and the media source
+            // is never ended.
+            mockParent.getIsBufferingCompleted.returns(true);
+            enterTrailing();
+            dashHandler.getIsTrailing.returns(false);
+
+            override.onPaddingLoaded({ trail: true, buffer: true, representation: { segmentDuration: 4 } });
+
+            expect(mockParent.setIsBufferingCompleted.calledOnceWith(true)).to.be.true; // jshint ignore:line
+        });
+
+        it('does not re-assert on a trailing padding that is not the last one', function () {
+            mockParent.getIsBufferingCompleted.returns(true);
+            enterTrailing();
+
+            override.onPaddingLoaded({ trail: true, buffer: true, representation: { segmentDuration: 4 } });
+
+            expect(mockParent.setIsBufferingCompleted.called).to.be.false; // jshint ignore:line
+        });
+
+        it('does not re-assert when the parent never completed buffering', function () {
+            mockParent.getIsBufferingCompleted.returns(false);
+            enterTrailing();
+            dashHandler.getIsTrailing.returns(false);
+
+            override.onPaddingLoaded({ trail: true, buffer: true, representation: { segmentDuration: 4 } });
+
+            expect(mockParent.setIsBufferingCompleted.called).to.be.false; // jshint ignore:line
+        });
+
+        it('re-asserts only once even if further trailing padding lands', function () {
+            mockParent.getIsBufferingCompleted.returns(true);
+            enterTrailing();
+            dashHandler.getIsTrailing.returns(false);
+
+            override.onPaddingLoaded({ trail: true, buffer: true, representation: { segmentDuration: 4 } });
+            override.onPaddingLoaded({ trail: true, buffer: true, representation: { segmentDuration: 4 } });
+
+            expect(mockParent.setIsBufferingCompleted.calledOnce).to.be.true; // jshint ignore:line
+        });
+
+        it('defers again when a second trailing phase begins after the first one finished', function () {
+            // A seek backward out of a finished stream replays the cycles, and
+            // the defense reaches its trailing padding a second time. The
+            // deferral has to arm again or the second phase is the broken case
+            // this whole mechanism exists to prevent.
+            mockParent.getIsBufferingCompleted.returns(true);
+            enterTrailing();
+            dashHandler.getIsTrailing.returns(false);
+            override.onPaddingLoaded({ trail: true, buffer: true, representation: { segmentDuration: 4 } });
+            expect(override.getIsBufferingCompleted()).to.be.true; // jshint ignore:line
+
+            enterTrailing();
+            dashHandler.getIsTrailing.returns(false);
+
+            expect(override.getIsBufferingCompleted()).to.be.false; // jshint ignore:line
+        });
+
+        it('releases again at the end of a second trailing phase so the stream can still end', function () {
+            mockParent.getIsBufferingCompleted.returns(true);
+            enterTrailing();
+            dashHandler.getIsTrailing.returns(false);
+            override.onPaddingLoaded({ trail: true, buffer: true, representation: { segmentDuration: 4 } });
+
+            enterTrailing();
+            dashHandler.getIsTrailing.returns(false);
+            mockParent.setIsBufferingCompleted.resetHistory();
+
+            override.onPaddingLoaded({ trail: true, buffer: true, representation: { segmentDuration: 4 } });
+
+            expect(mockParent.setIsBufferingCompleted.calledOnceWith(true)).to.be.true; // jshint ignore:line
+        });
+
+        it('does not re-assert when the defense never trailed at all', function () {
+            mockParent.getIsBufferingCompleted.returns(true);
+
+            override.onPaddingLoaded({ trail: true, buffer: true, representation: { segmentDuration: 4 } });
+
+            expect(mockParent.setIsBufferingCompleted.called).to.be.false; // jshint ignore:line
         });
     });
 });

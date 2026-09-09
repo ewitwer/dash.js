@@ -159,6 +159,15 @@ class DashJsAdapter {
     }
 
     /**
+     * How many times an event has fired. Lets a test tell a second occurrence
+     * from the first, which `hasEventBeenTriggered` cannot.
+     * @param eventName
+     */
+    getEventTriggerCount(eventName) {
+        return this.triggeredEvents.has(eventName) ? this.triggeredEvents.get(eventName).length : 0;
+    }
+
+    /**
      *
      * @param type
      * @param callback

@@ -63,6 +63,8 @@ function DodgeBufferControllerOverride(config) {
     const _parentSetMockBuffer = parent.setMockBuffer;
     const _parentUpdateBufferLevel = parent.updateBufferLevel;
     const _parentOnInitFragmentLoaded = parent._onInitFragmentLoaded;
+    const _parentGetIsBufferingCompleted = parent.getIsBufferingCompleted;
+    const _parentSetIsBufferingCompleted = parent.setIsBufferingCompleted;
 
     const dashHandler = config.dashHandler;
     const capabilities = config.capabilities;
@@ -76,7 +78,8 @@ function DodgeBufferControllerOverride(config) {
         currentMockBuffer,
         lastTimeSinceStreamEnd,
         altInitCache,
-        appendChain;
+        appendChain,
+        completionDeferred;
 
     function setup() {
         logger = debug.getLogger({ __dashjs_factory_name: 'DodgeBufferControllerOverride' });
@@ -84,6 +87,7 @@ function DodgeBufferControllerOverride(config) {
         lastTimeSinceStreamEnd = 0;
         altInitCache = new Map();
         appendChain = Promise.resolve();
+        completionDeferred = false;
     }
 
     function reset(errored, keepBuffers) {
@@ -91,7 +95,58 @@ function DodgeBufferControllerOverride(config) {
         lastTimeSinceStreamEnd = 0;
         altInitCache.clear();
         appendChain = Promise.resolve();
+        completionDeferred = false;
         _parentReset.call(parent, errored, keepBuffers);
+    }
+
+    /**
+     * Whether the period has finished buffering, as everything outside
+     * BufferController sees it.
+     *
+     * The parent decides this from its own private flag, and it sets that flag
+     * as soon as the buffered range reaches the period end, which happens the
+     * moment the last content segment is appended. The trailing padding cycles
+     * still have to go out at that point, and `ScheduleController.startScheduleTimer`
+     * refuses to arm a timer on a completed buffer, so the phase would end before
+     * it began. `Stream` asks through here too, so answering false also holds
+     * back `mediaSource.endOfStream()` until the padding is done.
+     *
+     * `getIsTrailing()` goes false when the *last* trailing cycle is requested
+     * rather than when its response lands, so the answer stays deferred until
+     * `onPaddingLoaded` sees that response. A seek out of the phase leaves the
+     * deferral in place, because the cycles are still unfinished.
+     *
+     * The deferral is per phase, not per session. Seeking backward out of a
+     * finished stream replays the cycles and reaches the trailing padding again,
+     * and that second phase needs the same treatment as the first.
+     *
+     * @returns {boolean} True when nothing further is expected.
+     */
+    function getIsBufferingCompleted() {
+        if (dashHandler && dashHandler.getIsTrailing && dashHandler.getIsTrailing()) {
+            return false;
+        }
+        if (completionDeferred) {
+            return false;
+        }
+        return _parentGetIsBufferingCompleted.call(parent);
+    }
+
+    /**
+     * Hand the verdict back to the parent, once.
+     *
+     * `BufferController._checkIfBufferingCompleted` only fires BUFFERING_COMPLETED
+     * on the transition of its private flag, and that transition already happened
+     * while this override was hiding it. Nothing would fire it a second time, so
+     * `Stream` would never re-evaluate and the stream would never end. Re-assert
+     * the value the parent already holds to fire the event again.
+     */
+    function _releaseBufferingCompleted() {
+        completionDeferred = false;
+        if (_parentGetIsBufferingCompleted.call(parent)) {
+            logger.debug('Trailing cycles finished, releasing the deferred buffering completion');
+            _parentSetIsBufferingCompleted.call(parent, true);
+        }
     }
 
     /**
@@ -133,6 +188,15 @@ function DodgeBufferControllerOverride(config) {
         if (e.buffer) {
             currentMockBuffer += e.representation.segmentDuration;
             _parentSetMockBuffer.call(parent, currentMockBuffer);
+        }
+
+        // A trailing padding response arriving after the handler has left the
+        // trailing phase is the last one: the phase ends at the request of the
+        // final cycle, and this is that cycle's response. Nothing is left to
+        // fetch, so the completion the getter above has been hiding can stand.
+        if (completionDeferred &&
+                dashHandler && dashHandler.getIsTrailing && !dashHandler.getIsTrailing()) {
+            _releaseBufferingCompleted();
         }
     }
 
@@ -282,6 +346,8 @@ function DodgeBufferControllerOverride(config) {
     function updateBufferLevel() {
         if (playbackController && dashHandler) {
             if (dashHandler.getIsTrailing()) {
+                completionDeferred = true;
+
                 const timeSinceStreamEnd = playbackController.getTimeSinceStreamEnd();
                 const diffInTime = Math.max(0, timeSinceStreamEnd - lastTimeSinceStreamEnd);
 
@@ -307,6 +373,7 @@ function DodgeBufferControllerOverride(config) {
     return {
         _onInitFragmentLoaded,
         _onMediaFragmentLoaded,
+        getIsBufferingCompleted,
         reset,
         onBufferCycleLoaded,
         onPaddingLoaded,
