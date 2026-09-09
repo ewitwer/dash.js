@@ -1870,6 +1870,13 @@ mismatch: it logs at error level and returns with `e.sender` already nulled, fir
 events and accumulating no partial. This mirrors R2.10, where an unresolvable quality
 override stalls rather than falling back.
 
+Returning stops this response but not the next request, so the stall is also recorded
+against the stream and media type, exactly as a download failure records it (R12.4, R12.8).
+Without that, `StreamProcessor._onFragmentLoadingCompleted` would restart the schedule timer
+for a fragmented text stream on the way out, and a seek or `PLAYBACK_STARTED` would restart
+it for any media type. An origin that ignores `Range` ignores it for every cycle, so a
+stream that carried on would fetch whole segments for the rest of playback.
+
 | File | Description | Test |
 |---|---|---|
 | `dodge.DodgeHandler.js` | Range-ignoring origin detection, _onFragmentLoadingCompleted | a full request whose response exceeds its range does not throw |
@@ -1885,6 +1892,10 @@ override stalls rather than falling back.
 | `dodge.DodgeHandler.js` | Range-ignoring origin detection, _onFragmentLoadingCompleted | an explicit start of 0 is checked from 0 |
 | `dodge.DodgeHandler.js` | Range-ignoring origin detection, _onFragmentLoadingCompleted | originalRange is checked when range is absent |
 | `dodge.DodgeHandler.js` | Range-ignoring origin detection, _onFragmentLoadingCompleted | range overrides originalRange for the check |
+| `dodge.DodgeHandler.js` | Range-ignoring origin detection, _onFragmentLoadingCompleted | an over-length response records the stall for its stream and media type |
+| `dodge.DodgeHandler.js` | Range-ignoring origin detection, _onFragmentLoadingCompleted | the stall from an over-length response is scoped to the media type that failed |
+| `dodge.DodgeHandler.js` | Range-ignoring origin detection, _onFragmentLoadingCompleted | a text response that exceeds its range records the stall like any other media type |
+| `dodge.DodgeHandler.js` | Range-ignoring origin detection, _onFragmentLoadingCompleted | a response within its declared range records no stall |
 | `dodge.DodgeHandler.js` | Range-ignoring origin detection, _onFragmentLoadingCompleted | an init segment whose response exceeds its range is rejected |
 | `dodge.DodgeHandler.js` | Range-ignoring origin detection, _onFragmentLoadingCompleted | a vanilla request is not checked and keeps its sender |
 
@@ -1938,6 +1949,10 @@ stream that gave up is finished, padding included. The override reaches the flag
 `DodgeHandler` on the context, as `DodgeGapControllerOverride` does, so nothing outside `src/dodge`
 changes. The flag lives with the rest of the per-stream state, so a teardown, a `reset()`, or a new
 extended manifest clears it; nothing else does, matching the permanence R12.4 specifies.
+
+A download failure is not the only thing that records it. R12.5 records the same flag when an
+origin answers a ranged request with the whole resource, which is a stall for the same reason
+and needs the same enforcement.
 
 | File | Description | Test |
 |---|---|---|
@@ -2059,8 +2074,8 @@ extended manifest clears it; nothing else does, matching the permanence R12.4 sp
 | R12.2 _createDataChunk population | 4 |
 | R12.3 getStreamStats counts | 3 |
 | R12.4 Error fragment stalling | 8 |
-| R12.5 Range-ignoring origin detection | 15 |
+| R12.5 Range-ignoring origin detection | 19 |
 | R12.6 Dodge logs through the player's Debug | 3 |
 | R12.7 Every Dodge module reads the player's Settings | 5 |
 | R12.8 A stalled stream is never scheduled again | 11 |
-| **Total** | **801** |
+| **Total** | **805** |

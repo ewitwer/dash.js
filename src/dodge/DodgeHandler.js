@@ -1241,6 +1241,12 @@ function DodgeHandler(config) {
         const requested = _parseRequestRange(request);
         const requestedLength = requested.end - requested.start + 1;
         if (requested.end >= requested.start && bytes.byteLength > requestedLength) {
+            // Record the stall, for the same reason the download failure above
+            // records it: returning here stops this response, but not the next
+            // request. StreamProcessor restarts the schedule timer for text on
+            // every fragment completion, before it reads the error or the sender,
+            // and a seek or PLAYBACK_STARTED restarts it for any media type.
+            _getStreamState(strInfo.id).stalled.add(request.mediaType);
             logger.error(request.mediaType + ' response is ' + bytes.byteLength + ' bytes for a ' +
                 requestedLength + '-byte range request; the origin ignored the Range header, so cycles are ' +
                 'fetching whole segments and the defense is not running. Stalling. URL: ' + request.url);

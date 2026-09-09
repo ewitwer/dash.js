@@ -2561,6 +2561,34 @@ describe('DodgeHandler', function () {
             expect(e.sender).to.be.null; // jshint ignore:line
         });
 
+        // Nulling e.sender is not enough on its own. StreamProcessor restarts the
+        // schedule timer for text before it reads the error or the sender, and a
+        // seek or PLAYBACK_STARTED restarts it for any media type, so the stall
+        // has to be recorded the way a download failure records it (R12.8).
+        it('an over-length response records the stall for its stream and media type', function () {
+            expect(handler.isStalled('stream-1', 'video')).to.be.false; // jshint ignore:line
+            triggerFragmentLoaded(makeRequest({ full: true, buffer: true, range: '0-3' }), 5000);
+            expect(handler.isStalled('stream-1', 'video')).to.be.true; // jshint ignore:line
+        });
+
+        it('the stall from an over-length response is scoped to the media type that failed', function () {
+            triggerFragmentLoaded(makeRequest({ full: true, buffer: true, range: '0-3' }), 5000);
+            expect(handler.isStalled('stream-1', 'audio')).to.be.false; // jshint ignore:line
+            expect(handler.isStalled('stream-1', 'text')).to.be.false; // jshint ignore:line
+        });
+
+        it('a text response that exceeds its range records the stall like any other media type', function () {
+            triggerFragmentLoaded(
+                makeRequest({ full: true, buffer: true, range: '0-3', mediaType: 'text' }), 5000
+            );
+            expect(handler.isStalled('stream-1', 'text')).to.be.true; // jshint ignore:line
+        });
+
+        it('a response within its declared range records no stall', function () {
+            triggerFragmentLoaded(makeRequest({ full: true, buffer: true, range: '0-3' }), 4);
+            expect(handler.isStalled('stream-1', 'video')).to.be.false; // jshint ignore:line
+        });
+
         // The oversized body must not enter partialSegments: a later cycle at
         // the same index would otherwise assemble from it.
         it('an over-length response is not accumulated as a partial', function () {
