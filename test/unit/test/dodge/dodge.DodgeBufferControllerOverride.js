@@ -13,7 +13,7 @@ import { expect } from 'chai';
 // ************************************************************************
 
 describe('DodgeBufferControllerOverride', function () {
-    let context, override, mockParent, dashHandler, playbackController, capabilities;
+    let context, override, mockParent, dashHandler, playbackController, capabilities, dodgeHandler;
 
     beforeEach(function () {
         context = createDodgeContext();
@@ -46,9 +46,16 @@ describe('DodgeBufferControllerOverride', function () {
             supportsChangeType: sinon.stub().returns(true),
         };
 
+        // Reached the way the other Dodge overrides reach it, off the context the
+        // player registered it on.
+        dodgeHandler = {
+            setLastInitializedRepresentation: sinon.stub(),
+        };
+        context._dodgeHandler = dodgeHandler;
+
         override = DodgeBufferControllerOverride.call(
             { context, parent: mockParent, factory: {} },
-            { dashHandler, playbackController, capabilities, settings: Settings(context).getInstance() }
+            { dashHandler, playbackController, capabilities, type: 'video', settings: Settings(context).getInstance() }
         );
     });
 
@@ -324,6 +331,68 @@ describe('DodgeBufferControllerOverride', function () {
 
             expect(mockParent.appendToBuffer.getCall(2).args[0]).to.equal(homeInit);
             expect(mockParent._onMediaFragmentLoaded.called).to.be.false; // jshint ignore:line
+        });
+
+        it('records the home representation as last initialized before appending the override media', async function () {
+            const alternateRep = { id: 'video_500k' };
+            const homeRep = { id: 'video_1000k' };
+            mockParent.getInitChunkFromCache.withArgs('video_500k').returns({ representation: alternateRep });
+            mockParent.getInitChunkFromCache.withArgs('video_1000k').returns({ representation: homeRep });
+
+            await override._onMediaFragmentLoaded({
+                chunk: { representation: alternateRep, homeRepresentationId: 'video_1000k' },
+                request: {}
+            });
+
+            expect(dodgeHandler.setLastInitializedRepresentation.calledOnceWith('video', 'video_1000k')).to.be.true; // jshint ignore:line
+
+            // It has to land between the two appends. The alternate init append makes
+            // StreamProcessor record the alternate representation and start the schedule
+            // timer; a tick that arrives before the home init goes back in would read the
+            // home representation as needing an init segment and replay its init cycles.
+            expect(dodgeHandler.setLastInitializedRepresentation.getCall(0)
+                .calledAfter(mockParent.appendToBuffer.getCall(0))).to.be.true; // jshint ignore:line
+            expect(dodgeHandler.setLastInitializedRepresentation.getCall(0)
+                .calledBefore(mockParent.appendToBuffer.getCall(1))).to.be.true; // jshint ignore:line
+        });
+
+        it('does not record a representation for a plain append that is not a quality override', async function () {
+            await override._onMediaFragmentLoaded({
+                chunk: { representation: { id: 'video_1000k' }, homeRepresentationId: null },
+                request: {}
+            });
+
+            expect(dodgeHandler.setLastInitializedRepresentation.called).to.be.false; // jshint ignore:line
+        });
+
+        it('does not record a representation when the sandwich stalls on a missing init', async function () {
+            mockParent.getInitChunkFromCache.returns(null);
+
+            await override._onMediaFragmentLoaded({
+                chunk: { representation: { id: 'video_500k' }, homeRepresentationId: 'video_1000k' },
+                request: {}
+            });
+
+            expect(mockParent.appendToBuffer.called).to.be.false; // jshint ignore:line
+            expect(dodgeHandler.setLastInitializedRepresentation.called).to.be.false; // jshint ignore:line
+        });
+
+        it('completes the sandwich when no Dodge handler is registered on the context', async function () {
+            delete context._dodgeHandler;
+            const alternateRep = { id: 'video_500k' };
+            const homeRep = { id: 'video_1000k' };
+            const alternateInit = { representation: alternateRep };
+            const homeInit = { representation: homeRep };
+            mockParent.getInitChunkFromCache.withArgs('video_500k').returns(alternateInit);
+            mockParent.getInitChunkFromCache.withArgs('video_1000k').returns(homeInit);
+
+            await override._onMediaFragmentLoaded({
+                chunk: { representation: alternateRep, homeRepresentationId: 'video_1000k' },
+                request: {}
+            });
+
+            expect(mockParent.appendToBuffer.callCount).to.equal(3);
+            expect(mockParent.appendToBuffer.getCall(2).args[0]).to.equal(homeInit);
         });
 
         it('skips changeType calls when useChangeType is disabled in settings', async function () {

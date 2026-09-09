@@ -673,6 +673,31 @@ An ordinary segment is appended with the parent's `appendToBuffer` rather than i
 | `dodge.DodgeBufferControllerOverride.js` | init append serialization | an alternate init is cached without appending, and does not stall the chain |
 
 
+### R6.5 - The sandwich re-records the home representation as soon as the alternate init is appended
+
+The sandwich (R6.1) appends a sibling representation's init segment to the real SourceBuffer.
+`StreamProcessor._onBytesAppended` reacts to every init append by recording that init's
+representation as the one the buffer is initialized for and starting the schedule timer. Between
+that append and the home init going back in at the end of the sandwich, `ScheduleController` holds
+the *alternate* representation, so `_getNextFragment` reads the home representation as still needing
+an init segment, finds its init cycles used up, and calls `restartInitCycles()` (R2.14). The whole
+init sequence is then replayed on the wire. With `dodge.scheduleWaitBase` and `scheduleWaitRandom`
+at 0, the timer fires before the append completes and the replay is reliable.
+
+`DodgeBufferControllerOverride` therefore records the home representation immediately after the
+alternate init append, through `DodgeHandler.setLastInitializedRepresentation`, reached off the
+context the way the schedule and gap overrides reach the handler. That call runs in the microtask
+following the append, so it lands ahead of any timer the append started.
+
+| File | Description | Test |
+|---|---|---|
+| `dodge.DodgeBufferControllerOverride.js` | _onMediaFragmentLoaded | records the home representation as last initialized before appending the override media |
+| `dodge.DodgeBufferControllerOverride.js` | _onMediaFragmentLoaded | does not record a representation for a plain append that is not a quality override |
+| `dodge.DodgeBufferControllerOverride.js` | _onMediaFragmentLoaded | does not record a representation when the sandwich stalls on a missing init |
+| `dodge.DodgeBufferControllerOverride.js` | _onMediaFragmentLoaded | completes the sandwich when no Dodge handler is registered on the context |
+| `dodge.DodgeHandler.js` | Random walk scheduling, _getScheduleWait and _scheduleAll | setLastInitializedRepresentation routes to the ScheduleController of the named media type |
+| `dodge.DodgeHandler.js` | Random walk scheduling, _getScheduleWait and _scheduleAll | setLastInitializedRepresentation is a no-op for a media type with no stream processor |
+
 ---
 
 ## 7. Random Walk Scheduling
@@ -1979,6 +2004,7 @@ extended manifest clears it; nothing else does, matching the permanence R12.4 sp
 | R6.2 homeRepresentationId tagging | 5 |
 | R6.3 Dodge-owned alternate init cache, cleared only by reset | 8 |
 | R6.4 Fragment releases are serialized | 8 |
+| R6.5 Sandwich re-records the home representation | 6 |
 | R7.1 Random walk delay bounded | 8 |
 | R7.2 Scheduling is scoped to correct stream processor | 3 |
 | R7.3 Suppressed events skip scheduling | 2 |
@@ -2037,4 +2063,4 @@ extended manifest clears it; nothing else does, matching the permanence R12.4 sp
 | R12.6 Dodge logs through the player's Debug | 3 |
 | R12.7 Every Dodge module reads the player's Settings | 5 |
 | R12.8 A stalled stream is never scheduled again | 11 |
-| **Total** | **795** |
+| **Total** | **801** |

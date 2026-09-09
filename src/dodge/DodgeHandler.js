@@ -1001,6 +1001,35 @@ function DodgeHandler(config) {
     }
 
     /**
+     * Tell a media type's ScheduleController which representation the
+     * SourceBuffer is initialized for.
+     *
+     * DodgeBufferControllerOverride appends a sibling representation's init
+     * segment to the real SourceBuffer as part of a quality override, and
+     * StreamProcessor._onBytesAppended records whichever representation that
+     * init belonged to, then starts the schedule timer. Between that append and
+     * the home init going back in, the ScheduleController believes the active
+     * representation still needs an init segment. A tick landing in that window
+     * finds the init cycles used up, calls restartInitCycles(), and replays the
+     * whole init sequence on the wire.
+     *
+     * The override calls this the moment the alternate init is appended, so the
+     * window closes before any timer can run.
+     *
+     * @param {string} mediaType - Media type the SourceBuffer belongs to.
+     * @param {string} representationId - Representation it is initialized for.
+     */
+    function setLastInitializedRepresentation(mediaType, representationId) {
+        const sp = _getStreamProcessor(mediaType);
+        if (sp) {
+            const sc = sp.getScheduleController();
+            if (sc) {
+                sc.setLastInitializedRepresentationId(representationId);
+            }
+        }
+    }
+
+    /**
      * Re-arm the schedule timer for a media type.
      */
     function _schedule(checkQuality, mediaType) {
@@ -1566,6 +1595,7 @@ function DodgeHandler(config) {
         isDodgeActive,
         isDodgeTrailing,
         isStalled,
+        setLastInitializedRepresentation,
         appendDataCycles,
         finalizeStream,
         reset,

@@ -67,6 +67,7 @@ function DodgeBufferControllerOverride(config) {
     const dashHandler = config.dashHandler;
     const capabilities = config.capabilities;
     const playbackController = config.playbackController;
+    const type = config.type;
 
     const debug = getDodgeDebug(context);
     const settings = config.settings;
@@ -235,6 +236,17 @@ function DodgeBufferControllerOverride(config) {
                     await parent.changeType(alternateRep);
                 }
                 await parent.appendToBuffer(alternateInit);
+
+                // That append made StreamProcessor record the alternate
+                // representation as the one the SourceBuffer is initialized for,
+                // and start the schedule timer. Put the home representation back
+                // before yielding again: a tick that ran now would see the home
+                // representation as needing an init segment, find its init cycles
+                // used up, and replay the whole sequence on the wire. This runs in
+                // the microtask that follows the append, so it lands ahead of the
+                // timer. The home init append below records the same thing again.
+                _setLastInitializedRepresentation(homeRepId);
+
                 await parent.appendToBuffer(chunk, e.request);
                 if (useChangeType) {
                     await parent.changeType(homeRep);
@@ -247,6 +259,18 @@ function DodgeBufferControllerOverride(config) {
         }
         
         return parent.appendToBuffer(chunk, e.request);
+    }
+
+    /**
+     * Record which representation the SourceBuffer is initialized for.
+     *
+     * @param {string} representationId - Representation to record.
+     */
+    function _setLastInitializedRepresentation(representationId) {
+        const dodgeHandler = context._dodgeHandler;
+        if (dodgeHandler && dodgeHandler.setLastInitializedRepresentation) {
+            dodgeHandler.setLastInitializedRepresentation(type, representationId);
+        }
     }
 
     /**

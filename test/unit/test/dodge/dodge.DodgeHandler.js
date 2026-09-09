@@ -1578,6 +1578,57 @@ describe('DodgeHandler', function () {
             expect(timerSpy2.called).to.be.false; // jshint ignore:line
         });
 
+        it('setLastInitializedRepresentation routes to the ScheduleController of the named media type', function () {
+            const videoSpy = sinon.spy();
+            const audioSpy = sinon.spy();
+
+            makeHandler([
+                {
+                    getScheduleController: () => ({
+                        startScheduleTimer: sinon.spy(),
+                        setShouldCheckPlaybackQuality: sinon.spy(),
+                        setLastInitializedRepresentationId: videoSpy,
+                    }),
+                    getType: () => 'video',
+                    getBufferController: () => ({ onPaddingLoaded: sinon.spy() }),
+                },
+                {
+                    getScheduleController: () => ({
+                        startScheduleTimer: sinon.spy(),
+                        setShouldCheckPlaybackQuality: sinon.spy(),
+                        setLastInitializedRepresentationId: audioSpy,
+                    }),
+                    getType: () => 'audio',
+                    getBufferController: () => ({ onPaddingLoaded: sinon.spy() }),
+                },
+            ]);
+
+            handler.setLastInitializedRepresentation('video', 'video_1000k');
+
+            expect(videoSpy.calledOnceWith('video_1000k')).to.be.true; // jshint ignore:line
+            expect(audioSpy.called).to.be.false; // jshint ignore:line
+        });
+
+        it('setLastInitializedRepresentation is a no-op for a media type with no stream processor', function () {
+            const videoSpy = sinon.spy();
+
+            makeHandler([
+                {
+                    getScheduleController: () => ({
+                        startScheduleTimer: sinon.spy(),
+                        setShouldCheckPlaybackQuality: sinon.spy(),
+                        setLastInitializedRepresentationId: videoSpy,
+                    }),
+                    getType: () => 'video',
+                    getBufferController: () => ({ onPaddingLoaded: sinon.spy() }),
+                },
+            ]);
+
+            handler.setLastInitializedRepresentation('audio', 'audio_128k');
+
+            expect(videoSpy.called).to.be.false; // jshint ignore:line
+        });
+
         it('audio event targets audio SP, does not affect video SP', function () {
             const videoTimerSpy = sinon.spy();
             const audioTimerSpy = sinon.spy();

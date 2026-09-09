@@ -10,6 +10,29 @@ import {
     initializeDashJsAdapter
 } from '../common/common.js';
 
+/**
+ * Every video init request on the wire has to come from an init cycle. More requests
+ * than cycles likely means the sequence was served twice, which is what happens when the
+ * alternate init append in the R6.1 sandwich leaves the ScheduleController holding the
+ * alternate representation and a schedule tick rewinds the init cycles.
+ */
+function verifyInitCyclesRequestedOnce(traffic, extendedManifest) {
+    const initRequests = traffic.filter(
+        t => t.mediaType === 'video' && t.type === 'InitializationSegment'
+    );
+
+    const homeRepresentationId = initRequests
+        .map(r => r.homeRepresentationId)
+        .find(id => id);
+    const stream = extendedManifest.streams.find(s => s.label === homeRepresentationId);
+    expect(stream, `No defended stream found for home representation ${homeRepresentationId}`).to.not.be.undefined;
+
+    const seq = initRequests.map(r => `${r.representationId}:${r.range || 'full'}`).join(' | ');
+    expect(initRequests.length,
+        `Expected ${stream.init.length} video init requests (one per init cycle), got ${initRequests.length}: [${seq}]`
+    ).to.equal(stream.init.length);
+}
+
 const TESTCASE = Constants.TESTCASES.DODGE.QUALITY_OVERRIDE;
 
 Utils.getTestvectorsForTestcase(TESTCASE).forEach((item) => {
@@ -94,6 +117,10 @@ Utils.getTestvectorsForTestcase(TESTCASE).forEach((item) => {
             expect(altInit.representationId).to.equal(qualityInitCycle.quality, 'Alternate init representationId should match the quality field in the manifest');
         })
 
+        it(`Init cycles are requested once, not replayed mid-sandwich`, async () => {
+            verifyInitCyclesRequestedOnce(await trafficPromise, extendedManifest);
+        })
+
         it(`Quality override cycles fetch from alternate representation`, async () => {
             const traffic = await trafficPromise;
 
@@ -156,6 +183,60 @@ Utils.getTestvectorsForTestcase(TESTCASE).forEach((item) => {
 
         it(`Playback completes past quality override segments`, () => {
             checkEventHasBeenTriggered(playerAdapter, MediaPlayerEvents.PLAYBACK_ENDED);
+        })
+
+        it(`Expect no critical errors to be thrown`, () => {
+            checkNoCriticalErrors(playerAdapter);
+        })
+    })
+
+    // The same invariant with no scheduling delay. The sandwich appends a sibling
+    // representation's init segment, and that append starts the schedule timer; at
+    // zero delay the timer reliably fires while the sandwich is still running, so a
+    // regression here shows every run rather than only on a slow append. The suite
+    // above keeps the default random walk, which is what deployments actually use.
+    describe(`${TESTCASE} - ${item.name} - ${mpd} - no scheduling delay`, () => {
+        let playerAdapter;
+        let extendedManifest;
+        let trafficPromise;
+
+        before(async () => {
+            const response = await fetch(mpd);
+            extendedManifest = await response.json();
+
+            playerAdapter = initializeDashJsAdapter(item, mpd, {
+                streaming: {
+                    abr: {
+                        autoSwitchBitrate: {
+                            video: false,
+                            audio: false
+                        }
+                    }
+                },
+                dodge: {
+                    strictMode: false,
+                    scheduleWaitBase: 0,
+                    scheduleWaitRandom: 0
+                }
+            });
+
+            trafficPromise = playerAdapter.collectDodgeTraffic(
+                Constants.TEST_TIMEOUT_THRESHOLDS.DODGE_TRAFFIC_COLLECTION
+            );
+        })
+
+        after(() => {
+            if (playerAdapter) {
+                playerAdapter.destroy();
+            }
+        })
+
+        it(`Checking playing state`, async () => {
+            await checkIsPlaying(playerAdapter, true);
+        })
+
+        it(`Init cycles are requested once, not replayed mid-sandwich`, async () => {
+            verifyInitCyclesRequestedOnce(await trafficPromise, extendedManifest);
         })
 
         it(`Expect no critical errors to be thrown`, () => {
