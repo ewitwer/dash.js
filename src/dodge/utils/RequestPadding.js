@@ -96,6 +96,14 @@ export function applyRequestPadding(commonMediaRequest, settings, logger) {
         return;
     }
 
+    // HTTPLoader._addPathwayCloningParameters() re-appends request.queryParams
+    // on every attempt, so a retried request arrives carrying one copy of the
+    // cache-busting parameter per attempt. Collapse them before measuring.
+    const current = resolved.searchParams.get(queryParam) || '';
+    if (current) {
+        resolved.searchParams.set(queryParam, current);
+    }
+
     const resolvedUrl = resolved.toString();
     let size = resolvedUrl.length;
     const headers = commonMediaRequest.headers;
@@ -126,7 +134,6 @@ export function applyRequestPadding(commonMediaRequest, settings, logger) {
     // The resolved URL is what goes back on the request, so a relative one is
     // rewritten absolute. It addresses the same resource, and it is what the
     // size above was measured from.
-    const current = resolved.searchParams.get(queryParam) || '';
     resolved.searchParams.set(queryParam, current);
 
     const overhead = resolved.toString().length - resolvedUrl.length;

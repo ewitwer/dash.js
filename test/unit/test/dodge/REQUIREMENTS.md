@@ -935,6 +935,32 @@ The gate reads the setting through `resolveNumericSetting()` (R11.8) rather than
 | `dodge.DodgeHandler.js` | paddingLengthBase warning in tryProcessExtendedManifest | paddingLengthBase set under max: accepted without warning |
 | `dodge.DodgeHandler.js` | paddingLengthBase warning in tryProcessExtendedManifest | strictMode off: no warning even with paddingLengthBase 0 |
 
+### R8.7 - A retried request is measured after its duplicate query parameters are collapsed
+
+`HTTPLoader._updateRequestUrlAndHeaders()` guards `_addExtUrlQueryParameters()` with
+`request.retryAttempts === 0` but does not guard `_addPathwayCloningParameters()`, which appends
+`request.queryParams` to `request.url` in place. Dodge attaches its cache-busting value through
+exactly that field (R8.1), so a retried request arrives at the loader carrying one copy of the
+parameter per attempt: four copies at the default of three retries.
+
+`applyRequestPadding()` collapses them with `searchParams.set()` before it measures, so the
+measured size is the size of one copy and the padded result is identical to the first attempt's.
+Collapsing after the measurement instead is not merely untidy. The copies inflate the size that
+the `pad < 0` branch tests, and past `paddingLength` that branch returns having applied no padding
+at all, so the retry goes out at its natural length while the first attempt went out normalized.
+That is the one outcome `paddingLengthBase` exists to prevent, it gets likelier with each retry,
+and it is invisible from the wire size of a healthy request.
+
+The final `searchParams.set()` that appends the zeros is what adds the parameter when it is absent,
+so a request that never carried one is unaffected by the collapse.
+
+| File | Description | Test |
+|---|---|---|
+| `dodge.RequestPadding.js` | Retried requests | duplicate copies of the query parameter left by a retry are collapsed to one |
+| `dodge.RequestPadding.js` | Retried requests | a retried request is padded to the same wire size as its first attempt |
+| `dodge.RequestPadding.js` | Retried requests | duplicates do not push a request under paddingLengthBase past the oversize branch |
+| `dodge.RequestPadding.js` | Retried requests | the cache-busting value survives the collapse as the prefix |
+
 ---
 
 ## 9. Extended Manifest Validation and Registry
@@ -2152,6 +2178,7 @@ manifests that are correct, so the gate stays silent instead.
 | R8.4 FetchLoader applies padding | 4 |
 | R8.5 XHRLoader applies padding | 4 |
 | R8.6 Unset paddingLengthBase is reported | 10 |
+| R8.7 Retried requests measured after collapsing duplicates | 4 |
 | R9.1 Structural validation rejects malformed manifests | 70 |
 | R9.2 Init cycle validation | 30 |
 | R9.3 Init cycle quality validation and explicit buffer requirement | 17 |
@@ -2202,4 +2229,4 @@ manifests that are correct, so the gate stays silent instead.
 | R12.7 Every Dodge module reads the player's Settings | 5 |
 | R12.8 A stalled stream is never scheduled again | 11 |
 | R12.9 A cycle naming a segment the presentation lacks stalls the stream | 2 |
-| **Total** | **845** |
+| **Total** | **849** |

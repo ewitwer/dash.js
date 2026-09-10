@@ -284,6 +284,61 @@ describe('applyRequestPadding', function () {
         expect(padValue.length).to.be.greaterThan(3);
     });
 
+    // Retried requests
+
+    // HTTPLoader._addPathwayCloningParameters() appends request.queryParams to
+    // request.url on every attempt, and unlike _addExtUrlQueryParameters() above
+    // it is not guarded by retryAttempts === 0. A retried request thus arrives
+    // here carrying one copy of the cache-busting parameter per attempt.
+    const RETRIED_URL = 'https://example.com/seg.m4s?padding=t3fyjwc8' +
+        '&padding=t3fyjwc8'.repeat(3); // initial attempt plus three retries
+
+    it('duplicate copies of the query parameter left by a retry are collapsed to one', function () {
+        const req = makeRequest(RETRIED_URL, {});
+        const logger = makeLogger();
+
+        applyRequestPadding(req, makeSettings(200), logger);
+
+        expect(req.url.match(/padding=/g)).to.have.lengthOf(1);
+        expect(logger.warn.called).to.be.false; // jshint ignore:line
+    });
+
+    it('a retried request is padded to the same wire size as its first attempt', function () {
+        const first = makeRequest('https://example.com/seg.m4s?padding=t3fyjwc8', {});
+        const retried = makeRequest(RETRIED_URL, {});
+
+        applyRequestPadding(first, makeSettings(200), makeLogger());
+        applyRequestPadding(retried, makeSettings(200), makeLogger());
+
+        expect(wireSize(retried)).to.equal(200);
+        expect(wireSize(retried)).to.equal(wireSize(first));
+    });
+
+    // The duplicates are measured before they are collapsed, so they inflate
+    // the size the pad < 0 branch tests. Past that threshold the request goes out
+    // completely unpadded, which is the one failure the padding length is sized
+    // to avoid, and it gets likelier with every retry.
+    it('duplicates do not push a request under paddingLengthBase past the oversize branch', function () {
+        const req = makeRequest(RETRIED_URL, {});
+        const logger = makeLogger();
+
+        // 60 is comfortably above the collapsed URL (44 bytes) and below the
+        // four-copy one (95 bytes).
+        applyRequestPadding(req, makeSettings(60), logger);
+
+        expect(logger.warn.called).to.be.false; // jshint ignore:line
+        expect(wireSize(req)).to.equal(60);
+    });
+
+    it('the cache-busting value survives the collapse as the prefix', function () {
+        const req = makeRequest(RETRIED_URL, {});
+
+        applyRequestPadding(req, makeSettings(200), makeLogger());
+
+        expect(new URL(req.url).searchParams.get('padding').startsWith('t3fyjwc8'))
+            .to.be.true; // jshint ignore:line
+    });
+
     // Invalid URL
 
     // This used to be read as an invalid URL and skipped. It is a relative one,
