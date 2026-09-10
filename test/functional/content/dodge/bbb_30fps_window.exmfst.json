@@ -1,0 +1,5048 @@
+{
+ "start": {
+  "mpd": "<MPD mediaPresentationDuration=\"PT634.566S\" minBufferTime=\"PT2.00S\" profiles=\"urn:hbbtv:dash:profile:isoff-live:2012,urn:mpeg:dash:profile:isoff-live:2011\" type=\"static\" xmlns=\"urn:mpeg:dash:schema:mpd:2011\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xsi:schemaLocation=\"urn:mpeg:DASH:schema:MPD:2011 DASH-MPD.xsd\">\n <BaseURL>https://dash.akamaized.net/akamai/bbb_30fps/</BaseURL>\n <Period>\n  <AdaptationSet mimeType=\"video/mp4\" contentType=\"video\" subsegmentAlignment=\"true\" subsegmentStartsWithSAP=\"1\" par=\"16:9\">\n   <SegmentTemplate duration=\"120\" timescale=\"30\" media=\"$RepresentationID$/$RepresentationID$_$Number$.m4v\" startNumber=\"1\" initialization=\"$RepresentationID$/$RepresentationID$_0.m4v\"/>\n   <Representation id=\"bbb_30fps_1024x576_2500k\" codecs=\"avc1.64001f\" bandwidth=\"3134488\" width=\"1024\" height=\"576\" frameRate=\"30\" sar=\"1:1\" scanType=\"progressive\"/>\n   <Representation id=\"bbb_30fps_1280x720_4000k\" codecs=\"avc1.64001f\" bandwidth=\"4952892\" width=\"1280\" height=\"720\" frameRate=\"30\" sar=\"1:1\" scanType=\"progressive\"/>\n   <Representation id=\"bbb_30fps_640x360_1000k\" codecs=\"avc1.64001e\" bandwidth=\"1254758\" width=\"640\" height=\"360\" frameRate=\"30\" sar=\"1:1\" scanType=\"progressive\"/>\n  </AdaptationSet>\n  <AdaptationSet mimeType=\"audio/mp4\" contentType=\"audio\" subsegmentAlignment=\"true\" subsegmentStartsWithSAP=\"1\">\n   <Accessibility schemeIdUri=\"urn:tva:metadata:cs:AudioPurposeCS:2007\" value=\"6\"/>\n   <Role schemeIdUri=\"urn:mpeg:dash:role:2011\" value=\"main\"/>\n   <SegmentTemplate duration=\"192512\" timescale=\"48000\" media=\"$RepresentationID$/$RepresentationID$_$Number$.m4a\" startNumber=\"1\" initialization=\"$RepresentationID$/$RepresentationID$_0.m4a\"/>\n   <Representation id=\"bbb_a64k\" codecs=\"mp4a.40.5\" bandwidth=\"67071\" audioSamplingRate=\"48000\">\n    <AudioChannelConfiguration schemeIdUri=\"urn:mpeg:dash:23003:3:audio_channel_configuration:2011\" value=\"2\"/>\n   </Representation>\n  </AdaptationSet>\n </Period>\n</MPD>\n",
+  "base_uri": "https://dash.akamaized.net/akamai/bbb_30fps/"
+ },
+ "streams": [
+  {
+   "label": "bbb_30fps_1024x576_2500k",
+   "init": [
+    {
+     "range": "0-351"
+    },
+    {
+     "range": "352-704"
+    }
+   ],
+   "data": [
+    {
+     "index": 0,
+     "range": "0-379119",
+     "buffer": false
+    },
+    {
+     "index": 0,
+     "range": "379120-758240",
+     "buffer": false
+    },
+    {
+     "index": 1,
+     "range": "0-1468267",
+     "buffer": false
+    },
+    {
+     "index": 2,
+     "range": "0-601559",
+     "buffer": false
+    },
+    {
+     "index": 2,
+     "range": "601560-1203119",
+     "buffer": true
+    },
+    {
+     "index": 3,
+     "range": "0-1226399",
+     "buffer": false
+    },
+    {
+     "index": 4,
+     "range": "0-643239",
+     "buffer": false
+    },
+    {
+     "index": 4,
+     "range": "643240-1286480",
+     "buffer": [
+      4
+     ]
+    },
+    {
+     "index": 5,
+     "range": "0-973751",
+     "buffer": true
+    },
+    {
+     "index": 6,
+     "range": "0-693161",
+     "buffer": false
+    },
+    {
+     "index": 6,
+     "range": "693162-1386323",
+     "buffer": false
+    },
+    {
+     "index": 7,
+     "range": "0-1325788",
+     "buffer": false
+    },
+    {
+     "index": 8,
+     "range": "0-620782",
+     "buffer": false
+    },
+    {
+     "index": 8,
+     "range": "620783-1241565",
+     "buffer": true
+    },
+    {
+     "index": 9,
+     "range": "0-1266441",
+     "buffer": false
+    },
+    {
+     "index": 10,
+     "range": "0-512937",
+     "buffer": false
+    },
+    {
+     "index": 10,
+     "range": "512938-1025876",
+     "buffer": [
+      10
+     ]
+    },
+    {
+     "index": 11,
+     "range": "0-1250376",
+     "buffer": true
+    },
+    {
+     "index": 12,
+     "range": "0-619782",
+     "buffer": false
+    },
+    {
+     "index": 12,
+     "range": "619783-1239565",
+     "buffer": false
+    },
+    {
+     "index": 13,
+     "range": "0-1453046",
+     "buffer": false
+    },
+    {
+     "index": 14,
+     "range": "0-616442",
+     "buffer": false
+    },
+    {
+     "index": 14,
+     "range": "616443-1232885",
+     "buffer": true
+    },
+    {
+     "index": 15,
+     "range": "0-1029669",
+     "buffer": false
+    },
+    {
+     "index": 16,
+     "range": "0-628382",
+     "buffer": false
+    },
+    {
+     "index": 16,
+     "range": "628383-1256766",
+     "buffer": [
+      16
+     ]
+    },
+    {
+     "index": 17,
+     "range": "0-1512458",
+     "buffer": true
+    },
+    {
+     "index": 18,
+     "range": "0-556596",
+     "buffer": false
+    },
+    {
+     "index": 18,
+     "range": "556597-1113194",
+     "buffer": false
+    },
+    {
+     "index": 19,
+     "range": "0-1373359",
+     "buffer": false
+    },
+    {
+     "index": 20,
+     "range": "0-649787",
+     "buffer": false
+    },
+    {
+     "index": 20,
+     "range": "649788-1299576",
+     "buffer": true
+    },
+    {
+     "index": 21,
+     "range": "0-1053508",
+     "buffer": false
+    },
+    {
+     "index": 22,
+     "range": "0-559134",
+     "buffer": false
+    },
+    {
+     "index": 22,
+     "range": "559135-1118269",
+     "buffer": [
+      22
+     ]
+    },
+    {
+     "index": 23,
+     "range": "0-1431476",
+     "buffer": true
+    },
+    {
+     "index": 24,
+     "range": "0-515082",
+     "buffer": false
+    },
+    {
+     "index": 24,
+     "range": "515083-1030165",
+     "buffer": false
+    },
+    {
+     "index": 25,
+     "range": "0-1216643",
+     "buffer": false
+    },
+    {
+     "index": 26,
+     "range": "0-706480",
+     "buffer": false
+    },
+    {
+     "index": 26,
+     "range": "706481-1412961",
+     "buffer": true
+    },
+    {
+     "index": 27,
+     "range": "0-1244111",
+     "buffer": false
+    },
+    {
+     "index": 28,
+     "range": "0-603615",
+     "buffer": false
+    },
+    {
+     "index": 28,
+     "range": "603616-1207231",
+     "buffer": [
+      28
+     ]
+    },
+    {
+     "index": 29,
+     "range": "0-1316037",
+     "buffer": true
+    },
+    {
+     "index": 30,
+     "range": "0-689648",
+     "buffer": false
+    },
+    {
+     "index": 30,
+     "range": "689649-1379298",
+     "buffer": false
+    },
+    {
+     "index": 31,
+     "range": "0-1207358",
+     "buffer": false
+    },
+    {
+     "index": 32,
+     "range": "0-552929",
+     "buffer": false
+    },
+    {
+     "index": 32,
+     "range": "552930-1105860",
+     "buffer": true
+    },
+    {
+     "index": 33,
+     "range": "0-1206760",
+     "buffer": false
+    },
+    {
+     "index": 34,
+     "range": "0-679117",
+     "buffer": false
+    },
+    {
+     "index": 34,
+     "range": "679118-1358235",
+     "buffer": [
+      34
+     ]
+    },
+    {
+     "index": 35,
+     "range": "0-1329506",
+     "buffer": true
+    },
+    {
+     "index": 36,
+     "range": "0-640968",
+     "buffer": false
+    },
+    {
+     "index": 36,
+     "range": "640969-1281937",
+     "buffer": false
+    },
+    {
+     "index": 37,
+     "range": "0-1098982",
+     "buffer": false
+    },
+    {
+     "index": 38,
+     "range": "0-578659",
+     "buffer": false
+    },
+    {
+     "index": 38,
+     "range": "578660-1157320",
+     "buffer": true
+    },
+    {
+     "index": 39,
+     "range": "0-1411189",
+     "buffer": false
+    },
+    {
+     "index": 40,
+     "range": "0-523472",
+     "buffer": false
+    },
+    {
+     "index": 40,
+     "range": "523473-1046945",
+     "buffer": [
+      40
+     ]
+    },
+    {
+     "index": 41,
+     "range": "0-1525522",
+     "buffer": true
+    },
+    {
+     "index": 42,
+     "range": "0-536549",
+     "buffer": false
+    },
+    {
+     "index": 42,
+     "range": "536550-1073099",
+     "buffer": false
+    },
+    {
+     "index": 43,
+     "range": "0-1181074",
+     "buffer": false
+    },
+    {
+     "index": 44,
+     "range": "0-634976",
+     "buffer": false
+    },
+    {
+     "index": 44,
+     "range": "634977-1269954",
+     "buffer": true
+    },
+    {
+     "index": 45,
+     "range": "0-1401703",
+     "buffer": false
+    },
+    {
+     "index": 46,
+     "range": "0-656067",
+     "buffer": false
+    },
+    {
+     "index": 46,
+     "range": "656068-1312135",
+     "buffer": [
+      46
+     ]
+    },
+    {
+     "index": 47,
+     "range": "0-1268642",
+     "buffer": true
+    },
+    {
+     "index": 48,
+     "range": "0-483093",
+     "buffer": false
+    },
+    {
+     "index": 48,
+     "range": "483094-966187",
+     "buffer": false
+    },
+    {
+     "index": 49,
+     "range": "0-1482697",
+     "buffer": false
+    },
+    {
+     "index": 50,
+     "range": "0-528196",
+     "buffer": false
+    },
+    {
+     "index": 50,
+     "range": "528197-1056393",
+     "buffer": true
+    },
+    {
+     "index": 51,
+     "range": "0-1237208",
+     "buffer": false
+    },
+    {
+     "index": 52,
+     "range": "0-711938",
+     "buffer": false
+    },
+    {
+     "index": 52,
+     "range": "711939-1423878",
+     "buffer": [
+      52
+     ]
+    },
+    {
+     "index": 53,
+     "range": "0-1342311",
+     "buffer": true
+    },
+    {
+     "index": 54,
+     "range": "0-517741",
+     "buffer": false
+    },
+    {
+     "index": 54,
+     "range": "517742-1035483",
+     "buffer": false
+    },
+    {
+     "index": 55,
+     "range": "0-1204762",
+     "buffer": false
+    },
+    {
+     "index": 56,
+     "range": "0-582540",
+     "buffer": false
+    },
+    {
+     "index": 56,
+     "range": "582541-1165081",
+     "buffer": true
+    },
+    {
+     "index": 57,
+     "range": "0-1526737",
+     "buffer": false
+    },
+    {
+     "index": 58,
+     "range": "0-498033",
+     "buffer": false
+    },
+    {
+     "index": 58,
+     "range": "498034-996068",
+     "buffer": [
+      58
+     ]
+    },
+    {
+     "index": 59,
+     "range": "0-1246796",
+     "buffer": true
+    },
+    {
+     "index": 60,
+     "range": "0-613996",
+     "buffer": false
+    },
+    {
+     "index": 60,
+     "range": "613997-1227993",
+     "buffer": false
+    },
+    {
+     "index": 61,
+     "range": "0-1527957",
+     "buffer": false
+    },
+    {
+     "index": 62,
+     "range": "0-623919",
+     "buffer": false
+    },
+    {
+     "index": 62,
+     "range": "623920-1247840",
+     "buffer": true
+    },
+    {
+     "index": 63,
+     "range": "0-1081670",
+     "buffer": false
+    },
+    {
+     "index": 64,
+     "range": "0-606102",
+     "buffer": false
+    },
+    {
+     "index": 64,
+     "range": "606103-1212205",
+     "buffer": [
+      64
+     ]
+    },
+    {
+     "index": 65,
+     "range": "0-1395932",
+     "buffer": true
+    },
+    {
+     "index": 66,
+     "range": "0-568051",
+     "buffer": false
+    },
+    {
+     "index": 66,
+     "range": "568052-1136104",
+     "buffer": false
+    },
+    {
+     "index": 67,
+     "range": "0-1190128",
+     "buffer": false
+    },
+    {
+     "index": 68,
+     "range": "0-724496",
+     "buffer": false
+    },
+    {
+     "index": 68,
+     "range": "724497-1448993",
+     "buffer": true
+    },
+    {
+     "index": 69,
+     "range": "0-1194229",
+     "buffer": false
+    },
+    {
+     "index": 70,
+     "range": "0-630055",
+     "buffer": false
+    },
+    {
+     "index": 70,
+     "range": "630056-1260111",
+     "buffer": [
+      70
+     ]
+    },
+    {
+     "index": 71,
+     "range": "0-1119597",
+     "buffer": true
+    },
+    {
+     "index": 72,
+     "range": "0-582196",
+     "buffer": false
+    },
+    {
+     "index": 72,
+     "range": "582197-1164393",
+     "buffer": false
+    },
+    {
+     "index": 73,
+     "range": "0-1231323",
+     "buffer": false
+    },
+    {
+     "index": 74,
+     "range": "0-782488",
+     "buffer": false
+    },
+    {
+     "index": 74,
+     "range": "782489-1564977",
+     "buffer": true
+    },
+    {
+     "index": 75,
+     "range": "0-1162436",
+     "buffer": false
+    },
+    {
+     "index": 76,
+     "range": "0-617258",
+     "buffer": false
+    },
+    {
+     "index": 76,
+     "range": "617259-1234517",
+     "buffer": [
+      76
+     ]
+    },
+    {
+     "index": 77,
+     "range": "0-1113859",
+     "buffer": true
+    },
+    {
+     "index": 78,
+     "range": "0-625600",
+     "buffer": false
+    },
+    {
+     "index": 78,
+     "range": "625601-1251202",
+     "buffer": false
+    },
+    {
+     "index": 79,
+     "range": "0-1470615",
+     "buffer": false
+    },
+    {
+     "index": 80,
+     "range": "0-600401",
+     "buffer": false
+    },
+    {
+     "index": 80,
+     "range": "600402-1200804",
+     "buffer": true
+    },
+    {
+     "index": 81,
+     "range": "0-1081754",
+     "buffer": false
+    },
+    {
+     "index": 82,
+     "range": "0-649661",
+     "buffer": false
+    },
+    {
+     "index": 82,
+     "range": "649662-1299324",
+     "buffer": [
+      82
+     ]
+    },
+    {
+     "index": 83,
+     "range": "0-1298988",
+     "buffer": true
+    },
+    {
+     "index": 84,
+     "range": "0-567518",
+     "buffer": false
+    },
+    {
+     "index": 84,
+     "range": "567519-1135038",
+     "buffer": false
+    },
+    {
+     "index": 85,
+     "range": "0-1178496",
+     "buffer": false
+    },
+    {
+     "index": 86,
+     "range": "0-715872",
+     "buffer": false
+    },
+    {
+     "index": 86,
+     "range": "715873-1431745",
+     "buffer": true
+    },
+    {
+     "index": 87,
+     "range": "0-1344289",
+     "buffer": false
+    },
+    {
+     "index": 88,
+     "range": "0-641177",
+     "buffer": false
+    },
+    {
+     "index": 88,
+     "range": "641178-1282355",
+     "buffer": [
+      88
+     ]
+    },
+    {
+     "index": 89,
+     "range": "0-1206587",
+     "buffer": true
+    },
+    {
+     "index": 90,
+     "range": "0-637949",
+     "buffer": false
+    },
+    {
+     "index": 90,
+     "range": "637950-1275899",
+     "buffer": false
+    },
+    {
+     "index": 91,
+     "range": "0-967373",
+     "buffer": false
+    },
+    {
+     "index": 92,
+     "range": "0-744354",
+     "buffer": false
+    },
+    {
+     "index": 92,
+     "range": "744355-1488709",
+     "buffer": true
+    },
+    {
+     "index": 93,
+     "range": "0-1181512",
+     "buffer": false
+    },
+    {
+     "index": 94,
+     "range": "0-581363",
+     "buffer": false
+    },
+    {
+     "index": 94,
+     "range": "581364-1162728",
+     "buffer": [
+      94
+     ]
+    },
+    {
+     "index": 95,
+     "range": "0-1177723",
+     "buffer": true
+    },
+    {
+     "index": 96,
+     "range": "0-601127",
+     "buffer": false
+    },
+    {
+     "index": 96,
+     "range": "601128-1202256",
+     "buffer": false
+    },
+    {
+     "index": 97,
+     "range": "0-1196269",
+     "buffer": false
+    },
+    {
+     "index": 98,
+     "range": "0-670662",
+     "buffer": false
+    },
+    {
+     "index": 98,
+     "range": "670663-1341326",
+     "buffer": true
+    },
+    {
+     "index": 99,
+     "range": "0-1327654",
+     "buffer": false
+    },
+    {
+     "index": 100,
+     "range": "0-675858",
+     "buffer": false
+    },
+    {
+     "index": 100,
+     "range": "675859-1351717",
+     "buffer": [
+      100
+     ]
+    },
+    {
+     "index": 101,
+     "range": "0-1134259",
+     "buffer": true
+    },
+    {
+     "index": 102,
+     "range": "0-626805",
+     "buffer": false
+    },
+    {
+     "index": 102,
+     "range": "626806-1253611",
+     "buffer": false
+    },
+    {
+     "index": 103,
+     "range": "0-1379233",
+     "buffer": false
+    },
+    {
+     "index": 104,
+     "range": "0-623954",
+     "buffer": false
+    },
+    {
+     "index": 104,
+     "range": "623955-1247909",
+     "buffer": true
+    },
+    {
+     "index": 105,
+     "range": "0-1080056",
+     "buffer": false
+    },
+    {
+     "index": 106,
+     "range": "0-710550",
+     "buffer": false
+    },
+    {
+     "index": 106,
+     "range": "710551-1421102",
+     "buffer": [
+      106
+     ]
+    },
+    {
+     "index": 107,
+     "range": "0-1266084",
+     "buffer": true
+    },
+    {
+     "index": 108,
+     "range": "0-601336",
+     "buffer": false
+    },
+    {
+     "index": 108,
+     "range": "601337-1202674",
+     "buffer": false
+    },
+    {
+     "index": 109,
+     "range": "0-1107431",
+     "buffer": false
+    },
+    {
+     "index": 110,
+     "range": "0-579306",
+     "buffer": false
+    },
+    {
+     "index": 110,
+     "range": "579307-1158614",
+     "buffer": true
+    },
+    {
+     "index": 111,
+     "range": "0-1567311",
+     "buffer": false
+    },
+    {
+     "index": 112,
+     "range": "0-463522",
+     "buffer": false
+    },
+    {
+     "index": 112,
+     "range": "463523-927046",
+     "buffer": [
+      112
+     ]
+    },
+    {
+     "index": 113,
+     "range": "0-1194106",
+     "buffer": true
+    },
+    {
+     "index": 114,
+     "range": "0-614136",
+     "buffer": false
+    },
+    {
+     "index": 114,
+     "range": "614137-1228273",
+     "buffer": false
+    },
+    {
+     "index": 115,
+     "range": "0-1314211",
+     "buffer": false
+    },
+    {
+     "index": 116,
+     "range": "0-714942",
+     "buffer": false
+    },
+    {
+     "index": 116,
+     "range": "714943-1429886",
+     "buffer": true
+    },
+    {
+     "index": 117,
+     "range": "0-1236443",
+     "buffer": false
+    },
+    {
+     "index": 118,
+     "range": "0-579304",
+     "buffer": false
+    },
+    {
+     "index": 118,
+     "range": "579305-1158609",
+     "buffer": [
+      118
+     ]
+    },
+    {
+     "index": 119,
+     "range": "0-1094549",
+     "buffer": true
+    },
+    {
+     "index": 120,
+     "range": "0-664846",
+     "buffer": false
+    },
+    {
+     "index": 120,
+     "range": "664847-1329694",
+     "buffer": false
+    },
+    {
+     "index": 121,
+     "range": "0-1133911",
+     "buffer": false
+    },
+    {
+     "index": 122,
+     "range": "0-651979",
+     "buffer": false
+    },
+    {
+     "index": 122,
+     "range": "651980-1303959",
+     "buffer": true
+    },
+    {
+     "index": 123,
+     "range": "0-1348041",
+     "buffer": false
+    },
+    {
+     "index": 124,
+     "range": "0-591183",
+     "buffer": false
+    },
+    {
+     "index": 124,
+     "range": "591184-1182368",
+     "buffer": [
+      124
+     ]
+    },
+    {
+     "index": 125,
+     "range": "0-1386193",
+     "buffer": true
+    },
+    {
+     "index": 126,
+     "range": "0-645213",
+     "buffer": false
+    },
+    {
+     "index": 126,
+     "range": "645214-1290428",
+     "buffer": false
+    },
+    {
+     "index": 127,
+     "range": "0-1257633",
+     "buffer": false
+    },
+    {
+     "index": 128,
+     "range": "0-624671",
+     "buffer": false
+    },
+    {
+     "index": 128,
+     "range": "624672-1249343",
+     "buffer": true
+    },
+    {
+     "index": 129,
+     "range": "0-1262394",
+     "buffer": false
+    },
+    {
+     "index": 130,
+     "range": "0-620593",
+     "buffer": false
+    },
+    {
+     "index": 130,
+     "range": "620594-1241187",
+     "buffer": [
+      130
+     ]
+    },
+    {
+     "index": 131,
+     "range": "0-1247484",
+     "buffer": true
+    },
+    {
+     "index": 132,
+     "range": "0-614555",
+     "buffer": false
+    },
+    {
+     "index": 132,
+     "range": "614556-1229111",
+     "buffer": false
+    },
+    {
+     "index": 133,
+     "range": "0-1209774",
+     "buffer": false
+    },
+    {
+     "index": 134,
+     "range": "0-657184",
+     "buffer": false
+    },
+    {
+     "index": 134,
+     "range": "657185-1314370",
+     "buffer": true
+    },
+    {
+     "index": 135,
+     "range": "0-1235579",
+     "buffer": false
+    },
+    {
+     "index": 136,
+     "range": "0-628396",
+     "buffer": false
+    },
+    {
+     "index": 136,
+     "range": "628397-1256794",
+     "buffer": [
+      136
+     ]
+    },
+    {
+     "index": 137,
+     "range": "0-1242389",
+     "buffer": true
+    },
+    {
+     "index": 138,
+     "range": "0-626717",
+     "buffer": false
+    },
+    {
+     "index": 138,
+     "range": "626718-1253436",
+     "buffer": false
+    },
+    {
+     "index": 139,
+     "range": "0-1273601",
+     "buffer": false
+    },
+    {
+     "index": 140,
+     "range": "0-611274",
+     "buffer": false
+    },
+    {
+     "index": 140,
+     "range": "611275-1222550",
+     "buffer": true
+    },
+    {
+     "index": 141,
+     "range": "0-1061845",
+     "buffer": false
+    },
+    {
+     "index": 142,
+     "range": "0-614241",
+     "buffer": false
+    },
+    {
+     "index": 142,
+     "range": "614242-1228484",
+     "buffer": [
+      142
+     ]
+    },
+    {
+     "index": 143,
+     "range": "0-1239821",
+     "buffer": true
+    },
+    {
+     "index": 144,
+     "range": "0-637454",
+     "buffer": false
+    },
+    {
+     "index": 144,
+     "range": "637455-1274910",
+     "buffer": false
+    },
+    {
+     "index": 145,
+     "range": "0-1474811",
+     "buffer": false
+    },
+    {
+     "index": 146,
+     "range": "0-620377",
+     "buffer": false
+    },
+    {
+     "index": 146,
+     "range": "620378-1240755",
+     "buffer": true
+    },
+    {
+     "index": 147,
+     "range": "0-1257851",
+     "buffer": false
+    },
+    {
+     "index": 148,
+     "range": "0-621460",
+     "buffer": false
+    },
+    {
+     "index": 148,
+     "range": "621461-1242921",
+     "buffer": [
+      148
+     ]
+    },
+    {
+     "index": 149,
+     "range": "0-1254111",
+     "buffer": true
+    },
+    {
+     "index": 150,
+     "range": "0-609047",
+     "buffer": false
+    },
+    {
+     "index": 150,
+     "range": "609048-1218095",
+     "buffer": false
+    },
+    {
+     "index": 151,
+     "range": "0-1035088",
+     "buffer": false
+    },
+    {
+     "index": 152,
+     "range": "0-409454",
+     "buffer": false
+    },
+    {
+     "index": 152,
+     "range": "409455-818909",
+     "buffer": true
+    },
+    {
+     "index": 153,
+     "range": "0-466440",
+     "buffer": false
+    },
+    {
+     "index": 154,
+     "range": "0-371743",
+     "buffer": false
+    },
+    {
+     "index": 154,
+     "range": "371744-743487",
+     "buffer": [
+      154
+     ]
+    },
+    {
+     "index": 155,
+     "range": "0-1274536",
+     "buffer": true
+    },
+    {
+     "index": 156,
+     "range": "0-686044",
+     "buffer": false
+    },
+    {
+     "index": 156,
+     "range": "686045-1372090",
+     "buffer": false
+    },
+    {
+     "index": 157,
+     "range": "0-1336734",
+     "buffer": false
+    },
+    {
+     "index": 158,
+     "range": "0-382771",
+     "buffer": false
+    },
+    {
+     "index": 158,
+     "range": "382772-765543",
+     "buffer": true
+    }
+   ]
+  },
+  {
+   "label": "bbb_30fps_1280x720_4000k",
+   "init": [
+    {
+     "range": "0-351"
+    },
+    {
+     "range": "352-704"
+    }
+   ],
+   "data": [
+    {
+     "index": 0,
+     "range": "0-509759",
+     "buffer": false
+    },
+    {
+     "index": 0,
+     "range": "509760-1019519",
+     "buffer": false
+    },
+    {
+     "index": 1,
+     "range": "0-2426612",
+     "buffer": false
+    },
+    {
+     "index": 2,
+     "range": "0-959605",
+     "buffer": false
+    },
+    {
+     "index": 2,
+     "range": "959606-1919212",
+     "buffer": true
+    },
+    {
+     "index": 3,
+     "range": "0-1958124",
+     "buffer": false
+    },
+    {
+     "index": 4,
+     "range": "0-1021401",
+     "buffer": false
+    },
+    {
+     "index": 4,
+     "range": "1021402-2042804",
+     "buffer": [
+      4
+     ]
+    },
+    {
+     "index": 5,
+     "range": "0-1572124",
+     "buffer": true
+    },
+    {
+     "index": 6,
+     "range": "0-1115914",
+     "buffer": false
+    },
+    {
+     "index": 6,
+     "range": "1115915-2231829",
+     "buffer": false
+    },
+    {
+     "index": 7,
+     "range": "0-2111285",
+     "buffer": false
+    },
+    {
+     "index": 8,
+     "range": "0-997275",
+     "buffer": false
+    },
+    {
+     "index": 8,
+     "range": "997276-1994551",
+     "buffer": true
+    },
+    {
+     "index": 9,
+     "range": "0-2014268",
+     "buffer": false
+    },
+    {
+     "index": 10,
+     "range": "0-815277",
+     "buffer": false
+    },
+    {
+     "index": 10,
+     "range": "815278-1630556",
+     "buffer": [
+      10
+     ]
+    },
+    {
+     "index": 11,
+     "range": "0-2012772",
+     "buffer": true
+    },
+    {
+     "index": 12,
+     "range": "0-985760",
+     "buffer": false
+    },
+    {
+     "index": 12,
+     "range": "985761-1971521",
+     "buffer": false
+    },
+    {
+     "index": 13,
+     "range": "0-2344270",
+     "buffer": false
+    },
+    {
+     "index": 14,
+     "range": "0-1005812",
+     "buffer": false
+    },
+    {
+     "index": 14,
+     "range": "1005813-2011626",
+     "buffer": true
+    },
+    {
+     "index": 15,
+     "range": "0-1619337",
+     "buffer": false
+    },
+    {
+     "index": 16,
+     "range": "0-1013608",
+     "buffer": false
+    },
+    {
+     "index": 16,
+     "range": "1013609-2027217",
+     "buffer": [
+      16
+     ]
+    },
+    {
+     "index": 17,
+     "range": "0-2397061",
+     "buffer": true
+    },
+    {
+     "index": 18,
+     "range": "0-888569",
+     "buffer": false
+    },
+    {
+     "index": 18,
+     "range": "888570-1777139",
+     "buffer": false
+    },
+    {
+     "index": 19,
+     "range": "0-2172543",
+     "buffer": false
+    },
+    {
+     "index": 20,
+     "range": "0-1055140",
+     "buffer": false
+    },
+    {
+     "index": 20,
+     "range": "1055141-2110282",
+     "buffer": true
+    },
+    {
+     "index": 21,
+     "range": "0-1687688",
+     "buffer": false
+    },
+    {
+     "index": 22,
+     "range": "0-887055",
+     "buffer": false
+    },
+    {
+     "index": 22,
+     "range": "887056-1774111",
+     "buffer": [
+      22
+     ]
+    },
+    {
+     "index": 23,
+     "range": "0-2309150",
+     "buffer": true
+    },
+    {
+     "index": 24,
+     "range": "0-817852",
+     "buffer": false
+    },
+    {
+     "index": 24,
+     "range": "817853-1635705",
+     "buffer": false
+    },
+    {
+     "index": 25,
+     "range": "0-1915031",
+     "buffer": false
+    },
+    {
+     "index": 26,
+     "range": "0-1138232",
+     "buffer": false
+    },
+    {
+     "index": 26,
+     "range": "1138233-2276465",
+     "buffer": true
+    },
+    {
+     "index": 27,
+     "range": "0-1961562",
+     "buffer": false
+    },
+    {
+     "index": 28,
+     "range": "0-963764",
+     "buffer": false
+    },
+    {
+     "index": 28,
+     "range": "963765-1927530",
+     "buffer": [
+      28
+     ]
+    },
+    {
+     "index": 29,
+     "range": "0-2116478",
+     "buffer": true
+    },
+    {
+     "index": 30,
+     "range": "0-1106468",
+     "buffer": false
+    },
+    {
+     "index": 30,
+     "range": "1106469-2212938",
+     "buffer": false
+    },
+    {
+     "index": 31,
+     "range": "0-1910042",
+     "buffer": false
+    },
+    {
+     "index": 32,
+     "range": "0-897051",
+     "buffer": false
+    },
+    {
+     "index": 32,
+     "range": "897052-1794104",
+     "buffer": true
+    },
+    {
+     "index": 33,
+     "range": "0-1951989",
+     "buffer": false
+    },
+    {
+     "index": 34,
+     "range": "0-1079916",
+     "buffer": false
+    },
+    {
+     "index": 34,
+     "range": "1079917-2159833",
+     "buffer": [
+      34
+     ]
+    },
+    {
+     "index": 35,
+     "range": "0-2117504",
+     "buffer": true
+    },
+    {
+     "index": 36,
+     "range": "0-1020733",
+     "buffer": false
+    },
+    {
+     "index": 36,
+     "range": "1020734-2041467",
+     "buffer": false
+    },
+    {
+     "index": 37,
+     "range": "0-1781052",
+     "buffer": false
+    },
+    {
+     "index": 38,
+     "range": "0-901755",
+     "buffer": false
+    },
+    {
+     "index": 38,
+     "range": "901756-1803512",
+     "buffer": true
+    },
+    {
+     "index": 39,
+     "range": "0-2265332",
+     "buffer": false
+    },
+    {
+     "index": 40,
+     "range": "0-837898",
+     "buffer": false
+    },
+    {
+     "index": 40,
+     "range": "837899-1675797",
+     "buffer": [
+      40
+     ]
+    },
+    {
+     "index": 41,
+     "range": "0-2420399",
+     "buffer": true
+    },
+    {
+     "index": 42,
+     "range": "0-877446",
+     "buffer": false
+    },
+    {
+     "index": 42,
+     "range": "877447-1754893",
+     "buffer": false
+    },
+    {
+     "index": 43,
+     "range": "0-1863761",
+     "buffer": false
+    },
+    {
+     "index": 44,
+     "range": "0-1026063",
+     "buffer": false
+    },
+    {
+     "index": 44,
+     "range": "1026064-2052128",
+     "buffer": true
+    },
+    {
+     "index": 45,
+     "range": "0-2242637",
+     "buffer": false
+    },
+    {
+     "index": 46,
+     "range": "0-1042293",
+     "buffer": false
+    },
+    {
+     "index": 46,
+     "range": "1042294-2084587",
+     "buffer": [
+      46
+     ]
+    },
+    {
+     "index": 47,
+     "range": "0-2028543",
+     "buffer": true
+    },
+    {
+     "index": 48,
+     "range": "0-771024",
+     "buffer": false
+    },
+    {
+     "index": 48,
+     "range": "771025-1542049",
+     "buffer": false
+    },
+    {
+     "index": 49,
+     "range": "0-2393988",
+     "buffer": false
+    },
+    {
+     "index": 50,
+     "range": "0-834536",
+     "buffer": false
+    },
+    {
+     "index": 50,
+     "range": "834537-1669073",
+     "buffer": true
+    },
+    {
+     "index": 51,
+     "range": "0-1980958",
+     "buffer": false
+    },
+    {
+     "index": 52,
+     "range": "0-1123441",
+     "buffer": false
+    },
+    {
+     "index": 52,
+     "range": "1123442-2246884",
+     "buffer": [
+      52
+     ]
+    },
+    {
+     "index": 53,
+     "range": "0-2167972",
+     "buffer": true
+    },
+    {
+     "index": 54,
+     "range": "0-834934",
+     "buffer": false
+    },
+    {
+     "index": 54,
+     "range": "834935-1669869",
+     "buffer": false
+    },
+    {
+     "index": 55,
+     "range": "0-1939337",
+     "buffer": false
+    },
+    {
+     "index": 56,
+     "range": "0-923473",
+     "buffer": false
+    },
+    {
+     "index": 56,
+     "range": "923474-1846947",
+     "buffer": true
+    },
+    {
+     "index": 57,
+     "range": "0-2436398",
+     "buffer": false
+    },
+    {
+     "index": 58,
+     "range": "0-804120",
+     "buffer": false
+    },
+    {
+     "index": 58,
+     "range": "804121-1608241",
+     "buffer": [
+      58
+     ]
+    },
+    {
+     "index": 59,
+     "range": "0-1979430",
+     "buffer": true
+    },
+    {
+     "index": 60,
+     "range": "0-986509",
+     "buffer": false
+    },
+    {
+     "index": 60,
+     "range": "986510-1973019",
+     "buffer": false
+    },
+    {
+     "index": 61,
+     "range": "0-2429250",
+     "buffer": false
+    },
+    {
+     "index": 62,
+     "range": "0-1004355",
+     "buffer": false
+    },
+    {
+     "index": 62,
+     "range": "1004356-2008711",
+     "buffer": true
+    },
+    {
+     "index": 63,
+     "range": "0-1733824",
+     "buffer": false
+    },
+    {
+     "index": 64,
+     "range": "0-966439",
+     "buffer": false
+    },
+    {
+     "index": 64,
+     "range": "966440-1932880",
+     "buffer": [
+      64
+     ]
+    },
+    {
+     "index": 65,
+     "range": "0-2279955",
+     "buffer": true
+    },
+    {
+     "index": 66,
+     "range": "0-898646",
+     "buffer": false
+    },
+    {
+     "index": 66,
+     "range": "898647-1797293",
+     "buffer": false
+    },
+    {
+     "index": 67,
+     "range": "0-1897421",
+     "buffer": false
+    },
+    {
+     "index": 68,
+     "range": "0-1159934",
+     "buffer": false
+    },
+    {
+     "index": 68,
+     "range": "1159935-2319870",
+     "buffer": true
+    },
+    {
+     "index": 69,
+     "range": "0-1920066",
+     "buffer": false
+    },
+    {
+     "index": 70,
+     "range": "0-991075",
+     "buffer": false
+    },
+    {
+     "index": 70,
+     "range": "991076-1982151",
+     "buffer": [
+      70
+     ]
+    },
+    {
+     "index": 71,
+     "range": "0-1901665",
+     "buffer": true
+    },
+    {
+     "index": 72,
+     "range": "0-884484",
+     "buffer": false
+    },
+    {
+     "index": 72,
+     "range": "884485-1768969",
+     "buffer": false
+    },
+    {
+     "index": 73,
+     "range": "0-1913662",
+     "buffer": false
+    },
+    {
+     "index": 74,
+     "range": "0-1238256",
+     "buffer": false
+    },
+    {
+     "index": 74,
+     "range": "1238257-2476513",
+     "buffer": true
+    },
+    {
+     "index": 75,
+     "range": "0-1840366",
+     "buffer": false
+    },
+    {
+     "index": 76,
+     "range": "0-1018250",
+     "buffer": false
+    },
+    {
+     "index": 76,
+     "range": "1018251-2036502",
+     "buffer": [
+      76
+     ]
+    },
+    {
+     "index": 77,
+     "range": "0-1740272",
+     "buffer": true
+    },
+    {
+     "index": 78,
+     "range": "0-998118",
+     "buffer": false
+    },
+    {
+     "index": 78,
+     "range": "998119-1996238",
+     "buffer": false
+    },
+    {
+     "index": 79,
+     "range": "0-2380425",
+     "buffer": false
+    },
+    {
+     "index": 80,
+     "range": "0-961408",
+     "buffer": false
+    },
+    {
+     "index": 80,
+     "range": "961409-1922818",
+     "buffer": true
+    },
+    {
+     "index": 81,
+     "range": "0-1722340",
+     "buffer": false
+    },
+    {
+     "index": 82,
+     "range": "0-1039667",
+     "buffer": false
+    },
+    {
+     "index": 82,
+     "range": "1039668-2079336",
+     "buffer": [
+      82
+     ]
+    },
+    {
+     "index": 83,
+     "range": "0-2058990",
+     "buffer": true
+    },
+    {
+     "index": 84,
+     "range": "0-925876",
+     "buffer": false
+    },
+    {
+     "index": 84,
+     "range": "925877-1851754",
+     "buffer": false
+    },
+    {
+     "index": 85,
+     "range": "0-1861741",
+     "buffer": false
+    },
+    {
+     "index": 86,
+     "range": "0-1157477",
+     "buffer": false
+    },
+    {
+     "index": 86,
+     "range": "1157478-2314955",
+     "buffer": true
+    },
+    {
+     "index": 87,
+     "range": "0-2123164",
+     "buffer": false
+    },
+    {
+     "index": 88,
+     "range": "0-1036787",
+     "buffer": false
+    },
+    {
+     "index": 88,
+     "range": "1036788-2073576",
+     "buffer": [
+      88
+     ]
+    },
+    {
+     "index": 89,
+     "range": "0-1885089",
+     "buffer": true
+    },
+    {
+     "index": 90,
+     "range": "0-1034215",
+     "buffer": false
+    },
+    {
+     "index": 90,
+     "range": "1034216-2068432",
+     "buffer": false
+    },
+    {
+     "index": 91,
+     "range": "0-1559835",
+     "buffer": false
+    },
+    {
+     "index": 92,
+     "range": "0-1182501",
+     "buffer": false
+    },
+    {
+     "index": 92,
+     "range": "1182502-2365004",
+     "buffer": true
+    },
+    {
+     "index": 93,
+     "range": "0-1896586",
+     "buffer": false
+    },
+    {
+     "index": 94,
+     "range": "0-932823",
+     "buffer": false
+    },
+    {
+     "index": 94,
+     "range": "932824-1865648",
+     "buffer": [
+      94
+     ]
+    },
+    {
+     "index": 95,
+     "range": "0-1854290",
+     "buffer": true
+    },
+    {
+     "index": 96,
+     "range": "0-976740",
+     "buffer": false
+    },
+    {
+     "index": 96,
+     "range": "976741-1953482",
+     "buffer": false
+    },
+    {
+     "index": 97,
+     "range": "0-1917873",
+     "buffer": false
+    },
+    {
+     "index": 98,
+     "range": "0-1064550",
+     "buffer": false
+    },
+    {
+     "index": 98,
+     "range": "1064551-2129102",
+     "buffer": true
+    },
+    {
+     "index": 99,
+     "range": "0-2004641",
+     "buffer": false
+    },
+    {
+     "index": 100,
+     "range": "0-1102164",
+     "buffer": false
+    },
+    {
+     "index": 100,
+     "range": "1102165-2204329",
+     "buffer": [
+      100
+     ]
+    },
+    {
+     "index": 101,
+     "range": "0-1749624",
+     "buffer": true
+    },
+    {
+     "index": 102,
+     "range": "0-1087983",
+     "buffer": false
+    },
+    {
+     "index": 102,
+     "range": "1087984-2175967",
+     "buffer": false
+    },
+    {
+     "index": 103,
+     "range": "0-2193321",
+     "buffer": false
+    },
+    {
+     "index": 104,
+     "range": "0-1004388",
+     "buffer": false
+    },
+    {
+     "index": 104,
+     "range": "1004389-2008777",
+     "buffer": true
+    },
+    {
+     "index": 105,
+     "range": "0-1685224",
+     "buffer": false
+    },
+    {
+     "index": 106,
+     "range": "0-1151301",
+     "buffer": false
+    },
+    {
+     "index": 106,
+     "range": "1151302-2302604",
+     "buffer": [
+      106
+     ]
+    },
+    {
+     "index": 107,
+     "range": "0-2033059",
+     "buffer": true
+    },
+    {
+     "index": 108,
+     "range": "0-950570",
+     "buffer": false
+    },
+    {
+     "index": 108,
+     "range": "950571-1901141",
+     "buffer": false
+    },
+    {
+     "index": 109,
+     "range": "0-1771002",
+     "buffer": false
+    },
+    {
+     "index": 110,
+     "range": "0-933327",
+     "buffer": false
+    },
+    {
+     "index": 110,
+     "range": "933328-1866656",
+     "buffer": true
+    },
+    {
+     "index": 111,
+     "range": "0-2461674",
+     "buffer": false
+    },
+    {
+     "index": 112,
+     "range": "0-751376",
+     "buffer": false
+    },
+    {
+     "index": 112,
+     "range": "751377-1502753",
+     "buffer": [
+      112
+     ]
+    },
+    {
+     "index": 113,
+     "range": "0-1908763",
+     "buffer": true
+    },
+    {
+     "index": 114,
+     "range": "0-984143",
+     "buffer": false
+    },
+    {
+     "index": 114,
+     "range": "984144-1968288",
+     "buffer": false
+    },
+    {
+     "index": 115,
+     "range": "0-2139154",
+     "buffer": false
+    },
+    {
+     "index": 116,
+     "range": "0-1121935",
+     "buffer": false
+    },
+    {
+     "index": 116,
+     "range": "1121936-2243871",
+     "buffer": true
+    },
+    {
+     "index": 117,
+     "range": "0-1984123",
+     "buffer": false
+    },
+    {
+     "index": 118,
+     "range": "0-924468",
+     "buffer": false
+    },
+    {
+     "index": 118,
+     "range": "924469-1848938",
+     "buffer": [
+      118
+     ]
+    },
+    {
+     "index": 119,
+     "range": "0-1713598",
+     "buffer": true
+    },
+    {
+     "index": 120,
+     "range": "0-1052815",
+     "buffer": false
+    },
+    {
+     "index": 120,
+     "range": "1052816-2105631",
+     "buffer": false
+    },
+    {
+     "index": 121,
+     "range": "0-1864827",
+     "buffer": false
+    },
+    {
+     "index": 122,
+     "range": "0-1040507",
+     "buffer": false
+    },
+    {
+     "index": 122,
+     "range": "1040508-2081016",
+     "buffer": true
+    },
+    {
+     "index": 123,
+     "range": "0-2146687",
+     "buffer": false
+    },
+    {
+     "index": 124,
+     "range": "0-974040",
+     "buffer": false
+    },
+    {
+     "index": 124,
+     "range": "974041-1948081",
+     "buffer": [
+      124
+     ]
+    },
+    {
+     "index": 125,
+     "range": "0-2203490",
+     "buffer": true
+    },
+    {
+     "index": 126,
+     "range": "0-1014531",
+     "buffer": false
+    },
+    {
+     "index": 126,
+     "range": "1014532-2029063",
+     "buffer": false
+    },
+    {
+     "index": 127,
+     "range": "0-2006576",
+     "buffer": false
+    },
+    {
+     "index": 128,
+     "range": "0-999647",
+     "buffer": false
+    },
+    {
+     "index": 128,
+     "range": "999648-1999296",
+     "buffer": true
+    },
+    {
+     "index": 129,
+     "range": "0-2019643",
+     "buffer": false
+    },
+    {
+     "index": 130,
+     "range": "0-989302",
+     "buffer": false
+    },
+    {
+     "index": 130,
+     "range": "989303-1978606",
+     "buffer": [
+      130
+     ]
+    },
+    {
+     "index": 131,
+     "range": "0-1961233",
+     "buffer": true
+    },
+    {
+     "index": 132,
+     "range": "0-993182",
+     "buffer": false
+    },
+    {
+     "index": 132,
+     "range": "993183-1986366",
+     "buffer": false
+    },
+    {
+     "index": 133,
+     "range": "0-2023888",
+     "buffer": false
+    },
+    {
+     "index": 134,
+     "range": "0-1025524",
+     "buffer": false
+    },
+    {
+     "index": 134,
+     "range": "1025525-2051049",
+     "buffer": true
+    },
+    {
+     "index": 135,
+     "range": "0-1974291",
+     "buffer": false
+    },
+    {
+     "index": 136,
+     "range": "0-1003416",
+     "buffer": false
+    },
+    {
+     "index": 136,
+     "range": "1003417-2006833",
+     "buffer": [
+      136
+     ]
+    },
+    {
+     "index": 137,
+     "range": "0-2007208",
+     "buffer": true
+    },
+    {
+     "index": 138,
+     "range": "0-998837",
+     "buffer": false
+    },
+    {
+     "index": 138,
+     "range": "998838-1997676",
+     "buffer": false
+    },
+    {
+     "index": 139,
+     "range": "0-2013237",
+     "buffer": false
+    },
+    {
+     "index": 140,
+     "range": "0-992608",
+     "buffer": false
+    },
+    {
+     "index": 140,
+     "range": "992609-1985217",
+     "buffer": true
+    },
+    {
+     "index": 141,
+     "range": "0-1730212",
+     "buffer": false
+    },
+    {
+     "index": 142,
+     "range": "0-956529",
+     "buffer": false
+    },
+    {
+     "index": 142,
+     "range": "956530-1913059",
+     "buffer": [
+      142
+     ]
+    },
+    {
+     "index": 143,
+     "range": "0-1979019",
+     "buffer": true
+    },
+    {
+     "index": 144,
+     "range": "0-1021024",
+     "buffer": false
+    },
+    {
+     "index": 144,
+     "range": "1021025-2042050",
+     "buffer": false
+    },
+    {
+     "index": 145,
+     "range": "0-2348563",
+     "buffer": false
+    },
+    {
+     "index": 146,
+     "range": "0-995276",
+     "buffer": false
+    },
+    {
+     "index": 146,
+     "range": "995277-1990553",
+     "buffer": true
+    },
+    {
+     "index": 147,
+     "range": "0-2012145",
+     "buffer": false
+    },
+    {
+     "index": 148,
+     "range": "0-998822",
+     "buffer": false
+    },
+    {
+     "index": 148,
+     "range": "998823-1997646",
+     "buffer": [
+      148
+     ]
+    },
+    {
+     "index": 149,
+     "range": "0-2006068",
+     "buffer": true
+    },
+    {
+     "index": 150,
+     "range": "0-973016",
+     "buffer": false
+    },
+    {
+     "index": 150,
+     "range": "973017-1946034",
+     "buffer": false
+    },
+    {
+     "index": 151,
+     "range": "0-1632297",
+     "buffer": false
+    },
+    {
+     "index": 152,
+     "range": "0-619736",
+     "buffer": false
+    },
+    {
+     "index": 152,
+     "range": "619737-1239474",
+     "buffer": true
+    },
+    {
+     "index": 153,
+     "range": "0-673480",
+     "buffer": false
+    },
+    {
+     "index": 154,
+     "range": "0-561399",
+     "buffer": false
+    },
+    {
+     "index": 154,
+     "range": "561400-1122800",
+     "buffer": [
+      154
+     ]
+    },
+    {
+     "index": 155,
+     "range": "0-2037120",
+     "buffer": true
+    },
+    {
+     "index": 156,
+     "range": "0-1102454",
+     "buffer": false
+    },
+    {
+     "index": 156,
+     "range": "1102455-2204910",
+     "buffer": false
+    },
+    {
+     "index": 157,
+     "range": "0-2144213",
+     "buffer": false
+    },
+    {
+     "index": 158,
+     "range": "0-608675",
+     "buffer": false
+    },
+    {
+     "index": 158,
+     "range": "608676-1217351",
+     "buffer": true
+    }
+   ]
+  },
+  {
+   "label": "bbb_30fps_640x360_1000k",
+   "init": [
+    {
+     "range": "0-352"
+    },
+    {
+     "range": "353-705"
+    }
+   ],
+   "data": [
+    {
+     "index": 0,
+     "range": "0-185884",
+     "buffer": false
+    },
+    {
+     "index": 0,
+     "range": "185885-371769",
+     "buffer": false
+    },
+    {
+     "index": 1,
+     "range": "0-578174",
+     "buffer": false
+    },
+    {
+     "index": 2,
+     "range": "0-244586",
+     "buffer": false
+    },
+    {
+     "index": 2,
+     "range": "244587-489174",
+     "buffer": true
+    },
+    {
+     "index": 3,
+     "range": "0-481846",
+     "buffer": false
+    },
+    {
+     "index": 4,
+     "range": "0-254788",
+     "buffer": false
+    },
+    {
+     "index": 4,
+     "range": "254789-509578",
+     "buffer": [
+      4
+     ]
+    },
+    {
+     "index": 5,
+     "range": "0-397415",
+     "buffer": true
+    },
+    {
+     "index": 6,
+     "range": "0-276517",
+     "buffer": false
+    },
+    {
+     "index": 6,
+     "range": "276518-553035",
+     "buffer": false
+    },
+    {
+     "index": 7,
+     "range": "0-524135",
+     "buffer": false
+    },
+    {
+     "index": 8,
+     "range": "0-251361",
+     "buffer": false
+    },
+    {
+     "index": 8,
+     "range": "251362-502723",
+     "buffer": true
+    },
+    {
+     "index": 9,
+     "range": "0-507025",
+     "buffer": false
+    },
+    {
+     "index": 10,
+     "range": "0-227937",
+     "buffer": false
+    },
+    {
+     "index": 10,
+     "range": "227938-455875",
+     "buffer": [
+      10
+     ]
+    },
+    {
+     "index": 11,
+     "range": "0-475793",
+     "buffer": true
+    },
+    {
+     "index": 12,
+     "range": "0-243959",
+     "buffer": false
+    },
+    {
+     "index": 12,
+     "range": "243960-487919",
+     "buffer": false
+    },
+    {
+     "index": 13,
+     "range": "0-562203",
+     "buffer": false
+    },
+    {
+     "index": 14,
+     "range": "0-242486",
+     "buffer": false
+    },
+    {
+     "index": 14,
+     "range": "242487-484974",
+     "buffer": true
+    },
+    {
+     "index": 15,
+     "range": "0-438169",
+     "buffer": false
+    },
+    {
+     "index": 16,
+     "range": "0-251617",
+     "buffer": false
+    },
+    {
+     "index": 16,
+     "range": "251618-503235",
+     "buffer": [
+      16
+     ]
+    },
+    {
+     "index": 17,
+     "range": "0-605179",
+     "buffer": true
+    },
+    {
+     "index": 18,
+     "range": "0-218899",
+     "buffer": false
+    },
+    {
+     "index": 18,
+     "range": "218900-437799",
+     "buffer": false
+    },
+    {
+     "index": 19,
+     "range": "0-565513",
+     "buffer": false
+    },
+    {
+     "index": 20,
+     "range": "0-255155",
+     "buffer": false
+    },
+    {
+     "index": 20,
+     "range": "255156-510311",
+     "buffer": true
+    },
+    {
+     "index": 21,
+     "range": "0-420979",
+     "buffer": false
+    },
+    {
+     "index": 22,
+     "range": "0-227295",
+     "buffer": false
+    },
+    {
+     "index": 22,
+     "range": "227296-454592",
+     "buffer": [
+      22
+     ]
+    },
+    {
+     "index": 23,
+     "range": "0-553334",
+     "buffer": true
+    },
+    {
+     "index": 24,
+     "range": "0-215107",
+     "buffer": false
+    },
+    {
+     "index": 24,
+     "range": "215108-430216",
+     "buffer": false
+    },
+    {
+     "index": 25,
+     "range": "0-489768",
+     "buffer": false
+    },
+    {
+     "index": 26,
+     "range": "0-281520",
+     "buffer": false
+    },
+    {
+     "index": 26,
+     "range": "281521-563041",
+     "buffer": true
+    },
+    {
+     "index": 27,
+     "range": "0-513276",
+     "buffer": false
+    },
+    {
+     "index": 28,
+     "range": "0-246386",
+     "buffer": false
+    },
+    {
+     "index": 28,
+     "range": "246387-492774",
+     "buffer": [
+      28
+     ]
+    },
+    {
+     "index": 29,
+     "range": "0-510210",
+     "buffer": true
+    },
+    {
+     "index": 30,
+     "range": "0-273604",
+     "buffer": false
+    },
+    {
+     "index": 30,
+     "range": "273605-547209",
+     "buffer": false
+    },
+    {
+     "index": 31,
+     "range": "0-492224",
+     "buffer": false
+    },
+    {
+     "index": 32,
+     "range": "0-217796",
+     "buffer": false
+    },
+    {
+     "index": 32,
+     "range": "217797-435593",
+     "buffer": true
+    },
+    {
+     "index": 33,
+     "range": "0-478830",
+     "buffer": false
+    },
+    {
+     "index": 34,
+     "range": "0-272310",
+     "buffer": false
+    },
+    {
+     "index": 34,
+     "range": "272311-544622",
+     "buffer": [
+      34
+     ]
+    },
+    {
+     "index": 35,
+     "range": "0-534599",
+     "buffer": true
+    },
+    {
+     "index": 36,
+     "range": "0-259253",
+     "buffer": false
+    },
+    {
+     "index": 36,
+     "range": "259254-518508",
+     "buffer": false
+    },
+    {
+     "index": 37,
+     "range": "0-422620",
+     "buffer": false
+    },
+    {
+     "index": 38,
+     "range": "0-250393",
+     "buffer": false
+    },
+    {
+     "index": 38,
+     "range": "250394-500787",
+     "buffer": true
+    },
+    {
+     "index": 39,
+     "range": "0-548122",
+     "buffer": false
+    },
+    {
+     "index": 40,
+     "range": "0-208683",
+     "buffer": false
+    },
+    {
+     "index": 40,
+     "range": "208684-417368",
+     "buffer": [
+      40
+     ]
+    },
+    {
+     "index": 41,
+     "range": "0-612438",
+     "buffer": true
+    },
+    {
+     "index": 42,
+     "range": "0-213958",
+     "buffer": false
+    },
+    {
+     "index": 42,
+     "range": "213959-427917",
+     "buffer": false
+    },
+    {
+     "index": 43,
+     "range": "0-476458",
+     "buffer": false
+    },
+    {
+     "index": 44,
+     "range": "0-251646",
+     "buffer": false
+    },
+    {
+     "index": 44,
+     "range": "251647-503293",
+     "buffer": true
+    },
+    {
+     "index": 45,
+     "range": "0-573642",
+     "buffer": false
+    },
+    {
+     "index": 46,
+     "range": "0-259749",
+     "buffer": false
+    },
+    {
+     "index": 46,
+     "range": "259750-519499",
+     "buffer": [
+      46
+     ]
+    },
+    {
+     "index": 47,
+     "range": "0-507151",
+     "buffer": true
+    },
+    {
+     "index": 48,
+     "range": "0-194670",
+     "buffer": false
+    },
+    {
+     "index": 48,
+     "range": "194671-389341",
+     "buffer": false
+    },
+    {
+     "index": 49,
+     "range": "0-588088",
+     "buffer": false
+    },
+    {
+     "index": 50,
+     "range": "0-214582",
+     "buffer": false
+    },
+    {
+     "index": 50,
+     "range": "214583-429165",
+     "buffer": true
+    },
+    {
+     "index": 51,
+     "range": "0-495934",
+     "buffer": false
+    },
+    {
+     "index": 52,
+     "range": "0-287995",
+     "buffer": false
+    },
+    {
+     "index": 52,
+     "range": "287996-575992",
+     "buffer": [
+      52
+     ]
+    },
+    {
+     "index": 53,
+     "range": "0-536612",
+     "buffer": true
+    },
+    {
+     "index": 54,
+     "range": "0-203645",
+     "buffer": false
+    },
+    {
+     "index": 54,
+     "range": "203646-407292",
+     "buffer": false
+    },
+    {
+     "index": 55,
+     "range": "0-484336",
+     "buffer": false
+    },
+    {
+     "index": 56,
+     "range": "0-239411",
+     "buffer": false
+    },
+    {
+     "index": 56,
+     "range": "239412-478823",
+     "buffer": true
+    },
+    {
+     "index": 57,
+     "range": "0-614269",
+     "buffer": false
+    },
+    {
+     "index": 58,
+     "range": "0-198463",
+     "buffer": false
+    },
+    {
+     "index": 58,
+     "range": "198464-396928",
+     "buffer": [
+      58
+     ]
+    },
+    {
+     "index": 59,
+     "range": "0-501206",
+     "buffer": true
+    },
+    {
+     "index": 60,
+     "range": "0-244928",
+     "buffer": false
+    },
+    {
+     "index": 60,
+     "range": "244929-489858",
+     "buffer": false
+    },
+    {
+     "index": 61,
+     "range": "0-611196",
+     "buffer": false
+    },
+    {
+     "index": 62,
+     "range": "0-248700",
+     "buffer": false
+    },
+    {
+     "index": 62,
+     "range": "248701-497401",
+     "buffer": true
+    },
+    {
+     "index": 63,
+     "range": "0-436190",
+     "buffer": false
+    },
+    {
+     "index": 64,
+     "range": "0-246136",
+     "buffer": false
+    },
+    {
+     "index": 64,
+     "range": "246137-492273",
+     "buffer": [
+      64
+     ]
+    },
+    {
+     "index": 65,
+     "range": "0-546860",
+     "buffer": true
+    },
+    {
+     "index": 66,
+     "range": "0-232226",
+     "buffer": false
+    },
+    {
+     "index": 66,
+     "range": "232227-464454",
+     "buffer": false
+    },
+    {
+     "index": 67,
+     "range": "0-478163",
+     "buffer": false
+    },
+    {
+     "index": 68,
+     "range": "0-285045",
+     "buffer": false
+    },
+    {
+     "index": 68,
+     "range": "285046-570091",
+     "buffer": true
+    },
+    {
+     "index": 69,
+     "range": "0-481530",
+     "buffer": false
+    },
+    {
+     "index": 70,
+     "range": "0-259331",
+     "buffer": false
+    },
+    {
+     "index": 70,
+     "range": "259332-518663",
+     "buffer": [
+      70
+     ]
+    },
+    {
+     "index": 71,
+     "range": "0-431411",
+     "buffer": true
+    },
+    {
+     "index": 72,
+     "range": "0-238754",
+     "buffer": false
+    },
+    {
+     "index": 72,
+     "range": "238755-477509",
+     "buffer": false
+    },
+    {
+     "index": 73,
+     "range": "0-495032",
+     "buffer": false
+    },
+    {
+     "index": 74,
+     "range": "0-313722",
+     "buffer": false
+    },
+    {
+     "index": 74,
+     "range": "313723-627446",
+     "buffer": true
+    },
+    {
+     "index": 75,
+     "range": "0-460465",
+     "buffer": false
+    },
+    {
+     "index": 76,
+     "range": "0-249520",
+     "buffer": false
+    },
+    {
+     "index": 76,
+     "range": "249521-499042",
+     "buffer": [
+      76
+     ]
+    },
+    {
+     "index": 77,
+     "range": "0-452295",
+     "buffer": true
+    },
+    {
+     "index": 78,
+     "range": "0-256575",
+     "buffer": false
+    },
+    {
+     "index": 78,
+     "range": "256576-513151",
+     "buffer": false
+    },
+    {
+     "index": 79,
+     "range": "0-573164",
+     "buffer": false
+    },
+    {
+     "index": 80,
+     "range": "0-240521",
+     "buffer": false
+    },
+    {
+     "index": 80,
+     "range": "240522-481044",
+     "buffer": true
+    },
+    {
+     "index": 81,
+     "range": "0-437175",
+     "buffer": false
+    },
+    {
+     "index": 82,
+     "range": "0-260317",
+     "buffer": false
+    },
+    {
+     "index": 82,
+     "range": "260318-520636",
+     "buffer": [
+      82
+     ]
+    },
+    {
+     "index": 83,
+     "range": "0-524888",
+     "buffer": true
+    },
+    {
+     "index": 84,
+     "range": "0-222051",
+     "buffer": false
+    },
+    {
+     "index": 84,
+     "range": "222052-444104",
+     "buffer": false
+    },
+    {
+     "index": 85,
+     "range": "0-474096",
+     "buffer": false
+    },
+    {
+     "index": 86,
+     "range": "0-283484",
+     "buffer": false
+    },
+    {
+     "index": 86,
+     "range": "283485-566969",
+     "buffer": true
+    },
+    {
+     "index": 87,
+     "range": "0-538432",
+     "buffer": false
+    },
+    {
+     "index": 88,
+     "range": "0-258971",
+     "buffer": false
+    },
+    {
+     "index": 88,
+     "range": "258972-517943",
+     "buffer": [
+      88
+     ]
+    },
+    {
+     "index": 89,
+     "range": "0-473703",
+     "buffer": true
+    },
+    {
+     "index": 90,
+     "range": "0-259208",
+     "buffer": false
+    },
+    {
+     "index": 90,
+     "range": "259209-518417",
+     "buffer": false
+    },
+    {
+     "index": 91,
+     "range": "0-390058",
+     "buffer": false
+    },
+    {
+     "index": 92,
+     "range": "0-298228",
+     "buffer": false
+    },
+    {
+     "index": 92,
+     "range": "298229-596457",
+     "buffer": true
+    },
+    {
+     "index": 93,
+     "range": "0-473741",
+     "buffer": false
+    },
+    {
+     "index": 94,
+     "range": "0-232302",
+     "buffer": false
+    },
+    {
+     "index": 94,
+     "range": "232303-464605",
+     "buffer": [
+      94
+     ]
+    },
+    {
+     "index": 95,
+     "range": "0-477645",
+     "buffer": true
+    },
+    {
+     "index": 96,
+     "range": "0-238550",
+     "buffer": false
+    },
+    {
+     "index": 96,
+     "range": "238551-477102",
+     "buffer": false
+    },
+    {
+     "index": 97,
+     "range": "0-480945",
+     "buffer": false
+    },
+    {
+     "index": 98,
+     "range": "0-277099",
+     "buffer": false
+    },
+    {
+     "index": 98,
+     "range": "277100-554200",
+     "buffer": true
+    },
+    {
+     "index": 99,
+     "range": "0-511032",
+     "buffer": false
+    },
+    {
+     "index": 100,
+     "range": "0-275118",
+     "buffer": false
+    },
+    {
+     "index": 100,
+     "range": "275119-550237",
+     "buffer": [
+      100
+     ]
+    },
+    {
+     "index": 101,
+     "range": "0-470729",
+     "buffer": true
+    },
+    {
+     "index": 102,
+     "range": "0-240591",
+     "buffer": false
+    },
+    {
+     "index": 102,
+     "range": "240592-481184",
+     "buffer": false
+    },
+    {
+     "index": 103,
+     "range": "0-553255",
+     "buffer": false
+    },
+    {
+     "index": 104,
+     "range": "0-242418",
+     "buffer": false
+    },
+    {
+     "index": 104,
+     "range": "242419-484837",
+     "buffer": true
+    },
+    {
+     "index": 105,
+     "range": "0-458389",
+     "buffer": false
+    },
+    {
+     "index": 106,
+     "range": "0-276374",
+     "buffer": false
+    },
+    {
+     "index": 106,
+     "range": "276375-552750",
+     "buffer": [
+      106
+     ]
+    },
+    {
+     "index": 107,
+     "range": "0-491278",
+     "buffer": true
+    },
+    {
+     "index": 108,
+     "range": "0-252166",
+     "buffer": false
+    },
+    {
+     "index": 108,
+     "range": "252167-504333",
+     "buffer": false
+    },
+    {
+     "index": 109,
+     "range": "0-444831",
+     "buffer": false
+    },
+    {
+     "index": 110,
+     "range": "0-232565",
+     "buffer": false
+    },
+    {
+     "index": 110,
+     "range": "232566-465132",
+     "buffer": true
+    },
+    {
+     "index": 111,
+     "range": "0-625621",
+     "buffer": false
+    },
+    {
+     "index": 112,
+     "range": "0-185276",
+     "buffer": false
+    },
+    {
+     "index": 112,
+     "range": "185277-370554",
+     "buffer": [
+      112
+     ]
+    },
+    {
+     "index": 113,
+     "range": "0-487955",
+     "buffer": true
+    },
+    {
+     "index": 114,
+     "range": "0-246549",
+     "buffer": false
+    },
+    {
+     "index": 114,
+     "range": "246550-493099",
+     "buffer": false
+    },
+    {
+     "index": 115,
+     "range": "0-522368",
+     "buffer": false
+    },
+    {
+     "index": 116,
+     "range": "0-285624",
+     "buffer": false
+    },
+    {
+     "index": 116,
+     "range": "285625-571250",
+     "buffer": true
+    },
+    {
+     "index": 117,
+     "range": "0-505865",
+     "buffer": false
+    },
+    {
+     "index": 118,
+     "range": "0-229908",
+     "buffer": false
+    },
+    {
+     "index": 118,
+     "range": "229909-459818",
+     "buffer": [
+      118
+     ]
+    },
+    {
+     "index": 119,
+     "range": "0-459385",
+     "buffer": true
+    },
+    {
+     "index": 120,
+     "range": "0-266041",
+     "buffer": false
+    },
+    {
+     "index": 120,
+     "range": "266042-532083",
+     "buffer": false
+    },
+    {
+     "index": 121,
+     "range": "0-443296",
+     "buffer": false
+    },
+    {
+     "index": 122,
+     "range": "0-265109",
+     "buffer": false
+    },
+    {
+     "index": 122,
+     "range": "265110-530220",
+     "buffer": true
+    },
+    {
+     "index": 123,
+     "range": "0-531659",
+     "buffer": false
+    },
+    {
+     "index": 124,
+     "range": "0-227897",
+     "buffer": false
+    },
+    {
+     "index": 124,
+     "range": "227898-455795",
+     "buffer": [
+      124
+     ]
+    },
+    {
+     "index": 125,
+     "range": "0-524830",
+     "buffer": true
+    },
+    {
+     "index": 126,
+     "range": "0-287424",
+     "buffer": false
+    },
+    {
+     "index": 126,
+     "range": "287425-574849",
+     "buffer": false
+    },
+    {
+     "index": 127,
+     "range": "0-498097",
+     "buffer": false
+    },
+    {
+     "index": 128,
+     "range": "0-250619",
+     "buffer": false
+    },
+    {
+     "index": 128,
+     "range": "250620-501239",
+     "buffer": true
+    },
+    {
+     "index": 129,
+     "range": "0-508322",
+     "buffer": false
+    },
+    {
+     "index": 130,
+     "range": "0-246776",
+     "buffer": false
+    },
+    {
+     "index": 130,
+     "range": "246777-493554",
+     "buffer": [
+      130
+     ]
+    },
+    {
+     "index": 131,
+     "range": "0-504542",
+     "buffer": true
+    },
+    {
+     "index": 132,
+     "range": "0-245252",
+     "buffer": false
+    },
+    {
+     "index": 132,
+     "range": "245253-490505",
+     "buffer": false
+    },
+    {
+     "index": 133,
+     "range": "0-479702",
+     "buffer": false
+    },
+    {
+     "index": 134,
+     "range": "0-266729",
+     "buffer": false
+    },
+    {
+     "index": 134,
+     "range": "266730-533459",
+     "buffer": true
+    },
+    {
+     "index": 135,
+     "range": "0-490282",
+     "buffer": false
+    },
+    {
+     "index": 136,
+     "range": "0-252108",
+     "buffer": false
+    },
+    {
+     "index": 136,
+     "range": "252109-504217",
+     "buffer": [
+      136
+     ]
+    },
+    {
+     "index": 137,
+     "range": "0-493730",
+     "buffer": true
+    },
+    {
+     "index": 138,
+     "range": "0-250554",
+     "buffer": false
+    },
+    {
+     "index": 138,
+     "range": "250555-501110",
+     "buffer": false
+    },
+    {
+     "index": 139,
+     "range": "0-517870",
+     "buffer": false
+    },
+    {
+     "index": 140,
+     "range": "0-241172",
+     "buffer": false
+    },
+    {
+     "index": 140,
+     "range": "241173-482346",
+     "buffer": true
+    },
+    {
+     "index": 141,
+     "range": "0-426815",
+     "buffer": false
+    },
+    {
+     "index": 142,
+     "range": "0-248780",
+     "buffer": false
+    },
+    {
+     "index": 142,
+     "range": "248781-497562",
+     "buffer": [
+      142
+     ]
+    },
+    {
+     "index": 143,
+     "range": "0-498226",
+     "buffer": true
+    },
+    {
+     "index": 144,
+     "range": "0-256545",
+     "buffer": false
+    },
+    {
+     "index": 144,
+     "range": "256546-513092",
+     "buffer": false
+    },
+    {
+     "index": 145,
+     "range": "0-590750",
+     "buffer": false
+    },
+    {
+     "index": 146,
+     "range": "0-246538",
+     "buffer": false
+    },
+    {
+     "index": 146,
+     "range": "246539-493077",
+     "buffer": true
+    },
+    {
+     "index": 147,
+     "range": "0-504426",
+     "buffer": false
+    },
+    {
+     "index": 148,
+     "range": "0-247769",
+     "buffer": false
+    },
+    {
+     "index": 148,
+     "range": "247770-495539",
+     "buffer": [
+      148
+     ]
+    },
+    {
+     "index": 149,
+     "range": "0-505890",
+     "buffer": true
+    },
+    {
+     "index": 150,
+     "range": "0-245691",
+     "buffer": false
+    },
+    {
+     "index": 150,
+     "range": "245692-491383",
+     "buffer": false
+    },
+    {
+     "index": 151,
+     "range": "0-415354",
+     "buffer": false
+    },
+    {
+     "index": 152,
+     "range": "0-177825",
+     "buffer": false
+    },
+    {
+     "index": 152,
+     "range": "177826-355651",
+     "buffer": true
+    },
+    {
+     "index": 153,
+     "range": "0-235472",
+     "buffer": false
+    },
+    {
+     "index": 154,
+     "range": "0-167383",
+     "buffer": false
+    },
+    {
+     "index": 154,
+     "range": "167384-334768",
+     "buffer": [
+      154
+     ]
+    },
+    {
+     "index": 155,
+     "range": "0-502965",
+     "buffer": true
+    },
+    {
+     "index": 156,
+     "range": "0-268531",
+     "buffer": false
+    },
+    {
+     "index": 156,
+     "range": "268532-537064",
+     "buffer": false
+    },
+    {
+     "index": 157,
+     "range": "0-553571",
+     "buffer": false
+    },
+    {
+     "index": 158,
+     "range": "0-154200",
+     "buffer": false
+    },
+    {
+     "index": 158,
+     "range": "154201-308402",
+     "buffer": true
+    }
+   ]
+  },
+  {
+   "label": "bbb_a64k",
+   "init": [
+    {
+     "range": "0-315"
+    },
+    {
+     "range": "316-632"
+    }
+   ],
+   "data": [
+    {
+     "index": 0,
+     "range": "0-16815",
+     "buffer": false
+    },
+    {
+     "index": 0,
+     "range": "16816-33631",
+     "buffer": false
+    },
+    {
+     "index": 1,
+     "range": "0-33408",
+     "buffer": false
+    },
+    {
+     "index": 2,
+     "range": "0-16701",
+     "buffer": false
+    },
+    {
+     "index": 2,
+     "range": "16702-33404",
+     "buffer": true
+    },
+    {
+     "index": 3,
+     "range": "0-33378",
+     "buffer": false
+    },
+    {
+     "index": 4,
+     "range": "0-16666",
+     "buffer": false
+    },
+    {
+     "index": 4,
+     "range": "16667-33334",
+     "buffer": [
+      4
+     ]
+    },
+    {
+     "index": 5,
+     "range": "0-33507",
+     "buffer": true
+    },
+    {
+     "index": 6,
+     "range": "0-16652",
+     "buffer": false
+    },
+    {
+     "index": 6,
+     "range": "16653-33306",
+     "buffer": false
+    },
+    {
+     "index": 7,
+     "range": "0-33326",
+     "buffer": false
+    },
+    {
+     "index": 8,
+     "range": "0-16678",
+     "buffer": false
+    },
+    {
+     "index": 8,
+     "range": "16679-33357",
+     "buffer": true
+    },
+    {
+     "index": 9,
+     "range": "0-33462",
+     "buffer": false
+    },
+    {
+     "index": 10,
+     "range": "0-16650",
+     "buffer": false
+    },
+    {
+     "index": 10,
+     "range": "16651-33301",
+     "buffer": [
+      10
+     ]
+    },
+    {
+     "index": 11,
+     "range": "0-33496",
+     "buffer": true
+    },
+    {
+     "index": 12,
+     "range": "0-16651",
+     "buffer": false
+    },
+    {
+     "index": 12,
+     "range": "16652-33304",
+     "buffer": false
+    },
+    {
+     "index": 13,
+     "range": "0-33523",
+     "buffer": false
+    },
+    {
+     "index": 14,
+     "range": "0-16613",
+     "buffer": false
+    },
+    {
+     "index": 14,
+     "range": "16614-33228",
+     "buffer": true
+    },
+    {
+     "index": 15,
+     "range": "0-33288",
+     "buffer": false
+    },
+    {
+     "index": 16,
+     "range": "0-16658",
+     "buffer": false
+    },
+    {
+     "index": 16,
+     "range": "16659-33318",
+     "buffer": [
+      16
+     ]
+    },
+    {
+     "index": 17,
+     "range": "0-33460",
+     "buffer": true
+    },
+    {
+     "index": 18,
+     "range": "0-16651",
+     "buffer": false
+    },
+    {
+     "index": 18,
+     "range": "16652-33303",
+     "buffer": false
+    },
+    {
+     "index": 19,
+     "range": "0-33451",
+     "buffer": false
+    },
+    {
+     "index": 20,
+     "range": "0-16649",
+     "buffer": false
+    },
+    {
+     "index": 20,
+     "range": "16650-33299",
+     "buffer": true
+    },
+    {
+     "index": 21,
+     "range": "0-33473",
+     "buffer": false
+    },
+    {
+     "index": 22,
+     "range": "0-16649",
+     "buffer": false
+    },
+    {
+     "index": 22,
+     "range": "16650-33300",
+     "buffer": [
+      22
+     ]
+    },
+    {
+     "index": 23,
+     "range": "0-33414",
+     "buffer": true
+    },
+    {
+     "index": 24,
+     "range": "0-16790",
+     "buffer": false
+    },
+    {
+     "index": 24,
+     "range": "16791-33582",
+     "buffer": false
+    },
+    {
+     "index": 25,
+     "range": "0-33202",
+     "buffer": false
+    },
+    {
+     "index": 26,
+     "range": "0-16631",
+     "buffer": false
+    },
+    {
+     "index": 26,
+     "range": "16632-33264",
+     "buffer": true
+    },
+    {
+     "index": 27,
+     "range": "0-33361",
+     "buffer": false
+    },
+    {
+     "index": 28,
+     "range": "0-16728",
+     "buffer": false
+    },
+    {
+     "index": 28,
+     "range": "16729-33457",
+     "buffer": [
+      28
+     ]
+    },
+    {
+     "index": 29,
+     "range": "0-33595",
+     "buffer": true
+    },
+    {
+     "index": 30,
+     "range": "0-16559",
+     "buffer": false
+    },
+    {
+     "index": 30,
+     "range": "16560-33119",
+     "buffer": false
+    },
+    {
+     "index": 31,
+     "range": "0-33410",
+     "buffer": false
+    },
+    {
+     "index": 32,
+     "range": "0-16675",
+     "buffer": false
+    },
+    {
+     "index": 32,
+     "range": "16676-33351",
+     "buffer": true
+    },
+    {
+     "index": 33,
+     "range": "0-33415",
+     "buffer": false
+    },
+    {
+     "index": 34,
+     "range": "0-16679",
+     "buffer": false
+    },
+    {
+     "index": 34,
+     "range": "16680-33360",
+     "buffer": [
+      34
+     ]
+    },
+    {
+     "index": 35,
+     "range": "0-33610",
+     "buffer": true
+    },
+    {
+     "index": 36,
+     "range": "0-16607",
+     "buffer": false
+    },
+    {
+     "index": 36,
+     "range": "16608-33215",
+     "buffer": false
+    },
+    {
+     "index": 37,
+     "range": "0-33333",
+     "buffer": false
+    },
+    {
+     "index": 38,
+     "range": "0-16788",
+     "buffer": false
+    },
+    {
+     "index": 38,
+     "range": "16789-33577",
+     "buffer": true
+    },
+    {
+     "index": 39,
+     "range": "0-33184",
+     "buffer": false
+    },
+    {
+     "index": 40,
+     "range": "0-16655",
+     "buffer": false
+    },
+    {
+     "index": 40,
+     "range": "16656-33312",
+     "buffer": [
+      40
+     ]
+    },
+    {
+     "index": 41,
+     "range": "0-33381",
+     "buffer": true
+    },
+    {
+     "index": 42,
+     "range": "0-16687",
+     "buffer": false
+    },
+    {
+     "index": 42,
+     "range": "16688-33376",
+     "buffer": false
+    },
+    {
+     "index": 43,
+     "range": "0-33291",
+     "buffer": false
+    },
+    {
+     "index": 44,
+     "range": "0-16845",
+     "buffer": false
+    },
+    {
+     "index": 44,
+     "range": "16846-33692",
+     "buffer": true
+    },
+    {
+     "index": 45,
+     "range": "0-33178",
+     "buffer": false
+    },
+    {
+     "index": 46,
+     "range": "0-16619",
+     "buffer": false
+    },
+    {
+     "index": 46,
+     "range": "16620-33240",
+     "buffer": [
+      46
+     ]
+    },
+    {
+     "index": 47,
+     "range": "0-33472",
+     "buffer": true
+    },
+    {
+     "index": 48,
+     "range": "0-16656",
+     "buffer": false
+    },
+    {
+     "index": 48,
+     "range": "16657-33313",
+     "buffer": false
+    },
+    {
+     "index": 49,
+     "range": "0-33363",
+     "buffer": false
+    },
+    {
+     "index": 50,
+     "range": "0-16710",
+     "buffer": false
+    },
+    {
+     "index": 50,
+     "range": "16711-33422",
+     "buffer": true
+    },
+    {
+     "index": 51,
+     "range": "0-33478",
+     "buffer": false
+    },
+    {
+     "index": 52,
+     "range": "0-16633",
+     "buffer": false
+    },
+    {
+     "index": 52,
+     "range": "16634-33268",
+     "buffer": [
+      52
+     ]
+    },
+    {
+     "index": 53,
+     "range": "0-33413",
+     "buffer": true
+    },
+    {
+     "index": 54,
+     "range": "0-16716",
+     "buffer": false
+    },
+    {
+     "index": 54,
+     "range": "16717-33433",
+     "buffer": false
+    },
+    {
+     "index": 55,
+     "range": "0-33300",
+     "buffer": false
+    },
+    {
+     "index": 56,
+     "range": "0-16674",
+     "buffer": false
+    },
+    {
+     "index": 56,
+     "range": "16675-33350",
+     "buffer": true
+    },
+    {
+     "index": 57,
+     "range": "0-33189",
+     "buffer": false
+    },
+    {
+     "index": 58,
+     "range": "0-16807",
+     "buffer": false
+    },
+    {
+     "index": 58,
+     "range": "16808-33616",
+     "buffer": [
+      58
+     ]
+    },
+    {
+     "index": 59,
+     "range": "0-33274",
+     "buffer": true
+    },
+    {
+     "index": 60,
+     "range": "0-16685",
+     "buffer": false
+    },
+    {
+     "index": 60,
+     "range": "16686-33372",
+     "buffer": false
+    },
+    {
+     "index": 61,
+     "range": "0-33276",
+     "buffer": false
+    },
+    {
+     "index": 62,
+     "range": "0-16810",
+     "buffer": false
+    },
+    {
+     "index": 62,
+     "range": "16811-33621",
+     "buffer": true
+    },
+    {
+     "index": 63,
+     "range": "0-33288",
+     "buffer": false
+    },
+    {
+     "index": 64,
+     "range": "0-16588",
+     "buffer": false
+    },
+    {
+     "index": 64,
+     "range": "16589-33178",
+     "buffer": [
+      64
+     ]
+    },
+    {
+     "index": 65,
+     "range": "0-33562",
+     "buffer": true
+    },
+    {
+     "index": 66,
+     "range": "0-16663",
+     "buffer": false
+    },
+    {
+     "index": 66,
+     "range": "16664-33327",
+     "buffer": false
+    },
+    {
+     "index": 67,
+     "range": "0-33305",
+     "buffer": false
+    },
+    {
+     "index": 68,
+     "range": "0-16710",
+     "buffer": false
+    },
+    {
+     "index": 68,
+     "range": "16711-33421",
+     "buffer": true
+    },
+    {
+     "index": 69,
+     "range": "0-33566",
+     "buffer": false
+    },
+    {
+     "index": 70,
+     "range": "0-16642",
+     "buffer": false
+    },
+    {
+     "index": 70,
+     "range": "16643-33285",
+     "buffer": [
+      70
+     ]
+    },
+    {
+     "index": 71,
+     "range": "0-33380",
+     "buffer": true
+    },
+    {
+     "index": 72,
+     "range": "0-16711",
+     "buffer": false
+    },
+    {
+     "index": 72,
+     "range": "16712-33423",
+     "buffer": false
+    },
+    {
+     "index": 73,
+     "range": "0-33147",
+     "buffer": false
+    },
+    {
+     "index": 74,
+     "range": "0-16688",
+     "buffer": false
+    },
+    {
+     "index": 74,
+     "range": "16689-33377",
+     "buffer": true
+    },
+    {
+     "index": 75,
+     "range": "0-33547",
+     "buffer": false
+    },
+    {
+     "index": 76,
+     "range": "0-16787",
+     "buffer": false
+    },
+    {
+     "index": 76,
+     "range": "16788-33575",
+     "buffer": [
+      76
+     ]
+    },
+    {
+     "index": 77,
+     "range": "0-33169",
+     "buffer": true
+    },
+    {
+     "index": 78,
+     "range": "0-16564",
+     "buffer": false
+    },
+    {
+     "index": 78,
+     "range": "16565-33129",
+     "buffer": false
+    },
+    {
+     "index": 79,
+     "range": "0-33479",
+     "buffer": false
+    },
+    {
+     "index": 80,
+     "range": "0-16718",
+     "buffer": false
+    },
+    {
+     "index": 80,
+     "range": "16719-33438",
+     "buffer": true
+    },
+    {
+     "index": 81,
+     "range": "0-33250",
+     "buffer": false
+    },
+    {
+     "index": 82,
+     "range": "0-16841",
+     "buffer": false
+    },
+    {
+     "index": 82,
+     "range": "16842-33683",
+     "buffer": [
+      82
+     ]
+    },
+    {
+     "index": 83,
+     "range": "0-33145",
+     "buffer": true
+    },
+    {
+     "index": 84,
+     "range": "0-16751",
+     "buffer": false
+    },
+    {
+     "index": 84,
+     "range": "16752-33503",
+     "buffer": false
+    },
+    {
+     "index": 85,
+     "range": "0-33214",
+     "buffer": false
+    },
+    {
+     "index": 86,
+     "range": "0-16710",
+     "buffer": false
+    },
+    {
+     "index": 86,
+     "range": "16711-33422",
+     "buffer": true
+    },
+    {
+     "index": 87,
+     "range": "0-33492",
+     "buffer": false
+    },
+    {
+     "index": 88,
+     "range": "0-16687",
+     "buffer": false
+    },
+    {
+     "index": 88,
+     "range": "16688-33375",
+     "buffer": [
+      88
+     ]
+    },
+    {
+     "index": 89,
+     "range": "0-33304",
+     "buffer": true
+    },
+    {
+     "index": 90,
+     "range": "0-16714",
+     "buffer": false
+    },
+    {
+     "index": 90,
+     "range": "16715-33429",
+     "buffer": false
+    },
+    {
+     "index": 91,
+     "range": "0-33255",
+     "buffer": false
+    },
+    {
+     "index": 92,
+     "range": "0-16698",
+     "buffer": false
+    },
+    {
+     "index": 92,
+     "range": "16699-33397",
+     "buffer": true
+    },
+    {
+     "index": 93,
+     "range": "0-33581",
+     "buffer": false
+    },
+    {
+     "index": 94,
+     "range": "0-16681",
+     "buffer": false
+    },
+    {
+     "index": 94,
+     "range": "16682-33363",
+     "buffer": [
+      94
+     ]
+    },
+    {
+     "index": 95,
+     "range": "0-33345",
+     "buffer": true
+    },
+    {
+     "index": 96,
+     "range": "0-16611",
+     "buffer": false
+    },
+    {
+     "index": 96,
+     "range": "16612-33223",
+     "buffer": false
+    },
+    {
+     "index": 97,
+     "range": "0-33456",
+     "buffer": false
+    },
+    {
+     "index": 98,
+     "range": "0-16589",
+     "buffer": false
+    },
+    {
+     "index": 98,
+     "range": "16590-33179",
+     "buffer": true
+    },
+    {
+     "index": 99,
+     "range": "0-33434",
+     "buffer": false
+    },
+    {
+     "index": 100,
+     "range": "0-16675",
+     "buffer": false
+    },
+    {
+     "index": 100,
+     "range": "16676-33352",
+     "buffer": [
+      100
+     ]
+    },
+    {
+     "index": 101,
+     "range": "0-33419",
+     "buffer": true
+    },
+    {
+     "index": 102,
+     "range": "0-16602",
+     "buffer": false
+    },
+    {
+     "index": 102,
+     "range": "16603-33206",
+     "buffer": false
+    },
+    {
+     "index": 103,
+     "range": "0-33524",
+     "buffer": false
+    },
+    {
+     "index": 104,
+     "range": "0-16589",
+     "buffer": false
+    },
+    {
+     "index": 104,
+     "range": "16590-33180",
+     "buffer": true
+    },
+    {
+     "index": 105,
+     "range": "0-33476",
+     "buffer": false
+    },
+    {
+     "index": 106,
+     "range": "0-16690",
+     "buffer": false
+    },
+    {
+     "index": 106,
+     "range": "16691-33381",
+     "buffer": [
+      106
+     ]
+    },
+    {
+     "index": 107,
+     "range": "0-33412",
+     "buffer": true
+    },
+    {
+     "index": 108,
+     "range": "0-16694",
+     "buffer": false
+    },
+    {
+     "index": 108,
+     "range": "16695-33389",
+     "buffer": false
+    },
+    {
+     "index": 109,
+     "range": "0-33496",
+     "buffer": false
+    },
+    {
+     "index": 110,
+     "range": "0-16686",
+     "buffer": false
+    },
+    {
+     "index": 110,
+     "range": "16687-33373",
+     "buffer": true
+    },
+    {
+     "index": 111,
+     "range": "0-33276",
+     "buffer": false
+    },
+    {
+     "index": 112,
+     "range": "0-16647",
+     "buffer": false
+    },
+    {
+     "index": 112,
+     "range": "16648-33296",
+     "buffer": [
+      112
+     ]
+    },
+    {
+     "index": 113,
+     "range": "0-33580",
+     "buffer": true
+    },
+    {
+     "index": 114,
+     "range": "0-16589",
+     "buffer": false
+    },
+    {
+     "index": 114,
+     "range": "16590-33180",
+     "buffer": false
+    },
+    {
+     "index": 115,
+     "range": "0-33391",
+     "buffer": false
+    },
+    {
+     "index": 116,
+     "range": "0-16633",
+     "buffer": false
+    },
+    {
+     "index": 116,
+     "range": "16634-33268",
+     "buffer": true
+    },
+    {
+     "index": 117,
+     "range": "0-33475",
+     "buffer": false
+    },
+    {
+     "index": 118,
+     "range": "0-16644",
+     "buffer": false
+    },
+    {
+     "index": 118,
+     "range": "16645-33290",
+     "buffer": [
+      118
+     ]
+    },
+    {
+     "index": 119,
+     "range": "0-33397",
+     "buffer": true
+    },
+    {
+     "index": 120,
+     "range": "0-16690",
+     "buffer": false
+    },
+    {
+     "index": 120,
+     "range": "16691-33382",
+     "buffer": false
+    },
+    {
+     "index": 121,
+     "range": "0-33470",
+     "buffer": false
+    },
+    {
+     "index": 122,
+     "range": "0-16647",
+     "buffer": false
+    },
+    {
+     "index": 122,
+     "range": "16648-33296",
+     "buffer": true
+    },
+    {
+     "index": 123,
+     "range": "0-33461",
+     "buffer": false
+    },
+    {
+     "index": 124,
+     "range": "0-16698",
+     "buffer": false
+    },
+    {
+     "index": 124,
+     "range": "16699-33397",
+     "buffer": [
+      124
+     ]
+    },
+    {
+     "index": 125,
+     "range": "0-33345",
+     "buffer": true
+    },
+    {
+     "index": 126,
+     "range": "0-16623",
+     "buffer": false
+    },
+    {
+     "index": 126,
+     "range": "16624-33248",
+     "buffer": false
+    },
+    {
+     "index": 127,
+     "range": "0-33479",
+     "buffer": false
+    },
+    {
+     "index": 128,
+     "range": "0-16625",
+     "buffer": false
+    },
+    {
+     "index": 128,
+     "range": "16626-33252",
+     "buffer": true
+    },
+    {
+     "index": 129,
+     "range": "0-33397",
+     "buffer": false
+    },
+    {
+     "index": 130,
+     "range": "0-16702",
+     "buffer": false
+    },
+    {
+     "index": 130,
+     "range": "16703-33405",
+     "buffer": [
+      130
+     ]
+    },
+    {
+     "index": 131,
+     "range": "0-33328",
+     "buffer": true
+    },
+    {
+     "index": 132,
+     "range": "0-16689",
+     "buffer": false
+    },
+    {
+     "index": 132,
+     "range": "16690-33379",
+     "buffer": false
+    },
+    {
+     "index": 133,
+     "range": "0-33355",
+     "buffer": false
+    },
+    {
+     "index": 134,
+     "range": "0-16721",
+     "buffer": false
+    },
+    {
+     "index": 134,
+     "range": "16722-33443",
+     "buffer": true
+    },
+    {
+     "index": 135,
+     "range": "0-33329",
+     "buffer": false
+    },
+    {
+     "index": 136,
+     "range": "0-16687",
+     "buffer": false
+    },
+    {
+     "index": 136,
+     "range": "16688-33376",
+     "buffer": [
+      136
+     ]
+    },
+    {
+     "index": 137,
+     "range": "0-33357",
+     "buffer": true
+    },
+    {
+     "index": 138,
+     "range": "0-16697",
+     "buffer": false
+    },
+    {
+     "index": 138,
+     "range": "16698-33396",
+     "buffer": false
+    },
+    {
+     "index": 139,
+     "range": "0-33458",
+     "buffer": false
+    },
+    {
+     "index": 140,
+     "range": "0-16677",
+     "buffer": false
+    },
+    {
+     "index": 140,
+     "range": "16678-33356",
+     "buffer": true
+    },
+    {
+     "index": 141,
+     "range": "0-33448",
+     "buffer": false
+    },
+    {
+     "index": 142,
+     "range": "0-16648",
+     "buffer": false
+    },
+    {
+     "index": 142,
+     "range": "16649-33298",
+     "buffer": [
+      142
+     ]
+    },
+    {
+     "index": 143,
+     "range": "0-33361",
+     "buffer": true
+    },
+    {
+     "index": 144,
+     "range": "0-16715",
+     "buffer": false
+    },
+    {
+     "index": 144,
+     "range": "16716-33431",
+     "buffer": false
+    },
+    {
+     "index": 145,
+     "range": "0-33270",
+     "buffer": false
+    },
+    {
+     "index": 146,
+     "range": "0-16680",
+     "buffer": false
+    },
+    {
+     "index": 146,
+     "range": "16681-33361",
+     "buffer": true
+    },
+    {
+     "index": 147,
+     "range": "0-33380",
+     "buffer": false
+    },
+    {
+     "index": 148,
+     "range": "0-16666",
+     "buffer": false
+    },
+    {
+     "index": 148,
+     "range": "16667-33334",
+     "buffer": [
+      148
+     ]
+    },
+    {
+     "index": 149,
+     "range": "0-33461",
+     "buffer": true
+    },
+    {
+     "index": 150,
+     "range": "0-16677",
+     "buffer": false
+    },
+    {
+     "index": 150,
+     "range": "16678-33356",
+     "buffer": false
+    },
+    {
+     "index": 151,
+     "range": "0-33306",
+     "buffer": false
+    },
+    {
+     "index": 152,
+     "range": "0-16674",
+     "buffer": false
+    },
+    {
+     "index": 152,
+     "range": "16675-33350",
+     "buffer": true
+    },
+    {
+     "index": 153,
+     "range": "0-33447",
+     "buffer": false
+    },
+    {
+     "index": 154,
+     "range": "0-16775",
+     "buffer": false
+    },
+    {
+     "index": 154,
+     "range": "16776-33551",
+     "buffer": [
+      154
+     ]
+    },
+    {
+     "index": 155,
+     "range": "0-33240",
+     "buffer": true
+    },
+    {
+     "index": 156,
+     "range": "0-16733",
+     "buffer": false
+    },
+    {
+     "index": 156,
+     "range": "16734-33467",
+     "buffer": false
+    },
+    {
+     "index": 157,
+     "range": "0-33339",
+     "buffer": false
+    },
+    {
+     "index": 158,
+     "range": "0-2344",
+     "buffer": false
+    },
+    {
+     "index": 158,
+     "range": "2345-4689",
+     "buffer": true
+    }
+   ]
+  }
+ ]
+}

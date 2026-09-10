@@ -155,6 +155,16 @@
       ]
     },
     {
+      "name": "BBB Buffer windows (3 segments per directive, some selective)",
+      "type": "vod",
+      "url": "/base/test/functional/content/dodge/bbb_30fps_window.exmfst.json",
+      "includedTestfiles": [
+        "dodge/defense-verification",
+        "dodge/player-seek",
+        "dodge/player-quality-switch"
+      ]
+    },
+    {
       "name": "BBB Progressive (3 seeded segments, generated at runtime)",
       "type": "vod",
       "url": "/base/test/functional/content/dodge/bbb_30fps_progressive.exmfst.json",

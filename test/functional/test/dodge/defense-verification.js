@@ -103,8 +103,15 @@ function verifyCycleMatch(requests, stream, mediaType) {
         // Padding must match
         expect(!!req.padding).to.equal(!!cycle.padding, `${mediaType} cycle ${i}: padding mismatch (request=${!!req.padding}, manifest=${!!cycle.padding})`);
 
-        // Buffer must match
-        expect(req.buffer).to.equal(cycle.buffer, `${mediaType} cycle ${i}: buffer mismatch (request=${req.buffer}, manifest=${cycle.buffer})`);
+        // Buffer must match. A selective directive is an array of segment
+        // indices, and the request carries the runtime's own array rather than
+        // the one parsed here, so it is compared by value.
+        const where = `${mediaType} cycle ${i}: buffer mismatch (request=${JSON.stringify(req.buffer)}, manifest=${JSON.stringify(cycle.buffer)})`;
+        if (Array.isArray(cycle.buffer)) {
+            expect(req.buffer).to.deep.equal(cycle.buffer, where);
+        } else {
+            expect(req.buffer).to.equal(cycle.buffer, where);
+        }
     }
 }
 
