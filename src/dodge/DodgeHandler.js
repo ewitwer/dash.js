@@ -1674,7 +1674,10 @@ function DodgeHandler(config) {
             result.set(piece.response, rangeStart - minRangeStart);
         }
 
-        return result;
+        // Hand back the buffer, not the view. FragmentController sets chunk.bytes
+        // to the loader's response, which is an ArrayBuffer, and TextSourceBuffer
+        // and the ISOBoxer paths in StreamProcessor accept nothing else.
+        return result.buffer;
     }
 
     function _createDataChunk(bytes, request, streamId, endFragment) {

@@ -1887,11 +1887,20 @@ module scope.
 
 ### R12.1 - `_concatPartialSegments` assembles byte ranges correctly
 
-The internal `_concatPartialSegments` function combines accumulated partial responses into a single `Uint8Array`. It matches pieces by `index` (with `NaN` for init segments), `mediaType`, and `representation.id`. Range parsing uses `originalRange` first, then `range` (which overrides), through the shared `_parseRequestRange()` helper (R12.5). When no valid range end is found, it computes `rangeStart + byteLength - 1`. Pieces are placed at their range offset in the result buffer; gaps are filled with zeros - but there should never be any gaps. Matched pieces are removed from the `partialSegments` array.
+The internal `_concatPartialSegments` function combines accumulated partial responses into a single buffer. It matches pieces by `index` (with `NaN` for init segments), `mediaType`, and `representation.id`.
+
+It assembles through a `Uint8Array` view but returns that view's `ArrayBuffer`, because `chunk.bytes`
+has to hold the same type the vanilla path puts there: `FragmentController.createDataChunk()` is
+handed the loader's response, which is an `ArrayBuffer`. Returning the view instead is invisible on
+the audio and video paths, since `SourceBuffer.appendBuffer()` accepts any `BufferSource`, so the
+deviation only surfaces where something reads the bytes directly. `TextSourceBuffer` does, passing
+`chunk.bytes` into `new DataView(bytes, ...)` and into ISOBoxer, and both reject a typed array.
 
 | File | Description | Test |
 |---|---|---|
 | `dodge.DodgeHandler.js` | _concatPartialSegments via _onFragmentLoadingCompleted | single piece without range info: assembles using 0 to byteLength - 1 |
+| `dodge.DodgeHandler.js` | _concatPartialSegments via _onFragmentLoadingCompleted | assembled bytes are an ArrayBuffer, the type the vanilla path produces |
+| `dodge.DodgeHandler.js` | _concatPartialSegments via _onFragmentLoadingCompleted | assembled bytes can back a DataView, which is what the text path builds |
 | `dodge.DodgeHandler.js` | _concatPartialSegments via _onFragmentLoadingCompleted | multiple pieces with contiguous ranges: merged correctly |
 | `dodge.DodgeHandler.js` | _concatPartialSegments via _onFragmentLoadingCompleted | multiple pieces with non-contiguous ranges: gap filled with zeros |
 | `dodge.DodgeHandler.js` | _concatPartialSegments via _onFragmentLoadingCompleted | pieces placed by range offset regardless of insertion order |
@@ -2220,7 +2229,7 @@ manifests that are correct, so the gate stays silent instead.
 | R11.6 strictMode validation and fail-closed normalization | 16 |
 | R11.7 Invalid strictMode enforces as max at both levels | 11 |
 | R11.8 Numeric dodge settings validated and fail closed | 23 |
-| R12.1 _concatPartialSegments assembly | 10 |
+| R12.1 _concatPartialSegments assembly | 12 |
 | R12.2 _createDataChunk population | 4 |
 | R12.3 getStreamStats counts | 3 |
 | R12.4 Error fragment stalling | 8 |
@@ -2229,4 +2238,11 @@ manifests that are correct, so the gate stays silent instead.
 | R12.7 Every Dodge module reads the player's Settings | 5 |
 | R12.8 A stalled stream is never scheduled again | 11 |
 | R12.9 A cycle naming a segment the presentation lacks stalls the stream | 2 |
-| **Total** | **849** |
+| **Total** | **848** |
+
+The column above sums to 851 rather than 848 because three tests each pin two requirements and
+are listed under both: `an index past the end of the timeline stalls without advancing` under R3.10
+and R12.9, `rejects an override group fetched after its index was flushed` under R9.4 and R9.16, and
+`a complete manifest is held to the same rule as a progressive batch` under R9.11 and R9.16. The
+total is the number of tests the suite runs, which is what `npx karma start
+test/unit/config/karma.unit.conf.cjs --grep="Dodge|DefenseRegistry|applyRequestPadding"` reports.

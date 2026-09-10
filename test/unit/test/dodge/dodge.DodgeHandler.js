@@ -2299,8 +2299,29 @@ describe('DodgeHandler', function () {
 
             expect(loadedSpy.calledOnce).to.be.true; // jshint ignore:line
             const chunk = loadedSpy.firstCall.args[0].chunk;
-            expect(chunk.bytes.length).to.equal(3);
-            expect(Array.from(chunk.bytes)).to.deep.equal([10, 20, 30]);
+            expect(chunk.bytes.byteLength).to.equal(3);
+            expect(Array.from(new Uint8Array(chunk.bytes))).to.deep.equal([10, 20, 30]);
+        });
+
+        // Vanilla dash.js sets chunk.bytes from the loader response, which is an
+        // ArrayBuffer. Assembling into a Uint8Array instead is invisible to audio
+        // and video, because SourceBuffer.appendBuffer() takes any BufferSource,
+        // but TextSourceBuffer hands chunk.bytes straight to new DataView(bytes,
+        // ...) and to ISOBoxer, and both reject a typed array outright.
+        it('assembled bytes are an ArrayBuffer, the type the vanilla path produces', function () {
+            const bytes = new Uint8Array([10, 20, 30]).buffer;
+            triggerFragmentLoaded(makeRequest({ full: true, buffer: true, range: null, originalRange: null }), bytes);
+
+            const chunk = loadedSpy.firstCall.args[0].chunk;
+            expect(chunk.bytes).to.be.an.instanceof(ArrayBuffer);
+        });
+
+        it('assembled bytes can back a DataView, which is what the text path builds', function () {
+            const bytes = new Uint8Array([1, 2, 3, 4]).buffer;
+            triggerFragmentLoaded(makeRequest({ full: true, buffer: true, range: '0-3' }), bytes);
+
+            const chunk = loadedSpy.firstCall.args[0].chunk;
+            expect(() => new DataView(chunk.bytes, 0, chunk.bytes.byteLength)).to.not.throw();
         });
 
         it('multiple pieces with contiguous ranges: merged correctly', function () {
@@ -2314,8 +2335,8 @@ describe('DodgeHandler', function () {
 
             expect(loadedSpy.calledOnce).to.be.true; // jshint ignore:line
             const chunk = loadedSpy.firstCall.args[0].chunk;
-            expect(chunk.bytes.length).to.equal(8);
-            expect(Array.from(chunk.bytes)).to.deep.equal([1, 2, 3, 4, 5, 6, 7, 8]);
+            expect(chunk.bytes.byteLength).to.equal(8);
+            expect(Array.from(new Uint8Array(chunk.bytes))).to.deep.equal([1, 2, 3, 4, 5, 6, 7, 8]);
         });
 
         it('multiple pieces with non-contiguous ranges: gap filled with zeros', function () {
@@ -2329,8 +2350,8 @@ describe('DodgeHandler', function () {
 
             expect(loadedSpy.calledOnce).to.be.true; // jshint ignore:line
             const chunk = loadedSpy.firstCall.args[0].chunk;
-            expect(chunk.bytes.length).to.equal(6);
-            expect(Array.from(chunk.bytes)).to.deep.equal([10, 20, 0, 0, 50, 60]);
+            expect(chunk.bytes.byteLength).to.equal(6);
+            expect(Array.from(new Uint8Array(chunk.bytes))).to.deep.equal([10, 20, 0, 0, 50, 60]);
         });
 
         it('pieces placed by range offset regardless of insertion order', function () {
@@ -2343,7 +2364,7 @@ describe('DodgeHandler', function () {
 
             expect(loadedSpy.calledOnce).to.be.true; // jshint ignore:line
             const chunk = loadedSpy.firstCall.args[0].chunk;
-            expect(Array.from(chunk.bytes)).to.deep.equal([1, 2, 3, 4, 5, 6, 7, 8]);
+            expect(Array.from(new Uint8Array(chunk.bytes))).to.deep.equal([1, 2, 3, 4, 5, 6, 7, 8]);
         });
 
         it('NaN index matching for init segments', function () {
@@ -2364,8 +2385,8 @@ describe('DodgeHandler', function () {
 
             expect(initLoadedSpy.calledOnce).to.be.true; // jshint ignore:line
             const chunk = initLoadedSpy.firstCall.args[0].chunk;
-            expect(chunk.bytes.length).to.equal(4);
-            expect(Array.from(chunk.bytes)).to.deep.equal([0xAA, 0xBB, 0xCC, 0xDD]);
+            expect(chunk.bytes.byteLength).to.equal(4);
+            expect(Array.from(new Uint8Array(chunk.bytes))).to.deep.equal([0xAA, 0xBB, 0xCC, 0xDD]);
 
             eventBus.off(Events.INIT_FRAGMENT_LOADED, initLoadedSpy, testListener);
         });
@@ -2394,7 +2415,7 @@ describe('DodgeHandler', function () {
 
             expect(initLoadedSpy.calledOnce).to.be.true; // jshint ignore:line
             const chunk = initLoadedSpy.firstCall.args[0].chunk;
-            expect(Array.from(chunk.bytes)).to.deep.equal([0x11, 0x22, 0x33, 0x44]);
+            expect(Array.from(new Uint8Array(chunk.bytes))).to.deep.equal([0x11, 0x22, 0x33, 0x44]);
         });
 
         it('a padding cycle response is not accumulated as a partial', function () {
@@ -2419,8 +2440,8 @@ describe('DodgeHandler', function () {
 
             expect(loadedSpy.calledOnce).to.be.true; // jshint ignore:line
             const chunk = loadedSpy.firstCall.args[0].chunk;
-            expect(chunk.bytes.length).to.equal(2);
-            expect(Array.from(chunk.bytes)).to.deep.equal([9, 10]);
+            expect(chunk.bytes.byteLength).to.equal(2);
+            expect(Array.from(new Uint8Array(chunk.bytes))).to.deep.equal([9, 10]);
 
             // The audio partial should still be in the queue
             expect(handler.getStreamStats('stream-1').partialSegments).to.equal(1);
@@ -2441,8 +2462,8 @@ describe('DodgeHandler', function () {
 
             expect(loadedSpy.calledOnce).to.be.true; // jshint ignore:line
             const chunk = loadedSpy.firstCall.args[0].chunk;
-            expect(chunk.bytes.length).to.equal(8);
-            expect(Array.from(chunk.bytes)).to.deep.equal([1, 2, 3, 4, 5, 6, 7, 8]);
+            expect(chunk.bytes.byteLength).to.equal(8);
+            expect(Array.from(new Uint8Array(chunk.bytes))).to.deep.equal([1, 2, 3, 4, 5, 6, 7, 8]);
         });
 
         it('matched pieces are removed from partialSegments array', function () {
