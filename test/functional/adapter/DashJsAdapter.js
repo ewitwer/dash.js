@@ -89,6 +89,11 @@ class DashJsAdapter {
         this.errorEvents = [];
         this.registeredEvents.clear()
         this.triggeredEvents.clear()
+        // Both of these patch XMLHttpRequest.prototype, which outlives the
+        // player. Unwind them here so a test that forgets cannot leak a wrapper
+        // into whatever runs next. Teardown order is the reverse of setup.
+        this.stopWireFaultInjection();
+        this.stopWireRequestLog();
         if (this.player) {
             this._unregisterInternalEvents();
             this.player.resetSettings();
@@ -794,6 +799,80 @@ class DashJsAdapter {
     }
 
     /**
+     * Break matching requests at the XHR layer, to reach the failure paths a
+     * healthy origin never produces.
+     *
+     * `urlMatch` selects which requests to break, and `skip` lets the first N
+     * matches through so the fault lands mid-stream on a defense that is already
+     * running rather than on its first request.
+     *
+     * @param {Object} rule - `{ kind: 'notFound'|'ignoreRange', urlMatch, skip }`
+     */
+    startWireFaultInjection(rule) {
+        this.stopWireFaultInjection();
+
+        const state = { matched: 0, applied: 0 };
+        this.wireFaultState = state;
+
+        const proto = XMLHttpRequest.prototype;
+        const original = { open: proto.open, setRequestHeader: proto.setRequestHeader };
+        this.wireFaultOriginal = original;
+
+        const matches = (url) => rule.urlMatch && String(url).indexOf(rule.urlMatch) !== -1;
+
+        proto.open = function (method, url, ...rest) {
+            let target = String(url);
+            this.dodgeFaulted = false;
+
+            if (matches(target)) {
+                state.matched++;
+                if (state.matched > (rule.skip || 0)) {
+                    this.dodgeFaulted = true;
+                    if (rule.kind === 'notFound') {
+                        // A path the origin does not serve. HTTPLoader sees a
+                        // real 404 and runs its own retry policy to exhaustion,
+                        // which is the state the stall is meant to handle.
+                        target = target.replace(/(\?|$)/, '.dodge-missing$1');
+                        state.applied++;
+                    }
+                }
+            }
+
+            return original.open.call(this, method, target, ...rest);
+        };
+
+        proto.setRequestHeader = function (key, value) {
+            if (this.dodgeFaulted && rule.kind === 'ignoreRange' && String(key).toLowerCase() === 'range') {
+                state.applied++;
+                return;
+            }
+            return original.setRequestHeader.call(this, key, value);
+        };
+    }
+
+    getWireFaultCount() {
+        return this.wireFaultState ? this.wireFaultState.matched : 0;
+    }
+
+    /**
+     * How many requests the fault was actually carried out on, as opposed to
+     * merely matched. For `ignoreRange` these differ whenever the defense asks
+     * for whole segments.
+     */
+    getWireFaultAppliedCount() {
+        return this.wireFaultState ? this.wireFaultState.applied : 0;
+    }
+
+    stopWireFaultInjection() {
+        if (this.wireFaultOriginal) {
+            const proto = XMLHttpRequest.prototype;
+            proto.open = this.wireFaultOriginal.open;
+            proto.setRequestHeader = this.wireFaultOriginal.setRequestHeader;
+            this.wireFaultOriginal = null;
+        }
+    }
+
+    /**
      * Record what actually leaves the browser, by wrapping XMLHttpRequest.
      *
      * Dodge normalizes request wire size in its FetchLoader/XHRLoader overrides,
@@ -813,6 +892,19 @@ class DashJsAdapter {
         this.wireRequestLog = [];
 
         const log = this.wireRequestLog;
+
+        // What leaves the browser is an XHR, which knows nothing about media
+        // types. FRAGMENT_LOADING_STARTED fires before the loader sends, so the
+        // type for a given URL is already known by the time the request goes
+        // out. Keyed without the query, since the loaders extend it afterwards.
+        const typeByPath = new Map();
+        this.wireTypeListener = (e) => {
+            if (e && e.request && e.request.url) {
+                typeByPath.set(String(e.request.url).split('?')[0],
+                    { mediaType: e.request.mediaType, type: e.request.type });
+            }
+        };
+        this.player.on(MediaPlayer.events.FRAGMENT_LOADING_STARTED, this.wireTypeListener);
         const proto = XMLHttpRequest.prototype;
         const original = { open: proto.open, setRequestHeader: proto.setRequestHeader, send: proto.send };
         this.wireRequestOriginal = original;
@@ -833,11 +925,28 @@ class DashJsAdapter {
         proto.send = function (...args) {
             const record = this.dodgeWireRecord;
             if (record) {
-                log.push({
+                const entry = {
                     url: record.url,
                     urlLength: record.url.length,
                     headerBytes: record.headerBytes,
-                    size: record.url.length + record.headerBytes
+                    size: record.url.length + record.headerBytes,
+                    timestamp: Date.now(),
+                    responseBytes: NaN,
+                    mediaType: (typeByPath.get(record.url.split('?')[0]) || {}).mediaType || null,
+                    requestType: (typeByPath.get(record.url.split('?')[0]) || {}).type || null
+                };
+                log.push(entry);
+                // What came back, which is the half of the exchange an observer
+                // on the network actually sizes. Read off the response itself
+                // rather than Content-Length, so a chunked or recompressed
+                // answer is still counted as the bytes that arrived.
+                this.addEventListener('loadend', () => {
+                    const body = this.response;
+                    if (body && typeof body.byteLength === 'number') {
+                        entry.responseBytes = body.byteLength;
+                    } else if (typeof body === 'string') {
+                        entry.responseBytes = body.length;
+                    }
                 });
             }
             return original.send.apply(this, args);
@@ -855,6 +964,10 @@ class DashJsAdapter {
     }
 
     stopWireRequestLog() {
+        if (this.wireTypeListener && this.player) {
+            this.player.off(MediaPlayer.events.FRAGMENT_LOADING_STARTED, this.wireTypeListener);
+            this.wireTypeListener = null;
+        }
         if (this.wireRequestOriginal) {
             const proto = XMLHttpRequest.prototype;
             proto.open = this.wireRequestOriginal.open;

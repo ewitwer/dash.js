@@ -8,7 +8,11 @@ import {
     initializeDashJsAdapter
 } from '../common/common.js';
 
-const TESTCASE = Constants.TESTCASES.DODGE.REQUEST_PADDING;
+import {
+    checkDodgeActive,
+} from '../common/dodge.js';
+
+const TESTCASE = Constants.TESTCASES.DODGE.DEFENSE_PADDING;
 
 // Segments come from the content host; the page itself is served by karma. Only
 // the former go through Dodge's request generation, so only those are measured.
@@ -84,17 +88,7 @@ Utils.getTestvectorsForTestcase(TESTCASE).forEach((item) => {
         })
 
         it(`Dodge defense is active`, async () => {
-            const timeout = Constants.TEST_TIMEOUT_THRESHOLDS.DODGE_PLAYING;
-            const start = Date.now();
-            let isActive = false;
-            while (Date.now() - start < timeout) {
-                isActive = playerAdapter.isDodgeActive();
-                if (isActive) {
-                    break;
-                }
-                await playerAdapter.sleep(200);
-            }
-            expect(isActive).to.be.true;
+            await checkDodgeActive(playerAdapter);
         })
 
         it(`Every request leaves the browser within the configured size range`, async () => {

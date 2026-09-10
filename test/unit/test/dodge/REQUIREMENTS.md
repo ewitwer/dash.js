@@ -2039,6 +2039,53 @@ and needs the same enforcement.
 | `dodge.DodgeScheduleControllerOverride.js` | _shouldClearScheduleTimer | an unstalled stream is unaffected, trailing still keeps the timer |
 | `dodge.DodgeScheduleControllerOverride.js` | _shouldClearScheduleTimer | no DodgeHandler on the context: falls back to parent result without crashing |
 
+### R12.9 - A cycle that names a segment the presentation does not contain stalls the stream
+
+`_getSegmentByIndex` returns null for an index outside the period, because dash.js's segment getters
+refuse a segment whose presentation time falls outside it. `getNextSegmentRequest` returns null in
+that case, which retries the cycle rather than skipping it (R2.11 relies on that for URL resolution
+failures). For an index the presentation does not contain, retrying is both useless and harmful, so
+the override records the stall through `DodgeHandler.recordStall()` on the first failure, and R12.8
+enforces it from there.
+
+This is defense-in-depth. R10.17 refuses such a manifest at load, before playback; this catches what
+that gate cannot see, such as a representation the device dropped after the check ran.
+
+| File | Description | Test |
+|---|---|---|
+| `dodge.DodgeDashHandlerOverride.js` | SegmentTimeline index lookup | an index that does not resolve stalls the stream at once |
+| `dodge.DodgeDashHandlerOverride.js` | SegmentTimeline index lookup | an index past the end of the timeline stalls without advancing |
+
+---
+
+### R10.17 - Cycle segment indices must be ones the MPD can supply
+
+`rejectIfManifestMismatch` verifies the extended manifest's references into the MPD. A cycle's
+segment index is one of those references: an index past the end of a representation resolves to no
+segment, so no request is ever built for it and R12.9 stalls the stream. Refusing at load turns
+that into a diagnosable failure before playback starts.
+
+The count is the one dash.js computes for itself: `SegmentURL` entries for a SegmentList, the
+sum over `<S>` entries for a SegmentTimeline, and `ceil(periodDuration / segmentDuration)` for a
+SegmentTemplate with `@duration`, with period durations taken from `getRegularPeriods` so they match
+what the segment getters will use. Segment elements are resolved with the Representation over
+AdaptationSet over Period inheritance the spec defines.
+
+Where the MPD does not settle a count the check does not run: a SegmentBase representation whose
+indices come from a `sidx` the client has not fetched, a timeline with a negative `@r` running to
+the period end, or a template with neither a duration nor a timeline. Guessing there would refuse
+manifests that are correct, so the gate stays silent instead.
+
+| File | Description | Test |
+|---|---|---|
+| `dodge.DodgeHandler.js` | rejectIfManifestMismatch | cycles within the declared segment count are accepted |
+| `dodge.DodgeHandler.js` | rejectIfManifestMismatch | a cycle naming a segment index past the end of the presentation is rejected |
+| `dodge.DodgeHandler.js` | rejectIfManifestMismatch | the refusal names the index and the count |
+| `dodge.DodgeHandler.js` | rejectIfManifestMismatch | trailing padding past the end is rejected like any other cycle |
+| `dodge.DodgeHandler.js` | rejectIfManifestMismatch | a SegmentList count comes from its SegmentURL entries |
+| `dodge.DodgeHandler.js` | rejectIfManifestMismatch | a cycle past the end of a SegmentList is rejected |
+| `dodge.DodgeHandler.js` | rejectIfManifestMismatch | a template that declares no segment count is not checked |
+
 ---
 
 ## Summary
@@ -2137,6 +2184,7 @@ and needs the same enforcement.
 | R10.14 A new source replaces the defense set | 8 |
 | R10.15 Extended manifest verified against the MPD | 15 |
 | R10.16 A refusal is reported to the application | 4 |
+| R10.17 Cycle segment indices must be ones the MPD can supply | 7 |
 | R11.1 strictMode = representation enforcement | 8 |
 | R11.2 strictMode = manifest enforcement | 6 |
 | R11.3 strictMode = max enforcement | 5 |
@@ -2153,4 +2201,5 @@ and needs the same enforcement.
 | R12.6 Dodge logs through the player's Debug | 3 |
 | R12.7 Every Dodge module reads the player's Settings | 5 |
 | R12.8 A stalled stream is never scheduled again | 11 |
-| **Total** | **836** |
+| R12.9 A cycle naming a segment the presentation lacks stalls the stream | 2 |
+| **Total** | **845** |

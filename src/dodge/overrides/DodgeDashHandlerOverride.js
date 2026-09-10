@@ -40,7 +40,7 @@ import {HTTPRequest} from '../../streaming/vo/metrics/HTTPRequest.js';
 /**
  * Dodge override, replaces DashHandler's request generation logic to use
  * cycles from an extended manifest.
- * 
+ *
  * Registered via mediaPlayer.extend('DashHandler', DodgeDashHandlerOverride, true).
  */
 function DodgeDashHandlerOverride(config) {
@@ -313,6 +313,29 @@ function DodgeDashHandlerOverride(config) {
     }
 
     /**
+     * Stall the stream: a cycle names a segment that cannot be fetched.
+     *
+     * Returning null retries the cycle, and for this condition no retry
+     * can help. Dodge only ever runs on static manifests, so whether an index
+     * resolves is a fixed property of the presentation rather than something
+     * that settles: the availability window does not move, and a segment
+     * outside the period is outside it for good.
+     *
+     * @param {number} position - Position of the cycle in the list.
+     * @param {number} index - Segment index the cycle asked for.
+     * @param {Object} representation - Representation it was looked up in.
+     */
+    function _stallOnUnresolvedCycle(position, index, representation) {
+        const dodgeHandler = context._dodgeHandler;
+        if (dodgeHandler && dodgeHandler.recordStall) {
+            dodgeHandler.recordStall(parent.getStreamId(), parent.getType(),
+                'cycle ' + position + ' asks for segment index ' + index +
+                ' of representation ' + (representation ? representation.id : '(unknown)') +
+                ', which the presentation does not contain');
+        }
+    }
+
+    /**
      * Resolve a segment by its index.
      *
      * SegmentsController routes SegmentTimeline to a getter that takes no index
@@ -566,6 +589,7 @@ function DodgeDashHandlerOverride(config) {
             } else {
                 logger.debug('No segment found, lastSegment = ' + !!lastSegment);
             }
+            _stallOnUnresolvedCycle(cycleIndex, cycle.index, effectiveRep);
             return null;
         }
 

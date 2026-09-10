@@ -9,12 +9,13 @@ import {
     initializeDashJsAdapter
 } from '../common/common.js';
 
-const TESTCASE = Constants.TESTCASES.DODGE.SOURCE_SWITCH;
+import {
+    checkDodgeActive,
+} from '../common/dodge.js';
 
-// A plain MPD, so the second source carries no extended manifest at all. That is
-// the case the registry used to survive: it is never handed anything that parses
-// as an extended manifest, so nothing on the manifest path drops what the first
-// source left behind.
+const TESTCASE = Constants.TESTCASES.DODGE.PLAYER_SOURCE_SWITCH;
+
+// A plain MPD, so the second source carries no extended manifest at all.
 const PLAIN_MPD = 'https://dash.akamaized.net/dash264/TestCases/1a/sony/SNE_DASH_SD_CASE1A_REVISED.mpd';
 
 Utils.getTestvectorsForTestcase(TESTCASE).forEach((item) => {
@@ -43,17 +44,7 @@ Utils.getTestvectorsForTestcase(TESTCASE).forEach((item) => {
         })
 
         it(`Dodge defense is active on the defended source`, async () => {
-            const timeout = Constants.TEST_TIMEOUT_THRESHOLDS.DODGE_PLAYING;
-            const start = Date.now();
-            let isActive = false;
-            while (Date.now() - start < timeout) {
-                isActive = playerAdapter.isDodgeActive();
-                if (isActive) {
-                    break;
-                }
-                await playerAdapter.sleep(200);
-            }
-            expect(isActive).to.be.true;
+            await checkDodgeActive(playerAdapter);
         })
 
         it(`Switching to a plain MPD plays`, async () => {

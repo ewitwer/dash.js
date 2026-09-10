@@ -439,6 +439,71 @@ function DodgeHandler(config) {
      * @param {string} [url] - Original request URL, for the error message.
      * @returns {boolean} True when rejected and manifest loading must stop.
      */
+    /**
+     * The segment addressing element that applies to a representation, honoring
+     * the Representation over AdaptationSet over Period inheritance the DASH
+     * spec defines.
+     */
+    function _inheritedSegmentElement(period, adaptation, representation, key) {
+        return representation[key] || adaptation[key] || period[key] || null;
+    }
+
+    /**
+     * How many media segments a representation declares, or null when the MPD
+     * does not say.
+     *
+     * The counts mirror the ones dash.js computes for itself
+     * (`TemplateSegmentsGetter` and `ListSegmentsGetter` report exactly these),
+     * so the verdict here is the same one the segment getters will reach at
+     * request time rather than a second opinion about the same MPD.
+     *
+     * Null for anything the MPD leaves open: a SegmentBase representation whose
+     * indices come from a `sidx` the client has not fetched, a timeline with a
+     * negative `@r` that runs to the period end, or a template with neither a
+     * duration nor a timeline. The check that uses this skips those, so it
+     * never refuses a manifest it cannot actually fault.
+     *
+     * @param {Object} period - Parsed Period element.
+     * @param {Object} adaptation - Parsed AdaptationSet element.
+     * @param {Object} representation - Parsed Representation element.
+     * @param {number} periodDuration - Period duration in seconds.
+     * @returns {number|null} Segment count, or null when undetermined.
+     */
+    function _declaredSegmentCount(period, adaptation, representation, periodDuration) {
+        const list = _inheritedSegmentElement(period, adaptation, representation, DashConstants.SEGMENT_LIST);
+        if (list && Array.isArray(list[DashConstants.SEGMENT_URL])) {
+            return list[DashConstants.SEGMENT_URL].length;
+        }
+
+        const template = _inheritedSegmentElement(period, adaptation, representation, DashConstants.SEGMENT_TEMPLATE);
+        if (!template) {
+            return null;
+        }
+
+        const timeline = template[DashConstants.SEGMENT_TIMELINE];
+        if (timeline && Array.isArray(timeline[DashConstants.S])) {
+            let count = 0;
+            for (let i = 0; i < timeline[DashConstants.S].length; i++) {
+                const repeat = timeline[DashConstants.S][i].r;
+                if (repeat < 0) {
+                    // Runs to the end of the period; the entry count alone does
+                    // not say how many segments that is.
+                    return null;
+                }
+                count += 1 + (repeat > 0 ? repeat : 0);
+            }
+            return count;
+        }
+
+        const duration = template[DashConstants.DURATION];
+        if (!(duration > 0) || !(periodDuration > 0)) {
+            return null;
+        }
+        const timescale = template[DashConstants.TIMESCALE] > 0 ? template[DashConstants.TIMESCALE] : 1;
+
+        return Math.ceil(periodDuration / (duration / timescale));
+    }
+
     function rejectIfManifestMismatch(manifest, url) {
         if (getStrictMode() === DodgeConstants.STRICT_MODE.NONE) {
             return false;
@@ -450,11 +515,20 @@ function DodgeHandler(config) {
         // Representation id -> its sibling ids, per period, for the label and
         // quality checks. Tracks that never reach DashHandler are recorded
         // separately: they carry no cycles by design.
+        let voPeriods = [];
+        try {
+            voPeriods = dashManifestModel.getRegularPeriods(dashManifestModel.getMpd(manifest)) || [];
+        } catch (e) {
+            voPeriods = [];
+        }
+
         const byPeriod = [];
         for (let p = 0; p < periods.length; p++) {
             const siblingsById = {};
+            const segmentCountById = {};
             const shaped = [];
             const adaptations = periods[p][DashConstants.ADAPTATION_SET] || [];
+            const periodDuration = voPeriods[p] ? voPeriods[p].duration : NaN;
 
             for (let a = 0; a < adaptations.length; a++) {
                 const adaptation = adaptations[a];
@@ -465,12 +539,18 @@ function DodgeHandler(config) {
 
                 for (let r = 0; r < reps.length; r++) {
                     siblingsById[reps[r].id] = ids;
+                    segmentCountById[reps[r].id] = _declaredSegmentCount(
+                        periods[p], adaptation, reps[r], periodDuration);
                     if (!bypassesDashHandler) {
                         shaped.push(reps[r].id);
                     }
                 }
             }
-            byPeriod.push({ siblingsById: siblingsById, shaped: shaped });
+            byPeriod.push({
+                siblingsById: siblingsById,
+                segmentCountById: segmentCountById,
+                shaped: shaped
+            });
         }
 
         // Every stream entry resolves, and its cycle qualities resolve
@@ -495,6 +575,23 @@ function DodgeHandler(config) {
                 problems.push('stream "' + stream['label'] + '" names no representation' +
                     ((scoped === undefined || scoped === null) ? '' : ' in period ' + scoped));
                 continue;
+            }
+
+            // Cycle segment indices have to be ones the representation can
+            // actually supply. A cycle naming an index past the end resolves to
+            // no segment, so no request is ever built for it: the scheduler asks
+            // again on every tick and nothing reaches the wire.
+            const segmentCount = match.segmentCountById[stream['label']];
+            if (segmentCount !== null && segmentCount !== undefined) {
+                const beyond = (stream['data'] || [])
+                    .map(cycle => cycle.index)
+                    .filter(index => typeof index === 'number' && index >= segmentCount);
+                if (beyond.length > 0) {
+                    const shown = beyond.slice(0, 5).join(', ') + (beyond.length > 5 ? ', ...' : '');
+                    problems.push('stream "' + stream['label'] + '" has ' + beyond.length +
+                        ' cycle(s) naming segment index ' + shown + ' but the representation declares only ' +
+                        segmentCount + ' segment(s)');
+                }
             }
 
             const siblings = match.siblingsById[stream['label']];
@@ -898,6 +995,34 @@ function DodgeHandler(config) {
     function isStalled(streamId, mediaType) {
         const state = streamState.get(streamId);
         return !!state && state.stalled.has(mediaType);
+    }
+
+    /**
+     * Record that this stream and media type can no longer run its cycles.
+     *
+     * `_onFragmentLoadingCompleted` records the two response-side conditions
+     * itself. This is the entry point for the request side, where
+     * DodgeDashHandlerOverride finds that a cycle names a segment the
+     * presentation does not contain and so can never be fetched. Same
+     * consequence either way: the defense runs correctly or not at all, and a
+     * stream that cannot run its cycles must stop rather than fall back to
+     * whatever vanilla dash.js would have requested.
+     *
+     * The flag lives with the rest of the per-stream state, so a teardown, a
+     * reset, or a new extended manifest clears it along with everything else.
+     *
+     * @param {string} streamId - Stream that cannot continue.
+     * @param {string} mediaType - Media type that cannot continue.
+     * @param {string} [reason] - Detail for the error log.
+     */
+    function recordStall(streamId, mediaType, reason) {
+        const state = _getStreamState(streamId);
+        if (state.stalled.has(mediaType)) {
+            return;
+        }
+        state.stalled.add(mediaType);
+        logger.error(mediaType + ' cannot continue its cycles; stalling to preserve defense pattern' +
+            (reason ? '. ' + reason : ''));
     }
 
     /**
@@ -1601,6 +1726,7 @@ function DodgeHandler(config) {
         isDodgeActive,
         isDodgeTrailing,
         isStalled,
+        recordStall,
         setLastInitializedRepresentation,
         appendDataCycles,
         finalizeStream,

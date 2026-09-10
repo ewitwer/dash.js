@@ -7,7 +7,11 @@ import {
     initializeDashJsAdapter
 } from '../common/common.js';
 
-const TESTCASE = Constants.TESTCASES.DODGE.TEXT_TRACK_BLOCKING;
+import {
+    checkDodgeActive,
+} from '../common/dodge.js';
+
+const TESTCASE = Constants.TESTCASES.DODGE.POLICY_TEXT_TRACKS;
 
 Utils.getTestvectorsForTestcase(TESTCASE).forEach((item) => {
     const mpd = item.url;
@@ -41,17 +45,7 @@ Utils.getTestvectorsForTestcase(TESTCASE).forEach((item) => {
         })
 
         it(`Dodge defense is active`, async () => {
-            const timeout = Constants.TEST_TIMEOUT_THRESHOLDS.DODGE_PLAYING;
-            const start = Date.now();
-            let isActive = false;
-            while (Date.now() - start < timeout) {
-                isActive = playerAdapter.isDodgeActive();
-                if (isActive) {
-                    break;
-                }
-                await playerAdapter.sleep(200);
-            }
-            expect(isActive).to.be.true;
+            await checkDodgeActive(playerAdapter);
         })
 
         it(`No text segment requests are made`, async () => {

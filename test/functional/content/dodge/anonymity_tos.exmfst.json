@@ -1,0 +1,159 @@
+{
+ "start": {
+  "mpd": "<MPD xmlns=\"urn:mpeg:dash:schema:mpd:2011\" minBufferTime=\"PT1.500S\" type=\"static\" mediaPresentationDuration=\"PT0H12M14.000S\" maxSegmentDuration=\"PT0H0M4.000S\" profiles=\"urn:mpeg:dash:profile:isoff-live:2011,http://dashif.org/guidelines/dash264\">\n\t<Period duration=\"PT0H12M14.000S\">\n\t\t<AdaptationSet segmentAlignment=\"true\" group=\"1\" maxWidth=\"1920\" maxHeight=\"1080\" maxFrameRate=\"24\" par=\"16:9\" lang=\"und\">\n\t\t\t<Role schemeIdUri=\"urn:mpeg:dash:role:2011\" value=\"main\" />\n\t\t\t<SegmentTemplate timescale=\"24\" media=\"$RepresentationID$/$Number%04d$.m4s\" startNumber=\"1\" duration=\"96\" initialization=\"$RepresentationID$/init.mp4\" />\n\t\t\t<Representation id=\"3\" mimeType=\"video/mp4\" codecs=\"avc1.640028\" width=\"852\" height=\"480\" frameRate=\"24\" sar=\"640:639\" startWithSAP=\"1\" bandwidth=\"1117074\" />\n\t\t\t</AdaptationSet>\n\t\t<AdaptationSet segmentAlignment=\"true\" group=\"2\" lang=\"en\">\n\t\t\t<Role schemeIdUri=\"urn:mpeg:dash:role:2011\" value=\"main\" />\n\t\t\t<SegmentTemplate timescale=\"24000\" media=\"$RepresentationID$/$Number%04d$.m4s\" startNumber=\"1\" duration=\"95232\" initialization=\"$RepresentationID$/init.mp4\" />\n\t\t\t<Representation id=\"15\" mimeType=\"audio/mp4\" codecs=\"mp4a.40.29\" audioSamplingRate=\"48000\" startWithSAP=\"1\" bandwidth=\"131351\">\n\t\t\t\t<AudioChannelConfiguration schemeIdUri=\"urn:mpeg:dash:23003:3:audio_channel_configuration:2011\" value=\"2\" />\n\t\t\t</Representation>\n\t\t</AdaptationSet>\n\t\t</Period>\n</MPD>",
+  "base_uri": "https://media.axprod.net/TestVectors/v7-Clear/"
+ },
+ "streams": [
+  {
+   "label": "3",
+   "init": [
+    {
+     "range": "0-914",
+     "buffer": true
+    }
+   ],
+   "data": [
+    {
+     "index": 0,
+     "range": "0-71837",
+     "buffer": false
+    },
+    {
+     "index": 3,
+     "range": "0-299931",
+     "padding": true,
+     "buffer": true
+    },
+    {
+     "index": 1,
+     "range": "0-99205",
+     "buffer": false
+    },
+    {
+     "index": 3,
+     "range": "0-478968",
+     "padding": true,
+     "buffer": true
+    },
+    {
+     "index": 2,
+     "range": "0-489174",
+     "buffer": false
+    },
+    {
+     "index": 2,
+     "range": "489175-602234",
+     "buffer": true
+    },
+    {
+     "index": 3,
+     "range": "0-481846",
+     "buffer": false
+    },
+    {
+     "index": 3,
+     "range": "481847-616771",
+     "buffer": true
+    },
+    {
+     "index": 4,
+     "range": "0-464147",
+     "buffer": false
+    },
+    {
+     "index": 3,
+     "range": "0-45430",
+     "padding": true,
+     "buffer": true
+    },
+    {
+     "index": 5,
+     "range": "0-397415",
+     "buffer": false
+    },
+    {
+     "index": 5,
+     "range": "397416-476754",
+     "buffer": true
+    }
+   ]
+  },
+  {
+   "label": "15",
+   "init": [
+    {
+     "range": "0-1669",
+     "buffer": true
+    }
+   ],
+   "data": [
+    {
+     "index": 0,
+     "range": "0-32283",
+     "buffer": false
+    },
+    {
+     "index": 0,
+     "range": "0-1347",
+     "padding": true,
+     "buffer": true
+    },
+    {
+     "index": 1,
+     "range": "0-32283",
+     "buffer": false
+    },
+    {
+     "index": 0,
+     "range": "0-1124",
+     "padding": true,
+     "buffer": true
+    },
+    {
+     "index": 2,
+     "range": "0-32283",
+     "buffer": false
+    },
+    {
+     "index": 0,
+     "range": "0-1120",
+     "padding": true,
+     "buffer": true
+    },
+    {
+     "index": 3,
+     "range": "0-32283",
+     "buffer": false
+    },
+    {
+     "index": 0,
+     "range": "0-1094",
+     "padding": true,
+     "buffer": true
+    },
+    {
+     "index": 4,
+     "range": "0-32283",
+     "buffer": false
+    },
+    {
+     "index": 0,
+     "range": "0-1050",
+     "padding": true,
+     "buffer": true
+    },
+    {
+     "index": 5,
+     "range": "0-32283",
+     "buffer": false
+    },
+    {
+     "index": 0,
+     "range": "0-1223",
+     "padding": true,
+     "buffer": true
+    }
+   ]
+  }
+ ]
+}

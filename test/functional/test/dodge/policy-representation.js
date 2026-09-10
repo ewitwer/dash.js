@@ -8,7 +8,7 @@ import {
     playForDuration
 } from '../common/common.js';
 
-const TESTCASE = Constants.TESTCASES.DODGE.REPRESENTATION_STRICT_MODE;
+const TESTCASE = Constants.TESTCASES.DODGE.POLICY_REPRESENTATION;
 
 // How long the source is given to load and be refused. Long enough for the
 // extended manifest to be fetched and the gate to run, and long enough that a

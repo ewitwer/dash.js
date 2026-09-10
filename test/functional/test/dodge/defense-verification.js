@@ -4,9 +4,14 @@ import Utils from '../../src/Utils.js';
 
 import {
     checkIsPlaying,
+    checkIsProgressing,
     checkNoCriticalErrors,
     initializeDashJsAdapter
 } from '../common/common.js';
+
+import {
+    checkDodgeActive,
+} from '../common/dodge.js';
 
 const TESTCASE = Constants.TESTCASES.DODGE.DEFENSE_VERIFICATION;
 
@@ -31,6 +36,16 @@ function computeExpectedFull(cycles) {
 }
 
 /**
+ * How many data cycle requests are enough to compare against the manifest.
+ * Ten where the defense declares that many content cycles, and all of them where
+ * it declares fewer, so a short plan is tested in full rather than skipped.
+ */
+function expectedSampleSize(stream, cap = 10) {
+    const content = (stream.data || []).filter((cycle) => !cycle.padding).length;
+    return Math.max(1, Math.min(cap, content));
+}
+
+/**
  * Find the defended stream matching a representation ID. Audio streams use
  * a separate label namespace, so this works for both media types.
  */
@@ -50,7 +65,7 @@ function verifyInitCycleMatch(requests, stream, mediaType) {
 
         expect(cycle, `${mediaType} init cycle ${i}: no cycle in manifest (collected ${requests.length}, manifest has ${initCycles.length})`).to.not.be.undefined;
 
-        // Byte range must match
+        // Range must match
         if (cycle.range) {
             expect(req.range).to.equal(cycle.range, `${mediaType} init cycle ${i}: byte range mismatch (request=${req.range}, manifest=${cycle.range})`);
         }
@@ -135,23 +150,18 @@ Utils.getTestvectorsForTestcase(TESTCASE).forEach((item) => {
         it(`Checking Dodge defense is active`, async () => {
             // Defense activation requires manifest load + first cycle request;
             // poll until active or timeout
-            const timeout = Constants.TEST_TIMEOUT_THRESHOLDS.DODGE_PLAYING;
-            const start = Date.now();
-            let isActive = false;
-            while (Date.now() - start < timeout) {
-                isActive = playerAdapter.isDodgeActive();
-                if (isActive) {
-                    break;
-                }
-                await playerAdapter.sleep(200);
-            }
-            expect(isActive).to.be.true;
+            await checkDodgeActive(playerAdapter);
         })
 
         it(`Init cycle traffic matches extended manifest`, async () => {
             const traffic = await trafficPromise;
 
-            for (const mediaType of ['video', 'audio']) {
+            // Text included: a defended fragmented text stream fetches its init
+            // like any other media type, and leaving it out here means nothing
+            // checks that what goes out matches what the manifest declares.
+            // Sources whose text is an undefended sidecar make no text init
+            // requests at all, so they fall through the empty check below.
+            for (const mediaType of ['video', 'audio', 'text']) {
                 const initRequests = traffic.filter(
                     t => t.mediaType === mediaType && t.type === 'InitializationSegment'
                 );
@@ -175,7 +185,7 @@ Utils.getTestvectorsForTestcase(TESTCASE).forEach((item) => {
                 t => t.mediaType === 'video' && t.type === 'MediaSegment'
             );
 
-            expect(videoRequests.length).to.be.at.least(10, 'Expected at least 10 video data cycle requests');
+            expect(videoRequests.length).to.be.at.least(1, 'Expected video data cycle requests');
 
             const representationId = videoRequests[0].representationId;
             expect(representationId).to.be.a('string');
@@ -183,7 +193,33 @@ Utils.getTestvectorsForTestcase(TESTCASE).forEach((item) => {
             const stream = findStream(extendedManifest, representationId);
             expect(stream, `No defended stream found for video representation ${representationId}`).to.not.be.undefined;
 
+            // Enough traffic for the comparison to mean something. Ten where the
+            // defense has that many content cycles, and all of them where it has
+            // fewer: a plan of four ten-second cycles is not a weaker test, it
+            // is a shorter one.
+            expect(videoRequests.length).to.be.at.least(expectedSampleSize(stream),
+                'Too few video data cycle requests to compare against the manifest');
+
             verifyCycleMatch(videoRequests, stream, 'video');
+        })
+
+        it(`Text traffic matches extended manifest cycles`, async () => {
+            // Fragmented text is a defended media type like any other, and it is
+            // the one whose control path differs: StreamProcessor restarts the
+            // schedule timer for text on every fragment completion. Sources
+            // without a defended text stream have nothing to check here.
+            const traffic = await trafficPromise;
+            const textRequests = traffic.filter(
+                t => t.mediaType === 'text' && t.type === 'MediaSegment'
+            );
+            if (textRequests.length === 0) {
+                return;
+            }
+
+            const stream = findStream(extendedManifest, textRequests[0].representationId);
+            expect(stream, `No defended stream for text representation ${textRequests[0].representationId}`)
+                .to.not.be.undefined;
+            verifyCycleMatch(textRequests, stream, 'text');
         })
 
         it(`Audio traffic matches extended manifest cycles`, async () => {
@@ -193,13 +229,16 @@ Utils.getTestvectorsForTestcase(TESTCASE).forEach((item) => {
                 t => t.mediaType === 'audio' && t.type === 'MediaSegment'
             );
 
-            expect(audioRequests.length).to.be.at.least(7, 'Expected at least 7 audio data cycle requests');
+            expect(audioRequests.length).to.be.at.least(1, 'Expected audio data cycle requests');
 
             const representationId = audioRequests[0].representationId;
             expect(representationId).to.be.a('string');
 
             const stream = findStream(extendedManifest, representationId);
             expect(stream, `No defended stream found for audio representation ${representationId}`).to.not.be.undefined;
+
+            expect(audioRequests.length).to.be.at.least(expectedSampleSize(stream, 7),
+                'Too few audio data cycle requests to compare against the manifest');
 
             verifyCycleMatch(audioRequests, stream, 'audio');
         })
@@ -321,6 +360,10 @@ Utils.getTestvectorsForTestcase(TESTCASE).forEach((item) => {
             const videoBuffer = playerAdapter.getBufferLengthByType('video');
             expect(videoBuffer).to.be.a('number');
             expect(videoBuffer).to.be.above(0, 'Video buffer level should be positive during defended playback (mockBuffer may be broken)');
+        })
+
+        it(`Checking progressing state`, async () => {
+            await checkIsProgressing(playerAdapter);
         })
 
         it(`Expect no critical errors to be thrown`, () => {

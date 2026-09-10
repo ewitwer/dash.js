@@ -3305,6 +3305,79 @@ describe('DodgeHandler', function () {
             expect(gate('representation', xml, [entry('v0'), entry('v1')])).to.be.false; // jshint ignore:line
         });
 
+        // Segment index coverage. A cycle naming an index the representation
+        // cannot supply resolves to no segment, so no request is ever built and
+        // the scheduler retries it forever with nothing reaching the wire. The
+        // set defining a segment count is what these vary; a template with
+        // neither a duration nor a timeline leaves the count open and is
+        // deliberately not checked.
+        function timedVideoSet(ids, segmentDuration) {
+            return '<AdaptationSet mimeType="video/mp4">'
+                + '<SegmentTemplate initialization="init.m4s" media="$Number$.m4s" duration="'
+                + segmentDuration + '" timescale="1"/>'
+                + ids.map((id) => '<Representation id="' + id + '" bandwidth="1000"/>').join('')
+                + '</AdaptationSet>';
+        }
+
+        function listVideoSet(ids, urlCount) {
+            const urls = new Array(urlCount).fill('<SegmentURL media="s.m4s"/>').join('');
+            return '<AdaptationSet mimeType="video/mp4">'
+                + '<SegmentList duration="2">' + urls + '</SegmentList>'
+                + ids.map((id) => '<Representation id="' + id + '" bandwidth="1000"/>').join('')
+                + '</AdaptationSet>';
+        }
+
+        function cycles(indices) {
+            return { init: [{}], data: indices.map((index) => ({ index, buffer: true })) };
+        }
+
+        it('cycles within the declared segment count are accepted', function () {
+            // PT10S at two seconds a segment is five segments, indices 0 to 4.
+            const xml = mpd(period(timedVideoSet(['v0'], 2)));
+            expect(gate('representation', xml, [entry('v0', cycles([0, 1, 2, 3, 4]))])).to.be.false; // jshint ignore:line
+        });
+
+        it('a cycle naming a segment index past the end of the presentation is rejected', function () {
+            const xml = mpd(period(timedVideoSet(['v0'], 2)));
+            expect(gate('representation', xml, [entry('v0', cycles([0, 1, 5]))])).to.be.true; // jshint ignore:line
+            expect(errorSpy.calledOnce).to.be.true; // jshint ignore:line
+        });
+
+        it('the refusal names the index and the count', function () {
+            const xml = mpd(period(timedVideoSet(['v0'], 2)));
+            gate('representation', xml, [entry('v0', cycles([0, 7]))]);
+            const message = loggerSpy.error.args.map((args) => args.join(' ')).join(' | ');
+            expect(message).to.contain('7');
+            expect(message).to.contain('5 segment');
+        });
+
+        it('trailing padding past the end is rejected like any other cycle', function () {
+            // The shape that loses a defense its whole trailing phase: cycles
+            // cover the presentation, then padding runs off the end.
+            const xml = mpd(period(timedVideoSet(['v0'], 2)));
+            const data = [0, 1, 2, 3, 4].map((index) => ({ index, buffer: true }))
+                .concat([5, 6, 7].map((index) => ({ index, padding: true, buffer: true })));
+            expect(gate('representation', xml, [entry('v0', { init: [{}], data })])).to.be.true; // jshint ignore:line
+        });
+
+        it('a SegmentList count comes from its SegmentURL entries', function () {
+            const xml = mpd(period(listVideoSet(['v0'], 3)));
+            expect(gate('representation', xml, [entry('v0', cycles([0, 1, 2]))])).to.be.false; // jshint ignore:line
+        });
+
+        it('a cycle past the end of a SegmentList is rejected', function () {
+            const xml = mpd(period(listVideoSet(['v0'], 3)));
+            expect(gate('representation', xml, [entry('v0', cycles([0, 3]))])).to.be.true; // jshint ignore:line
+        });
+
+        it('a template that declares no segment count is not checked', function () {
+            // videoSet carries no duration and no timeline, so the MPD does not
+            // say how many segments there are. Refusing here would fault a
+            // manifest on a count that was guessed.
+            const xml = mpd(period(videoSet(['v0'])));
+            expect(gate('representation', xml, [entry('v0', cycles([0, 99]))])).to.be.false; // jshint ignore:line
+        });
+
         it('a label naming no representation is rejected', function () {
             const xml = mpd(period(videoSet(['v0'])));
             expect(gate('representation', xml, [entry('v0'), entry('typo')])).to.be.true; // jshint ignore:line

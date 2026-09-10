@@ -1,5 +1,4 @@
 import Constants from '../../src/Constants.js';
-import {expect} from 'chai';
 import Utils from '../../src/Utils.js';
 
 import {
@@ -9,7 +8,19 @@ import {
     initializeDashJsAdapter
 } from '../common/common.js';
 
-const TESTCASE = Constants.TESTCASES.DODGE.GRACEFUL_DEGRADATION;
+import {
+    checkDodgeActive,
+    defendedSettings
+} from '../common/dodge.js';
+
+const TESTCASE = Constants.TESTCASES.DODGE.DEFENSE_BASELINE;
+
+// The health check every defended vector gets: the source plays, the defense
+// takes over, playback advances, and nothing errors.
+//
+// It is deliberately assigned to vectors whose own test file asserts one narrow
+// behavior and nothing about the session around it. Where defense-verification
+// runs, this would be a strict subset of it and is left off.
 
 Utils.getTestvectorsForTestcase(TESTCASE).forEach((item) => {
     const mpd = item.url;
@@ -18,7 +29,7 @@ Utils.getTestvectorsForTestcase(TESTCASE).forEach((item) => {
         let playerAdapter;
 
         before(() => {
-            playerAdapter = initializeDashJsAdapter(item, mpd);
+            playerAdapter = initializeDashJsAdapter(item, mpd, defendedSettings());
         })
 
         after(() => {
@@ -31,9 +42,8 @@ Utils.getTestvectorsForTestcase(TESTCASE).forEach((item) => {
             await checkIsPlaying(playerAdapter, true);
         })
 
-        it(`Dodge defense should not be active`, () => {
-            const isActive = playerAdapter.isDodgeActive();
-            expect(isActive).to.be.false;
+        it(`Dodge defense is active`, async () => {
+            await checkDodgeActive(playerAdapter);
         })
 
         it(`Checking progressing state`, async () => {

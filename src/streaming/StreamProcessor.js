@@ -1100,8 +1100,9 @@ function StreamProcessor(config) {
      */
     function _onFragmentLoadingCompleted(e) {
         logger.info('OnFragmentLoadingCompleted for stream id ' + streamInfo.id + ' and media type ' + type + ' - Url:', e.request ? e.request.url : 'undefined', e.request.range ? ', Range:' + e.request.range : '');
-
-        if (currentMediaInfo.isText) {
+        
+        const isDodgeDefended = dashHandler && dashHandler.getIsDefended && dashHandler.getIsDefended();
+        if (currentMediaInfo.isText && !isDodgeDefended) {
             scheduleController.startScheduleTimer(0);
         }
 

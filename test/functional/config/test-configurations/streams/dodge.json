@@ -10,13 +10,12 @@
       "type": "vod",
       "url": "/base/test/functional/content/dodge/bbb_30fps_undef.exmfst.json",
       "includedTestfiles": [
-        "dodge/play-defended",
         "dodge/defense-verification",
-        "dodge/strict-mode-allows-exmfst",
-        "dodge/seek",
-        "dodge/seek-backward",
-        "dodge/request-padding",
-        "dodge/source-switch"
+        "dodge/defense-padding",
+        "dodge/defense-stall",
+        "dodge/player-seek",
+        "dodge/player-source-switch",
+        "dodge/policy-strict-mode"
       ]
     },
     {
@@ -24,16 +23,16 @@
       "type": "vod",
       "url": "/base/test/functional/content/dodge/bbb_30fps_constant.exmfst.json",
       "includedTestfiles": [
-        "dodge/play-defended",
-        "dodge/defense-verification"
-      ]
+        "dodge/defense-verification",
+        "dodge/defense-stall"
+      ],
+      "dodgePartialRanges": true
     },
     {
       "name": "Elephants Dream Mimicry defense",
       "type": "vod",
       "url": "/base/test/functional/content/dodge/elephants_dream_mimicry.exmfst.json",
       "includedTestfiles": [
-        "dodge/play-defended",
         "dodge/defense-verification"
       ]
     },
@@ -42,8 +41,7 @@
       "type": "vod",
       "url": "https://dash.akamaized.net/dash264/TestCases/1a/sony/SNE_DASH_SD_CASE1A_REVISED.mpd",
       "includedTestfiles": [
-        "dodge/strict-mode-rejects-mpd",
-        "dodge/graceful-degradation"
+        "dodge/policy-strict-mode"
       ]
     },
     {
@@ -51,9 +49,8 @@
       "type": "vod",
       "url": "/base/test/functional/content/dodge/bbb_30fps_trailing_short.exmfst.json",
       "includedTestfiles": [
-        "dodge/trailing",
-        "dodge/seek-trailing",
-        "dodge/mock-buffer"
+        "dodge/phase-trailing",
+        "dodge/phase-seek-trailing"
       ]
     },
     {
@@ -61,7 +58,7 @@
       "type": "vod",
       "url": "/base/test/functional/content/dodge/bbb_30fps_trailing_extended.exmfst.json",
       "includedTestfiles": [
-        "dodge/extended-trailing"
+        "dodge/phase-trailing"
       ]
     },
     {
@@ -69,8 +66,8 @@
       "type": "vod",
       "url": "/base/test/functional/content/dodge/bbb_30fps_trailing_complete.exmfst.json",
       "includedTestfiles": [
-        "dodge/trailing-completion",
-        "dodge/seek-trailing"
+        "dodge/phase-trailing-completion",
+        "dodge/phase-seek-trailing"
       ]
     },
     {
@@ -78,7 +75,7 @@
       "type": "vod",
       "url": "/base/test/functional/content/dodge/bbb_30fps_video_only.exmfst.json",
       "includedTestfiles": [
-        "dodge/representation-strict-mode"
+        "dodge/policy-representation"
       ]
     },
     {
@@ -86,7 +83,8 @@
       "type": "vod",
       "url": "/base/test/functional/content/dodge/bbb_30fps_text.exmfst.json",
       "includedTestfiles": [
-        "dodge/text-track-blocking"
+        "dodge/policy-unshaped-tracks",
+        "dodge/policy-text-tracks"
       ]
     },
     {
@@ -94,7 +92,7 @@
       "type": "vod",
       "url": "/base/test/functional/content/dodge/bbb_30fps_thumbnails.exmfst.json",
       "includedTestfiles": [
-        "dodge/thumbnail-detection"
+        "dodge/policy-unshaped-tracks"
       ]
     },
     {
@@ -102,7 +100,7 @@
       "type": "vod",
       "url": "/base/test/functional/content/dodge/bbb_30fps_xlink.exmfst.json",
       "includedTestfiles": [
-        "dodge/xlink-detection"
+        "dodge/policy-unshaped-tracks"
       ]
     },
     {
@@ -110,7 +108,7 @@
       "type": "vod",
       "url": "/base/test/functional/content/dodge/bbb_30fps_drm.exmfst.json",
       "includedTestfiles": [
-        "dodge/side-channel-policy"
+        "dodge/policy-side-channels"
       ]
     },
     {
@@ -118,7 +116,7 @@
       "type": "vod",
       "url": "/base/test/functional/content/dodge/bbb_30fps_undef.exmfst.json",
       "includedTestfiles": [
-        "dodge/side-channel-policy"
+        "dodge/policy-side-channels"
       ]
     },
     {
@@ -126,7 +124,7 @@
       "type": "vod",
       "url": "/base/test/functional/content/dodge/bbb_30fps_undef.exmfst.json",
       "includedTestfiles": [
-        "dodge/side-channel-policy"
+        "dodge/policy-side-channels"
       ]
     },
     {
@@ -134,7 +132,7 @@
       "type": "vod",
       "url": "/base/test/functional/content/dodge/bbb_30fps_quality_override.exmfst.json",
       "includedTestfiles": [
-        "dodge/quality-override"
+        "dodge/player-quality-override"
       ]
     },
     {
@@ -142,15 +140,18 @@
       "type": "vod",
       "url": "/base/test/functional/content/dodge/bbb_30fps_multiperiod.exmfst.json",
       "includedTestfiles": [
-        "dodge/multiperiod"
-      ]
+        "dodge/player-multiperiod",
+        "dodge/defense-baseline",
+        "dodge/player-seek"
+      ],
+      "dodgeMultiPeriod": true
     },
     {
       "name": "BBB Undefended (ABR quality switch)",
       "type": "vod",
       "url": "/base/test/functional/content/dodge/bbb_30fps_undef.exmfst.json",
       "includedTestfiles": [
-        "dodge/quality-switch"
+        "dodge/player-quality-switch"
       ]
     },
     {
@@ -158,7 +159,50 @@
       "type": "vod",
       "url": "/base/test/functional/content/dodge/bbb_30fps_progressive.exmfst.json",
       "includedTestfiles": [
-        "dodge/progressive"
+        "dodge/phase-progressive"
+      ]
+    },
+    {
+      "name": "CTA IMSC1 (SegmentBase byte-range addressing)",
+      "type": "vod",
+      "url": "/base/test/functional/content/dodge/cta_imsc1_segmentbase.exmfst.json",
+      "includedTestfiles": [
+        "dodge/defense-baseline",
+        "dodge/defense-verification"
+      ]
+    },
+    {
+      "name": "GPAC main-multi (SegmentList addressing)",
+      "type": "vod",
+      "url": "/base/test/functional/content/dodge/gpac_segmentlist.exmfst.json",
+      "includedTestfiles": [
+        "dodge/defense-baseline",
+        "dodge/defense-verification"
+      ]
+    },
+    {
+      "name": "BBC Elephants Dream (defended fragmented text)",
+      "type": "vod",
+      "url": "/base/test/functional/content/dodge/bbc_ed_fragmented_text.exmfst.json",
+      "includedTestfiles": [
+        "dodge/defense-baseline",
+        "dodge/defense-verification"
+      ]
+    },
+    {
+      "name": "Anonymity set: Big Buck Bunny",
+      "type": "vod",
+      "url": "/base/test/functional/content/dodge/anonymity_bbb.exmfst.json",
+      "includedTestfiles": [
+        "dodge/defense-anonymity-set"
+      ]
+    },
+    {
+      "name": "Anonymity set: Tears of Steel",
+      "type": "vod",
+      "url": "/base/test/functional/content/dodge/anonymity_tos.exmfst.json",
+      "includedTestfiles": [
+        "dodge/defense-anonymity-set"
       ]
     }
   ]

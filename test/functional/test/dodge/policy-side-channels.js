@@ -7,7 +7,7 @@ import {
     playForDuration
 } from '../common/common.js';
 
-const TESTCASE = Constants.TESTCASES.DODGE.SIDE_CHANNEL_POLICY;
+const TESTCASE = Constants.TESTCASES.DODGE.POLICY_SIDE_CHANNELS;
 
 Utils.getTestvectorsForTestcase(TESTCASE).forEach((item) => {
     const mpd = item.url;

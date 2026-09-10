@@ -105,7 +105,7 @@ function DodgeScheduleControllerOverride(config) {
         // buffer only reaches the scheduler through BUFFER_LEVEL_UPDATED, which
         // BufferController fires from its own _updateBufferLevel, and the only
         // callers of that are appends and the element's timeupdate.
-        if (dashHandler && dashHandler.getIsDefended && dashHandler.getIsDefended() &&
+        if (dashHandler && dashHandler.getIsTrailing && dashHandler.getIsTrailing() &&
                 bufferController && bufferController.updateBufferLevel) {
             bufferController.updateBufferLevel();
         }

@@ -2791,6 +2791,23 @@ describe('DodgeDashHandlerOverride', function () {
             // The same cycle is retried rather than skipped.
             expect(timelineOverride.getNextSegmentRequest({}, timelineRep)).to.be.null; // jshint ignore:line
         });
+
+        it('an index that does not resolve stalls the stream at once', function () {
+            const recordStall = sinon.spy();
+            context._dodgeHandler = { recordStall };
+
+            defenseController.addExtendedManifest(makeTimelineManifest([
+                { index: 99, buffer: true },
+            ]));
+            timelineOverride.updateDefendedStreamInfo(timelineRep);
+
+            expect(timelineOverride.getNextSegmentRequest({}, timelineRep)).to.be.null; // jshint ignore:line
+
+            expect(recordStall.calledOnce, 'Expected the stream to be recorded as stalled').to.be.true; // jshint ignore:line
+            expect(recordStall.firstCall.args[0]).to.equal('stream-1');
+            expect(recordStall.firstCall.args[1]).to.equal('video');
+        });
+
     });
 
     describe('_generateInitRequest construction', function () {

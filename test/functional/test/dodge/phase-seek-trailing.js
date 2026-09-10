@@ -10,7 +10,11 @@ import {
     initializeDashJsAdapter
 } from '../common/common.js';
 
-const TESTCASE = Constants.TESTCASES.DODGE.SEEK_TRAILING;
+import {
+    checkDodgeActive,
+} from '../common/dodge.js';
+
+const TESTCASE = Constants.TESTCASES.DODGE.PHASE_SEEK_TRAILING;
 
 Utils.getTestvectorsForTestcase(TESTCASE).forEach((item) => {
     const mpd = item.url;
@@ -52,17 +56,7 @@ Utils.getTestvectorsForTestcase(TESTCASE).forEach((item) => {
         })
 
         it(`Dodge defense is active`, async () => {
-            const timeout = Constants.TEST_TIMEOUT_THRESHOLDS.DODGE_PLAYING;
-            const start = Date.now();
-            let isActive = false;
-            while (Date.now() - start < timeout) {
-                isActive = playerAdapter.isDodgeActive();
-                if (isActive) {
-                    break;
-                }
-                await playerAdapter.sleep(200);
-            }
-            expect(isActive).to.be.true;
+            await checkDodgeActive(playerAdapter);
         })
 
         it(`Trailing phase is reached`, async () => {
@@ -140,8 +134,8 @@ Utils.getTestvectorsForTestcase(TESTCASE).forEach((item) => {
         it(`Playback still finishes after a seek out of the trailing phase`, async () => {
             // The deferral has to be handed back at the end of the second phase
             // too. If it is only released once per session the stream stays
-            // alive forever after a seek: the padding goes out, the cycles run
-            // out, and nothing ever ends the media source.
+            // alive forever after a seek: the padding goes out, the cycles
+            // run out, and nothing ever ends the media source.
             const timeout = 60000;
             const start = Date.now();
             let ended = false;

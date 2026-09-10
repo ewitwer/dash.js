@@ -4,10 +4,15 @@ import Utils from '../../src/Utils.js';
 
 import {
     checkIsPlaying,
+    checkNoCriticalErrors,
     initializeDashJsAdapter
 } from '../common/common.js';
 
-const TESTCASE = Constants.TESTCASES.DODGE.MULTIPERIOD;
+import {
+    checkDodgeActive,
+} from '../common/dodge.js';
+
+const TESTCASE = Constants.TESTCASES.DODGE.PLAYER_MULTIPERIOD;
 
 Utils.getTestvectorsForTestcase(TESTCASE).forEach((item) => {
     const mpd = item.url;
@@ -43,17 +48,7 @@ Utils.getTestvectorsForTestcase(TESTCASE).forEach((item) => {
         })
 
         it(`Dodge defense is active`, async () => {
-            const timeout = Constants.TEST_TIMEOUT_THRESHOLDS.DODGE_PLAYING;
-            const start = Date.now();
-            let isActive = false;
-            while (Date.now() - start < timeout) {
-                isActive = playerAdapter.isDodgeActive();
-                if (isActive) {
-                    break;
-                }
-                await playerAdapter.sleep(200);
-            }
-            expect(isActive).to.be.true;
+            await checkDodgeActive(playerAdapter);
         })
 
         it(`Period transition occurs`, async () => {
@@ -76,6 +71,10 @@ Utils.getTestvectorsForTestcase(TESTCASE).forEach((item) => {
             const indexZeroCount = videoRequests.filter(r => r.index === 0).length;
             expect(indexZeroCount).to.be.at.least(2, 'Expected segment index 0 at least twice (once per period)');
             expect(videoRequests.length).to.be.at.least(4, 'Expected video requests from both periods');
+        })
+
+        it(`Expect no critical errors to be thrown`, () => {
+            checkNoCriticalErrors(playerAdapter);
         })
     })
 })

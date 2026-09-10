@@ -9,7 +9,13 @@ import {
     initializeDashJsAdapter
 } from '../common/common.js';
 
-const TESTCASE = Constants.TESTCASES.DODGE.TRAILING_COMPLETION;
+import {
+    checkDodgeActive,
+    gapBefore,
+    trailingRequests,
+} from '../common/dodge.js';
+
+const TESTCASE = Constants.TESTCASES.DODGE.PHASE_TRAILING_COMPLETION;
 
 // The fixture's data cycles cover the whole declared presentation: its embedded
 // MPD is clipped to PT12.0S, which is exactly the three content segments, and
@@ -27,29 +33,17 @@ const BUFFER_TARGET = 8;
 // Init + content + padding, per media type, for one video representation and
 // one audio representation.
 const EXPECTED_REQUESTS = 2 * (1 + CONTENT_CYCLES + PADDING_CYCLES);
-const COLLECTION_TIMEOUT = 90000;
+// Kept well inside karma's 120s browserNoActivityTimeout. A defense that never
+// sends its padding leaves this collection waiting for the full timeout, and if
+// that wait crosses the harness window the browser is torn down and every
+// vector still queued is lost instead of one test failing.
+const COLLECTION_TIMEOUT = 45000;
 
 // Same margins as the random walk measurement in defense-verification: allow a
 // gap to come in at 60% of nominal for timer jitter and event loop overhead, and
 // require 70% of the measured gaps to clear it rather than all of them.
 const GAP_TOLERANCE = 0.6;
 const GAP_PROPORTION = 0.7;
-
-function trailingRequests(traffic, mediaType) {
-    return traffic.filter((t) => t.mediaType === mediaType && t.trail === true);
-}
-
-// Response end to next request start, the same measurement defense-verification
-// makes, so download time is excluded. Falls back to request timestamps when the
-// HTTP timing is not populated.
-function gapBefore(traffic, i) {
-    const prev = traffic[i - 1].requestRef;
-    const curr = traffic[i].requestRef;
-    if (prev && prev.endDate && curr && curr.startDate) {
-        return curr.startDate.getTime() - prev.endDate.getTime();
-    }
-    return traffic[i].timestamp - traffic[i - 1].timestamp;
-}
 
 Utils.getTestvectorsForTestcase(TESTCASE).forEach((item) => {
     const mpd = item.url;
@@ -89,17 +83,7 @@ Utils.getTestvectorsForTestcase(TESTCASE).forEach((item) => {
         })
 
         it(`Dodge defense is active`, async () => {
-            const timeout = Constants.TEST_TIMEOUT_THRESHOLDS.DODGE_PLAYING;
-            const start = Date.now();
-            let isActive = false;
-            while (Date.now() - start < timeout) {
-                isActive = playerAdapter.isDodgeActive();
-                if (isActive) {
-                    break;
-                }
-                await playerAdapter.sleep(200);
-            }
-            expect(isActive).to.be.true;
+            await checkDodgeActive(playerAdapter);
         })
 
         it(`Trailing phase is reached even though the period is fully buffered`, async () => {

@@ -4,11 +4,12 @@ import Utils from '../../src/Utils.js';
 
 import {
     checkIsProgressing,
+    checkNoCriticalErrors,
     initializeDashJsAdapter,
     playForDuration
 } from '../common/common.js';
 
-const TESTCASE = Constants.TESTCASES.DODGE.QUALITY_SWITCH;
+const TESTCASE = Constants.TESTCASES.DODGE.PLAYER_QUALITY_SWITCH;
 
 // Long enough at the starting quality that a restart is unmistakable, then long
 // enough for ABR to act on the raised cap and fetch at the new quality.
@@ -142,6 +143,10 @@ Utils.getTestvectorsForTestcase(TESTCASE).forEach((item) => {
 
         it(`Playback progresses after the switch`, async () => {
             await checkIsProgressing(playerAdapter);
+        })
+
+        it(`Expect no critical errors to be thrown`, () => {
+            checkNoCriticalErrors(playerAdapter);
         })
     })
 })

@@ -8,7 +8,7 @@ import {
     initializeDashJsAdapter
 } from '../common/common.js';
 
-const TESTCASE = Constants.TESTCASES.DODGE.PROGRESSIVE;
+const TESTCASE = Constants.TESTCASES.DODGE.PHASE_PROGRESSIVE;
 
 // The seed in bbb_30fps_progressive.exmfst.json is the first three cycles of
 // bbb_30fps_undef.exmfst.json. Batches appended at runtime come from the rest of
@@ -113,8 +113,7 @@ Utils.getTestvectorsForTestcase(TESTCASE).forEach((item) => {
 
             it(`Cycle requests stop at the end of the seeded cycles`, async () => {
                 // The override stalls rather than finishing when it runs off the
-                // end of a progressive stream, so requests go quiet and stay
-                // quiet.
+                // end of a progressive stream, so requests go quiet.
                 let previous = -1;
                 let settled = 0;
                 const start = Date.now();
@@ -167,11 +166,6 @@ Utils.getTestvectorsForTestcase(TESTCASE).forEach((item) => {
             })
 
             it(`A batch ending in padding does not enter the trailing phase`, async () => {
-                // The shape a progressive generator naturally produces: fetch the
-                // content cycles, then a padding cycle that also carries the
-                // flush. maxNoPad then points before the end of the data, which
-                // must not be read as the end of the content while the stream is
-                // still being generated.
                 const traffic = playerAdapter.getDodgeTrafficLog();
                 const labels = activeLabels(traffic);
 
