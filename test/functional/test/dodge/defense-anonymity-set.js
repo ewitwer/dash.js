@@ -34,16 +34,59 @@ const COMPARE_PREFIX = 12;
 // only exists between them.
 const observed = {};
 
-function responseSizesByType(log) {
+/**
+ * Every sized segment response the source put on the wire, in order, split by
+ * media type.
+ *
+ * Init segments count. An observer watching a representation sees its init
+ * segment before anything else, so a set whose members answer the opening
+ * request with different sizes is separable on that request alone, no matter
+ * how well the media cycles line up afterwards. Each entry carries its request
+ * type so a mismatch says which kind of request diverged.
+ */
+function responseSequenceByType(log) {
     const byType = {};
     log.forEach((entry) => {
-        if (!entry.mediaType || entry.requestType !== 'MediaSegment' ||
-                isNaN(entry.responseBytes) || entry.responseBytes <= 0) {
+        if (!entry.mediaType || isNaN(entry.responseBytes) || entry.responseBytes <= 0 ||
+                (entry.requestType !== 'MediaSegment' &&
+                    entry.requestType !== 'InitializationSegment')) {
             return;
         }
-        (byType[entry.mediaType] = byType[entry.mediaType] || []).push(entry.responseBytes);
+        (byType[entry.mediaType] = byType[entry.mediaType] || []).push({
+            type: entry.requestType,
+            bytes: entry.responseBytes
+        });
     });
     return byType;
+}
+
+/**
+ * The sequence up to and including its `count`-th media segment, with whatever
+ * init requests fell inside that stretch left where they were.
+ *
+ * Cutting on media segments rather than on a raw entry count keeps the reason
+ * for a fixed prefix intact while still pinning how init interleaves with
+ * media. An init segment refetched mid-stream on one source and not the other
+ * lands inside the window as an extra entry.
+ *
+ * @param {Array} sequence - Entries from responseSequenceByType, in order.
+ * @param {number} count - How many media segments the window has to cover.
+ * @returns {Array|null} The prefix, or null if that many never arrived.
+ */
+function prefixThroughMediaSegment(sequence, count) {
+    let seen = 0;
+    for (let i = 0; i < sequence.length; i++) {
+        if (sequence[i].type === 'MediaSegment' && ++seen === count) {
+            return sequence.slice(0, i + 1);
+        }
+    }
+    return null;
+}
+
+function describeSequence(sequence) {
+    return sequence
+        .map((entry) => (entry.type === 'MediaSegment' ? 'media' : 'init') + ':' + entry.bytes)
+        .join(', ');
 }
 
 Utils.getTestvectorsForTestcase(TESTCASE).forEach((item) => {
@@ -67,7 +110,7 @@ Utils.getTestvectorsForTestcase(TESTCASE).forEach((item) => {
                 Constants.TEST_TIMEOUT_THRESHOLDS.IS_PLAYING);
 
             await playForDuration(OBSERVE_MS);
-            observed[item.name] = responseSizesByType(playerAdapter.getWireRequestLog());
+            observed[item.name] = responseSequenceByType(playerAdapter.getWireRequestLog());
         })
 
         after(() => {
@@ -93,9 +136,15 @@ Utils.getTestvectorsForTestcase(TESTCASE).forEach((item) => {
             expect(Object.keys(byType), 'Expected both media types on the wire')
                 .to.include.members(['video', 'audio']);
             Object.keys(byType).forEach((type) => {
-                expect(byType[type].length,
-                    `Only ${byType[type].length} sized ${type} responses were observed, need ${COMPARE_PREFIX}`)
-                    .to.be.at.least(COMPARE_PREFIX);
+                // Both vectors defend an init segment on both media types,
+                // so an init entry has to be there. Without this, the comparison
+                // would still pass if init responses stopped being recorded on
+                // both sources at once.
+                expect(byType[type].some((entry) => entry.type === 'InitializationSegment'),
+                    `No sized ${type} init segment response was observed`).to.be.true;
+                expect(prefixThroughMediaSegment(byType[type], COMPARE_PREFIX),
+                    `Fewer than ${COMPARE_PREFIX} sized ${type} media segment responses were observed`)
+                    .to.not.be.null;
             });
         })
 
@@ -116,12 +165,20 @@ describe(`${TESTCASE} - the two sources are indistinguishable`, () => {
 
         const [first, second] = names;
         ['video', 'audio'].forEach((type) => {
-            const a = (observed[first][type] || []).slice(0, COMPARE_PREFIX);
-            const b = (observed[second][type] || []).slice(0, COMPARE_PREFIX);
+            const a = prefixThroughMediaSegment(observed[first][type] || [], COMPARE_PREFIX);
+            const b = prefixThroughMediaSegment(observed[second][type] || [], COMPARE_PREFIX);
+
+            // Two sources that both stopped short would otherwise compare two
+            // empty sequences and pass without having observed anything.
+            if (!a || !b) {
+                expect.fail(`Not enough ${type} media segments to compare: ` +
+                    `${first} ${a ? 'reached' : 'did not reach'} ${COMPARE_PREFIX}, ` +
+                    `${second} ${b ? 'reached' : 'did not reach'} ${COMPARE_PREFIX}`);
+            }
 
             expect(a).to.deep.equal(b,
                 `The two sources are distinguishable by ${type} response size.` +
-                `\n  ${first}: ${a.join(', ')}\n  ${second}: ${b.join(', ')}`);
+                `\n  ${first}: ${describeSequence(a)}\n  ${second}: ${describeSequence(b)}`);
         });
     })
 })

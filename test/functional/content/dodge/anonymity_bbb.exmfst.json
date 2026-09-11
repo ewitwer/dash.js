@@ -8,6 +8,11 @@
    "label": "bbb_30fps_640x360_1000k",
    "init": [
     {
+     "range": "0-208",
+     "padding": true,
+     "buffer": false
+    },
+    {
      "range": "0-705",
      "buffer": true
     }
@@ -81,6 +86,16 @@
   {
    "label": "bbb_a64k",
    "init": [
+    {
+     "range": "0-403",
+     "padding": true,
+     "buffer": false
+    },
+    {
+     "range": "0-632",
+     "padding": true,
+     "buffer": false
+    },
     {
      "range": "0-632",
      "buffer": true

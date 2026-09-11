@@ -21,8 +21,9 @@ const TESTCASE = Constants.TESTCASES.DODGE.DEFENSE_STALL;
 //
 // That invariant is about what reaches the network, so it is asserted against
 // the XHR log rather than against the request objects dash.js builds. The
-// checks are that the stalled media type goes quiet, that the other one
-// outlives it, and that a seek does not restart it.
+// checks are that the stalled media type goes quiet, that a seek does not
+// restart it, and that the other media type is still able to request after
+// that seek.
 
 // Let the defense get going before breaking it, so the stall lands mid-stream.
 const REQUESTS_BEFORE_FAULT = 4;
@@ -68,6 +69,7 @@ function requestsMatching(log, mark) {
         describe(`${TESTCASE} - ${fault.label} - ${item.name} - ${mpd}`, () => {
             let playerAdapter;
             let videoAtStall = 0;
+            let audioBeforeSeek = 0;
 
             before(async () => {
                 playerAdapter = initializeDashJsAdapter(item, mpd, defendedSettings());
@@ -115,27 +117,13 @@ function requestsMatching(log, mark) {
                     'A stalled stream that keeps requesting is fetching outside cycle control');
             })
 
-            it(`The stall is scoped to one media type`, () => {
-                // The stall is recorded per stream and media type, so the other
-                // one has to outlive it. Comparing when each type last reached
-                // the wire rather than counting requests.
-                const log = playerAdapter.getWireRequestLog();
-                const lastAt = (mark) => requestsMatching(log, mark)
-                    .reduce((max, entry) => Math.max(max, entry.timestamp), 0);
-
-                const lastVideo = lastAt(VIDEO_URL_MARK);
-                const lastAudio = lastAt(AUDIO_URL_MARK);
-                expect(lastAudio).to.be.above(lastVideo,
-                    'Expected audio to still be requesting after video went quiet, so the stall is scoped ' +
-                    `to one media type (last video ${lastVideo}, last audio ${lastAudio})`);
-            })
-
             it(`A seek does not restart the stalled stream`, async () => {
                 // StreamProcessor restarts the schedule timer on a seek for any
                 // media type, and on every fragment completion for text, which
                 // is why the stall is enforced in _shouldClearScheduleTimer
                 // rather than at the point of failure.
                 const before = requestsMatching(playerAdapter.getWireRequestLog(), VIDEO_URL_MARK).length;
+                audioBeforeSeek = requestsMatching(playerAdapter.getWireRequestLog(), AUDIO_URL_MARK).length;
 
                 playerAdapter.seek(Math.round(playerAdapter.getDuration() * 0.5));
                 await playForDuration(QUIET_WINDOW_MS);
@@ -143,6 +131,25 @@ function requestsMatching(log, mark) {
                 const after = requestsMatching(playerAdapter.getWireRequestLog(), VIDEO_URL_MARK).length;
                 expect(after).to.equal(before,
                     `Expected the seek not to restart the stalled stream, saw ${after - before} video requests`);
+            })
+
+            it(`The stall is scoped to one media type`, () => {
+                // Audio goes quiet shortly after video does, but not because it
+                // is stalled. ScheduleController._getBufferTargetForAudio caps
+                // the audio buffer target at the video buffer level plus one
+                // second whenever there is a video track, so audio stops
+                // asking for segments once video stops filling its buffer.
+                // Comparing when each type last reached the wire therefore
+                // races the video retry tail.
+                //
+                // The seek above flushes the video buffer, which drops that cap
+                // back to a single segment and re-opens audio scheduling. Audio
+                // that is itself stalled stays quiet through that; audio that
+                // was only following video's buffer level requests again.
+                const audioAfterSeek = requestsMatching(playerAdapter.getWireRequestLog(), AUDIO_URL_MARK).length;
+                expect(audioAfterSeek).to.be.above(audioBeforeSeek,
+                    'Expected audio to request again after the seek, so the stall is scoped to one media ' +
+                    `type (audio requests before the seek ${audioBeforeSeek}, after ${audioAfterSeek})`);
             })
 
             it(`The stall is reported in the error log`, () => {
